@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Check,
   Download,
@@ -35,13 +35,7 @@ import { ConfirmDialog } from '../layout/ConfirmDialog';
 import { exportToWordDocx } from '../../utils/exportEngine';
 import { getNeutralProjectImage } from '../../utils/officialAssets';
 
-interface ProjectDetailViewProps {
-  projectId: string;
-  store: AppStore;
-  onNavigate: (route: AppRoute) => void;
-}
-
-type DetailTab =
+export type ProjectDetailTab =
   | 'overview'
   | 'stages'
   | 'contracts'
@@ -50,17 +44,36 @@ type DetailTab =
   | 'correspondence'
   | 'attachments';
 
+interface ProjectDetailViewProps {
+  projectId: string;
+  store: AppStore;
+  activeTab?: ProjectDetailTab;
+  onTabChange?: (tab: ProjectDetailTab) => void;
+  onNavigate: (route: AppRoute) => void;
+}
+
 type StageFilterMode = 'همه' | 'فعال' | 'انجام‌شده' | 'در حال انجام' | 'انجام‌نشده';
 
 export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   projectId,
   store,
+  activeTab,
+  onTabChange,
   onNavigate,
 }) => {
   const project = store.projects.find((p) => p.id === projectId);
   const projectImage = store.projectImages.find((img) => img.projectId === projectId);
 
-  const [tab, setTab] = useState<DetailTab>('overview');
+  const [tab, setTab] = useState<ProjectDetailTab>(activeTab ?? 'overview');
+
+  useEffect(() => {
+    setTab(activeTab ?? 'overview');
+  }, [activeTab, projectId]);
+
+  const handleSelectTab = (next: ProjectDetailTab) => {
+    setTab(next);
+    onTabChange?.(next);
+  };
   const [editingProject, setEditingProject] = useState(false);
   const [newStageTitle, setNewStageTitle] = useState('');
   const [stageFilter, setStageFilter] = useState<StageFilterMode>('همه');
@@ -251,7 +264,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
     );
   };
 
-  const tabs: Array<{ key: DetailTab; label: string }> = [
+  const tabs: Array<{ key: ProjectDetailTab; label: string }> = [
     { key: 'overview', label: 'مشخصات و تصویر پروژه' },
     { key: 'stages', label: 'جدول مراحل اجرایی' },
     { key: 'contracts', label: 'قراردادها و دستورکارها' },
@@ -384,7 +397,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             <button
               key={t.key}
               type="button"
-              onClick={() => setTab(t.key)}
+              onClick={() => handleSelectTab(t.key)}
               className={`inline-flex h-9 items-center justify-center rounded-xl px-3 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                 tab === t.key
                   ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'

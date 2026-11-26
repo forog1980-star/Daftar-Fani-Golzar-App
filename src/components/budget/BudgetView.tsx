@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Edit2, FolderOpen, Plus, Trash2 } from 'lucide-react';
 import {
   BudgetProposal,
@@ -18,13 +18,31 @@ import {
 import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
 
+export type BudgetSubTab = 'credits' | 'payments' | 'proposals';
+
 interface BudgetViewProps {
   store: AppStore;
+  activeTab?: BudgetSubTab;
+  onTabChange?: (tab: BudgetSubTab) => void;
   onOpenProject: (project: Project) => void;
 }
 
-export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) => {
-  const [subTab, setSubTab] = useState<'credits' | 'payments' | 'proposals'>('credits');
+export const BudgetView: React.FC<BudgetViewProps> = ({
+  store,
+  activeTab,
+  onTabChange,
+  onOpenProject,
+}) => {
+  const [subTab, setSubTab] = useState<BudgetSubTab>(activeTab ?? 'credits');
+
+  useEffect(() => {
+    setSubTab(activeTab ?? 'credits');
+  }, [activeTab]);
+
+  const handleSelectSubTab = (next: BudgetSubTab) => {
+    setSubTab(next);
+    onTabChange?.(next);
+  };
   const [selectedProjectId, setSelectedProjectId] = useState<string>('همه');
   const [editingBudget, setEditingBudget] = useState<{ project: Project; budget: ProjectBudget } | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -216,7 +234,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
             <button
               key={t.key}
               type="button"
-              onClick={() => setSubTab(t.key)}
+              onClick={() => handleSelectSubTab(t.key)}
               className={`inline-flex h-9 items-center justify-center rounded-xl px-3.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 subTab === t.key
                   ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'

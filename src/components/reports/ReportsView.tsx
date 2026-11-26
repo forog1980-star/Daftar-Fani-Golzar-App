@@ -31,11 +31,14 @@ import { STATUS_COLORS, StatusDonutChart } from '../dashboard/StatusDonutChart';
 import { getNeutralProjectImage, OFFICIAL_GOLZAR_LOGO } from '../../utils/officialAssets';
 
 export type ReportType = 'projects' | 'budget' | 'proposals' | 'actions' | 'documents' | 'single-project';
-type ReportDisplayMode = 'table' | 'narrative' | 'chart';
+export type ReportDisplayMode = 'table' | 'narrative' | 'chart';
 
 interface ReportsViewProps {
   store: AppStore;
   initialReportType?: ReportType;
+  initialDisplayMode?: ReportDisplayMode;
+  onReportTypeChange?: (reportType: ReportType) => void;
+  onDisplayModeChange?: (mode: ReportDisplayMode) => void;
 }
 
 interface SingleProjectReportSections {
@@ -101,13 +104,31 @@ const ORDERED_STATUSES: ProjectStatus[] = [
 export const ReportsView: React.FC<ReportsViewProps> = ({
   store,
   initialReportType = 'projects',
+  initialDisplayMode = 'table',
+  onReportTypeChange,
+  onDisplayModeChange,
 }) => {
   const [reportType, setReportType] = useState<ReportType>(initialReportType);
-  const [displayMode, setDisplayMode] = useState<ReportDisplayMode>('table');
+  const [displayMode, setDisplayMode] = useState<ReportDisplayMode>(initialDisplayMode);
 
   useEffect(() => {
     setReportType(initialReportType);
   }, [initialReportType]);
+
+  useEffect(() => {
+    setDisplayMode(initialDisplayMode);
+  }, [initialDisplayMode]);
+
+  const handleSelectReportType = (next: ReportType) => {
+    setReportType(next);
+    setExportMessage('');
+    onReportTypeChange?.(next);
+  };
+
+  const handleSelectDisplayMode = (next: ReportDisplayMode) => {
+    setDisplayMode(next);
+    onDisplayModeChange?.(next);
+  };
   const [selectedProjectId, setSelectedProjectId] = useState(store.projects[0]?.id ?? '');
   const [reportNumber, setReportNumber] = useState(`گ-${Math.floor(100 + Math.random() * 899)}`);
   const [letterhead, setLetterhead] = useState<LetterheadConfig>(store.settings.letterhead);
@@ -708,10 +729,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <button
                 key={card.key}
                 type="button"
-                onClick={() => {
-                  setReportType(card.key);
-                  setExportMessage('');
-                }}
+                onClick={() => handleSelectReportType(card.key)}
                 className={`rounded-[var(--app-radius)] border p-4 text-right transition-colors cursor-pointer ${
                   active
                     ? 'border-[#243B5A] bg-[#E5EBF2]/75'
@@ -754,7 +772,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 <button
                   key={mode.key}
                   type="button"
-                  onClick={() => setDisplayMode(mode.key)}
+                  onClick={() => handleSelectDisplayMode(mode.key)}
                   className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                     displayMode === mode.key
                       ? 'border border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'

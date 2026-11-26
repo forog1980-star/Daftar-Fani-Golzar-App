@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Download,
   Edit2,
@@ -22,8 +22,12 @@ import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
 import { FormBuilderView } from './FormBuilderView';
 
+export type DocumentsSectionTab = 'archive' | 'forms';
+
 interface DocumentsViewProps {
   store: AppStore;
+  activeTab?: DocumentsSectionTab;
+  onTabChange?: (tab: DocumentsSectionTab) => void;
 }
 
 const DOC_CATEGORIES: DocumentCategory[] = [
@@ -37,8 +41,21 @@ const DOC_CATEGORIES: DocumentCategory[] = [
   'پیوست',
 ];
 
-export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
-  const [sectionTab, setSectionTab] = useState<'archive' | 'forms'>('archive');
+export const DocumentsView: React.FC<DocumentsViewProps> = ({
+  store,
+  activeTab,
+  onTabChange,
+}) => {
+  const [sectionTab, setSectionTab] = useState<DocumentsSectionTab>(activeTab ?? 'archive');
+
+  useEffect(() => {
+    setSectionTab(activeTab ?? 'archive');
+  }, [activeTab]);
+
+  const handleSelectSection = (next: DocumentsSectionTab) => {
+    setSectionTab(next);
+    onTabChange?.(next);
+  };
   const [categoryFilter, setCategoryFilter] = useState<string>('همه');
   const [projectFilter, setProjectFilter] = useState<string>('همه');
   const [search, setSearch] = useState('');
@@ -86,7 +103,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap">
           <button
             type="button"
-            onClick={() => setSectionTab('archive')}
+            onClick={() => handleSelectSection('archive')}
             className={`inline-flex h-10 items-center justify-center rounded-xl px-4 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               sectionTab === 'archive'
                 ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
@@ -97,7 +114,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
           </button>
           <button
             type="button"
-            onClick={() => setSectionTab('forms')}
+            onClick={() => handleSelectSection('forms')}
             className={`inline-flex h-10 items-center justify-center rounded-xl px-4 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               sectionTab === 'forms'
                 ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'

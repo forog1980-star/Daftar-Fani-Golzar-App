@@ -28,6 +28,7 @@ export type SupportTab = 'settings' | 'media' | 'transfer' | 'backup' | 'people'
 interface SupportViewProps {
   store: AppStore;
   initialTab?: SupportTab;
+  onTabChange?: (tab: SupportTab) => void;
 }
 
 // Controlled formal Navy palette presets (Section 9)
@@ -49,7 +50,11 @@ const RADIUS_PRESETS: Array<{ label: string; value: number }> = [
   { label: 'گردی نرم (۱۶ پیکسل)', value: 16 },
 ];
 
-export const SupportView: React.FC<SupportViewProps> = ({ store, initialTab = 'settings' }) => {
+export const SupportView: React.FC<SupportViewProps> = ({
+  store,
+  initialTab = 'settings',
+  onTabChange,
+}) => {
   const [tab, setTab] = useState<SupportTab>(initialTab);
   const [deviceName, setDeviceName] = useState(store.settings.deviceName);
   const [orgName, setOrgName] = useState(store.settings.letterhead.organizationName);
@@ -175,6 +180,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ store, initialTab = 's
               setTab(t.key);
               setNotice('');
               setError('');
+              onTabChange?.(t.key);
             }}
             className={`inline-flex min-h-[40px] items-center justify-center rounded-xl px-2.5 py-2 text-center text-xs font-medium leading-4 transition-colors cursor-pointer ${
               tab === t.key

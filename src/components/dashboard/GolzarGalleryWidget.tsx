@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Pause, Play, Plus } from 'lucide-react';
 import { GolzarImageRecord } from '../../types';
-import { toPersianDigits } from '../../utils/format';
 import { BUILTIN_GOLZAR_GALLERY } from '../../utils/officialAssets';
 
 interface GolzarGalleryWidgetProps {
@@ -26,9 +25,13 @@ export const GolzarGalleryWidget: React.FC<GolzarGalleryWidgetProps> = ({
         ? images.map((img) => ({
             id: img.id,
             src: img.dataUrl,
-            caption: img.caption || img.fileName,
+            alt: 'تصویر گلزار شهدای تهران',
           }))
-        : BUILTIN_GOLZAR_GALLERY,
+        : BUILTIN_GOLZAR_GALLERY.map((item) => ({
+            id: item.id,
+            src: item.src,
+            alt: item.caption,
+          })),
     [images]
   );
 
@@ -53,7 +56,7 @@ export const GolzarGalleryWidget: React.FC<GolzarGalleryWidgetProps> = ({
             <img
               key={current.id}
               src={current.src}
-              alt={current.caption}
+              alt={current.alt}
               className="animate-page-in h-full w-full object-cover"
             />
           </div>
@@ -96,15 +99,6 @@ export const GolzarGalleryWidget: React.FC<GolzarGalleryWidgetProps> = ({
               >
                 <Plus className="h-3.5 w-3.5" />
               </button>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between gap-1.5 border-t border-[#E8E5DE] bg-[#FFFFFF] px-2.5 py-1.5 text-[11px] text-[#5B6573]">
-            <span className="truncate">{current.caption}</span>
-            {slides.length > 1 && (
-              <span className="shrink-0 tabular-nums text-[10px]">
-                {toPersianDigits(safeIndex + 1)}/{toPersianDigits(slides.length)}
-              </span>
             )}
           </div>
         </div>
@@ -164,17 +158,9 @@ export const GolzarGalleryWidget: React.FC<GolzarGalleryWidgetProps> = ({
           <img
             key={current.id}
             src={current.src}
-            alt={current.caption}
+            alt={current.alt}
             className="animate-page-in h-full w-full object-cover"
           />
-        </div>
-        <div className="flex items-center justify-between gap-2 border-t border-[#E8E5DE] bg-[#FFFFFF] px-3.5 py-2 text-[11px] text-[#5B6573]">
-          <span className="truncate">{current.caption}</span>
-          {slides.length > 1 && (
-            <span className="shrink-0 tabular-nums">
-              {toPersianDigits(safeIndex + 1)} / {toPersianDigits(slides.length)}
-            </span>
-          )}
         </div>
       </div>
     </div>

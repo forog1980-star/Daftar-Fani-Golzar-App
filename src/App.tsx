@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { CheckCircle2, AlertCircle, X } from 'lucide-react';
 import { AppRoute, Project } from './types';
 import { useAppStore } from './hooks/useAppStore';
@@ -9,11 +9,11 @@ import { OfflineBanner } from './components/layout/PWAInstallButton';
 import { ConfirmDialog } from './components/layout/ConfirmDialog';
 import { DashboardView } from './components/dashboard/DashboardView';
 import { ProjectsView } from './components/projects/ProjectsView';
-import { ProjectDetailView } from './components/projects/ProjectDetailView';
-import { BudgetView } from './components/budget/BudgetView';
+import { ProjectDetailTab, ProjectDetailView } from './components/projects/ProjectDetailView';
+import { BudgetSubTab, BudgetView } from './components/budget/BudgetView';
 import { ActionsView } from './components/actions/ActionsView';
-import { DocumentsView } from './components/documents/DocumentsView';
-import { ReportType, ReportsView } from './components/reports/ReportsView';
+import { DocumentsSectionTab, DocumentsView } from './components/documents/DocumentsView';
+import { ReportDisplayMode, ReportType, ReportsView } from './components/reports/ReportsView';
 import { SupportTab, SupportView } from './components/support/SupportView';
 import { ExitAuthOverlay } from './components/support/ExitAuthOverlay';
 import { formatJalaliDateTime } from './utils/format';
@@ -23,7 +23,27 @@ interface HistoryEntry {
   projectId?: string;
   supportTab?: SupportTab;
   reportType?: ReportType;
+  reportDisplayMode?: ReportDisplayMode;
+  subTab?: string;
 }
+
+interface NavigateOptions {
+  projectId?: string;
+  supportTab?: SupportTab;
+  reportType?: ReportType;
+  reportDisplayMode?: ReportDisplayMode;
+  subTab?: string;
+  scrollToTop?: boolean;
+}
+
+const REPORT_TITLES: Record<ReportType, string> = {
+  projects: 'گزارش جامع پروژه‌ها',
+  budget: 'گزارش بودجه و اعتبارات',
+  proposals: 'گزارش پیشنهاد بودجه سالانه',
+  actions: 'گزارش اقدامات و پیگیری‌ها',
+  documents: 'گزارش اسناد و مکاتبات',
+  'single-project': 'گزارش تفصیلی پروژه',
+};
 
 export default function App() {
   const store = useAppStore();
@@ -36,36 +56,39 @@ export default function App() {
 
   const current = history[history.length - 1];
 
-  const navigate = useCallback(
-    (
-      route: AppRoute,
-      options?: { projectId?: string; supportTab?: SupportTab; reportType?: ReportType }
-    ) => {
-      const normalizedRoute: AppRoute = route === 'home' ? 'dashboard' : route;
-      setHistory((prev) => {
-        const top = prev[prev.length - 1];
-        if (
-          top.route === normalizedRoute &&
-          top.projectId === options?.projectId &&
-          top.supportTab === options?.supportTab &&
-          top.reportType === options?.reportType
-        ) {
-          return prev;
-        }
-        return [
-          ...prev,
-          {
-            route: normalizedRoute,
-            projectId: options?.projectId,
-            supportTab: options?.supportTab,
-            reportType: options?.reportType,
-          },
-        ];
-      });
+  const navigate = useCallback((route: AppRoute, options?: NavigateOptions) => {
+    const normalizedRoute: AppRoute = route === 'home' ? 'dashboard' : route;
+    const nextEntry: HistoryEntry = {
+      route: normalizedRoute,
+      projectId: options?.projectId,
+      supportTab:
+        normalizedRoute === 'support' ? (options?.supportTab ?? 'settings') : undefined,
+      reportType:
+        normalizedRoute === 'reports' ? (options?.reportType ?? 'projects') : undefined,
+      reportDisplayMode:
+        normalizedRoute === 'reports' ? (options?.reportDisplayMode ?? 'table') : undefined,
+      subTab: options?.subTab,
+    };
+
+    setHistory((prev) => {
+      const top = prev[prev.length - 1];
+      if (
+        top.route === nextEntry.route &&
+        top.projectId === nextEntry.projectId &&
+        top.supportTab === nextEntry.supportTab &&
+        top.reportType === nextEntry.reportType &&
+        top.reportDisplayMode === nextEntry.reportDisplayMode &&
+        top.subTab === nextEntry.subTab
+      ) {
+        return prev;
+      }
+      return [...prev, nextEntry];
+    });
+
+    if (options?.scrollToTop !== false) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    },
-    []
-  );
+    }
+  }, []);
 
   const handleBack = useCallback(() => {
     setHistory((prev) => (prev.length > 1 ? prev.slice(0, -1) : [{ route: 'dashboard' }]));
@@ -74,7 +97,7 @@ export default function App() {
 
   const handleOpenProject = useCallback(
     (project: Project) => {
-      navigate('project-detail', { projectId: project.id });
+      navigate('project-detail', { projectId: project.id, subTab: 'overview' });
     },
     [navigate]
   );
@@ -94,6 +117,40 @@ export default function App() {
   const handleRequestExit = useCallback(() => {
     setConfirmExitOpen(true);
   }, []);
+
+  const headerMeta = useMemo((): { title: string; subtitle?: string } => {
+    switch (current.route) {
+      case 'dashboard':
+      case 'home':
+        return { title: 'داشبورد' };
+      case 'projects':
+        return { title: 'پرونده پروژه‌ها' };
+      case 'project-detail': {
+        const proj = store.projects.find((p) => p.id === current.projectId);
+        return {
+          title: proj ? proj.title : 'پرونده پروژه',
+          subtitle: proj ? `پرونده پروژه · کد ${proj.code}` : undefined,
+        };
+      }
+      case 'budget':
+        return { title: 'بودجه و اعتبارات' };
+      case 'actions':
+        return { title: 'اقدامات و پیگیری‌ها' };
+      case 'documents':
+        return { title: 'اسناد و مکاتبات' };
+      case 'reports':
+        return {
+          title: 'گزارش‌ها',
+          subtitle: current.reportType ? REPORT_TITLES[current.reportType] : undefined,
+        };
+      case 'support':
+        return {
+          title: current.supportTab === 'guide' ? 'راهنما' : 'تنظیمات',
+        };
+      default:
+        return { title: 'دفتر فنی اداره گلزار شهدا' };
+    }
+  }, [current, store.projects]);
 
   if (showSplash) {
     return <SplashIntro onComplete={handleSplashComplete} />;
@@ -154,11 +211,11 @@ export default function App() {
 
       <AppHeader
         route={current.route}
+        pageTitle={headerMeta.title}
+        pageSubtitle={headerMeta.subtitle}
         canGoBack={history.length > 1}
         officialLogoDataUrl={store.settings.officialLogoDataUrl}
         onBack={handleBack}
-        onOpenSettings={() => navigate('support', { supportTab: 'settings' })}
-        onOpenGuide={() => navigate('support', { supportTab: 'guide' })}
         onToggleMobileMenu={() => setMobileMenuOpen((v) => !v)}
       />
 
@@ -166,10 +223,11 @@ export default function App() {
       <div className="mx-auto flex max-w-[1440px]">
         <SidebarNav
           currentRoute={current.route}
+          currentSupportTab={current.supportTab}
           mobileOpen={mobileMenuOpen}
           golzarImages={store.golzarImages}
           onCloseMobile={() => setMobileMenuOpen(false)}
-          onNavigate={(r) => navigate(r)}
+          onNavigate={(r, opts) => navigate(r, opts)}
           onOpenGolzarManager={() => navigate('support', { supportTab: 'media' })}
           onExit={handleRequestExit}
         />
@@ -181,7 +239,9 @@ export default function App() {
               onNavigate={(r) => navigate(r)}
               onOpenProject={handleOpenProject}
               onOpenGolzarManager={() => navigate('support', { supportTab: 'media' })}
-              onOpenReport={(reportType) => navigate('reports', { reportType })}
+              onOpenReport={(reportType) =>
+                navigate('reports', { reportType, reportDisplayMode: 'table' })
+              }
             />
           )}
 
@@ -193,24 +253,71 @@ export default function App() {
             <ProjectDetailView
               projectId={current.projectId}
               store={store}
+              activeTab={(current.subTab as ProjectDetailTab) ?? 'overview'}
+              onTabChange={(tab) =>
+                navigate('project-detail', {
+                  projectId: current.projectId,
+                  subTab: tab,
+                  scrollToTop: false,
+                })
+              }
               onNavigate={(r) => navigate(r)}
             />
           )}
 
           {current.route === 'budget' && (
-            <BudgetView store={store} onOpenProject={handleOpenProject} />
+            <BudgetView
+              store={store}
+              activeTab={(current.subTab as BudgetSubTab) ?? 'credits'}
+              onTabChange={(tab) =>
+                navigate('budget', { subTab: tab, scrollToTop: false })
+              }
+              onOpenProject={handleOpenProject}
+            />
           )}
 
           {current.route === 'actions' && <ActionsView store={store} />}
 
-          {current.route === 'documents' && <DocumentsView store={store} />}
+          {current.route === 'documents' && (
+            <DocumentsView
+              store={store}
+              activeTab={(current.subTab as DocumentsSectionTab) ?? 'archive'}
+              onTabChange={(tab) =>
+                navigate('documents', { subTab: tab, scrollToTop: false })
+              }
+            />
+          )}
 
           {current.route === 'reports' && (
-            <ReportsView store={store} initialReportType={current.reportType ?? 'projects'} />
+            <ReportsView
+              store={store}
+              initialReportType={current.reportType ?? 'projects'}
+              initialDisplayMode={current.reportDisplayMode ?? 'table'}
+              onReportTypeChange={(rt) =>
+                navigate('reports', {
+                  reportType: rt,
+                  reportDisplayMode: current.reportDisplayMode ?? 'table',
+                  scrollToTop: false,
+                })
+              }
+              onDisplayModeChange={(mode) =>
+                navigate('reports', {
+                  reportType: current.reportType ?? 'projects',
+                  reportDisplayMode: mode,
+                  scrollToTop: false,
+                })
+              }
+            />
           )}
 
           {current.route === 'support' && (
-            <SupportView store={store} initialTab={current.supportTab ?? 'settings'} />
+            <SupportView
+              store={store}
+              initialTab={current.supportTab ?? 'settings'}
+              onTabChange={(tab) =>
+                navigate('support', { supportTab: tab, scrollToTop: false })
+              }
+            />
           )}
         </main>
       </div>

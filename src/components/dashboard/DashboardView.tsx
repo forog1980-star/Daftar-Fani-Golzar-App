@@ -208,7 +208,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="animate-page-in space-y-4 px-3 py-4 sm:px-5 lg:pl-6 lg:pr-4">
       {/* Row 1: Five Top KPI Cards (matching mockup layout on desktop & 2+2+1 on mobile) */}
       <section aria-label="شاخص‌های کلیدی دفتر فنی">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 items-stretch">
           {topStatCards.map((card) => {
             const Icon = card.icon;
             return (
@@ -216,16 +216,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 key={card.label}
                 type="button"
                 onClick={() => onNavigate(card.route)}
-                className={`flex items-center justify-between gap-2 rounded-2xl border px-3.5 py-3.5 text-right transition-colors hover:brightness-[0.98] cursor-pointer ${card.bg} ${
+                className={`flex min-h-[86px] items-center justify-between gap-2 rounded-2xl border px-3.5 py-3 text-right transition-colors hover:brightness-[0.98] cursor-pointer ${card.bg} ${
                   card.spanMobileFull ? 'col-span-2 sm:col-span-1' : ''
                 }`}
               >
-                <div className="flex flex-1 flex-col items-center text-center">
-                  <span className="text-xs font-semibold text-[#243B5A]">{card.label}</span>
+                <div className="flex flex-1 flex-col items-center justify-center text-center">
+                  <span className="text-xs font-semibold leading-4 text-[#243B5A]">
+                    {card.label}
+                  </span>
                   {card.subLabel && (
-                    <span className="text-[10px] text-[#5B6573]">{card.subLabel}</span>
+                    <span className="mt-0.5 text-[10px] leading-3 text-[#5B6573]">
+                      {card.subLabel}
+                    </span>
                   )}
-                  <span className="mt-1 text-2xl font-bold tabular-nums text-[#1D3250]">
+                  <span className="mt-1.5 text-2xl font-bold leading-none tabular-nums text-[#1D3250]">
                     {card.value}
                   </span>
                 </div>
@@ -557,62 +561,79 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         />
       </section>
 
-      {/* Row 4: Bottom Status Strip — 3 Equal Proportional Columns on Laptop/Desktop, 3 Rows on Mobile */}
-      <section className="rounded-2xl border border-[#E5E0D5] bg-[#FFFFFF] p-3 space-y-3">
-        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3 text-xs">
-          {/* Column 1 (Right): Last Backup */}
+      {/* Row 4: Footer Status Strip — 3 Identical-Height Proportional Cards on Desktop, 3 Stacked Cards on Mobile */}
+      <footer
+        aria-label="نوار وضعیت سامانه"
+        className="rounded-2xl border border-[#E5E0D5] bg-[#FFFFFF] p-3 space-y-3"
+      >
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3 items-stretch text-xs">
+          {/* Card 1 (Right): Last Backup */}
           <button
             type="button"
             onClick={() => onNavigate('support')}
-            className="flex min-h-[46px] min-w-0 items-center justify-between gap-2 rounded-xl border border-[#ECE8DF] bg-[#F8F7F4] px-3.5 py-2.5 text-right transition-colors hover:border-[#243B5A] hover:bg-[#F2EEE6]/70 cursor-pointer"
+            className="flex h-full min-h-[62px] w-full items-center gap-3 rounded-xl border border-[#ECE8DF] bg-[#F8F7F4] px-3.5 py-2.5 text-right transition-colors hover:border-[#243B5A] hover:bg-[#F2EEE6]/70 cursor-pointer"
           >
-            <div className="flex items-center gap-2 min-w-0">
-              <Database className="h-4 w-4 shrink-0 text-[#243B5A]" />
-              <span className="font-semibold text-[#243B5A] shrink-0">آخرین پشتیبان‌گیری:</span>
-              <span className="truncate tabular-nums text-[#5B6573]">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E8EEF6] text-[#243B5A]">
+              <Database className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-semibold text-[#1D3250]">آخرین پشتیبان‌گیری</div>
+              <div className="mt-0.5 truncate text-xs tabular-nums text-[#5B6573]">
                 {settings.lastBackupAt
                   ? formatJalaliDateTime(settings.lastBackupAt)
                   : 'انجام نشده'}
-              </span>
+              </div>
             </div>
           </button>
 
-          {/* Column 2 (Center): Real Recent Changes (with toggle to inspect full activity table) */}
+          {/* Card 2 (Center): Real Recent Changes (toggles full activity log) */}
           <button
             type="button"
             onClick={() => setShowAllActivities((v) => !v)}
-            className="flex min-h-[46px] min-w-0 items-center justify-between gap-2 rounded-xl border border-[#ECE8DF] bg-[#F8F7F4] px-3.5 py-2.5 text-right transition-colors hover:border-[#243B5A] hover:bg-[#F2EEE6]/70 cursor-pointer"
+            className="flex h-full min-h-[62px] w-full items-center justify-between gap-3 rounded-xl border border-[#ECE8DF] bg-[#F8F7F4] px-3.5 py-2.5 text-right transition-colors hover:border-[#243B5A] hover:bg-[#F2EEE6]/70 cursor-pointer"
             title={
               latestActivity
                 ? `${formatJalaliDateTime(latestActivity.timestamp)} — ${latestActivity.summary}`
                 : 'مشاهده فهرست آخرین تغییرات'
             }
           >
-            <div className="flex items-center gap-2 min-w-0">
-              <Clock className="h-4 w-4 shrink-0 text-[#243B5A]" />
-              <span className="font-semibold text-[#243B5A] shrink-0">آخرین تغییرات:</span>
-              <span className="truncate tabular-nums text-[#5B6573]">
-                {latestActivity
-                  ? formatJalaliDateTime(latestActivity.timestamp)
-                  : 'تغییری ثبت نشده'}
-              </span>
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E8EEF6] text-[#243B5A]">
+                <Clock className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] font-semibold text-[#1D3250]">آخرین تغییرات</div>
+                <div className="mt-0.5 truncate text-xs tabular-nums text-[#5B6573]">
+                  {latestActivity
+                    ? formatJalaliDateTime(latestActivity.timestamp)
+                    : 'تغییری ثبت نشده'}
+                </div>
+              </div>
             </div>
-            {activities.length > 0 &&
-              (showAllActivities ? (
-                <ChevronUp className="h-4 w-4 shrink-0 text-[#243B5A]" />
-              ) : (
-                <ChevronDown className="h-4 w-4 shrink-0 text-[#243B5A]" />
-              ))}
+            {activities.length > 0 && (
+              <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#FFFFFF] border border-[#E5E0D5] text-[#243B5A]">
+                {showAllActivities ? (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
+              </span>
+            )}
           </button>
 
-          {/* Column 3 (Left): Offline Local Storage Indicator */}
-          <div className="flex min-h-[46px] min-w-0 items-center gap-2 rounded-xl border border-[#DCE8DD] bg-[#F4F9F4] px-3.5 py-2.5 text-[#263448]">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-[#4D9B4A]" />
-            <span className="truncate font-medium">
-              {isOnline
-                ? 'آفلاین: داده‌ها در دستگاه ذخیره شده است'
-                : 'آفلاین (بدون اینترنت): ذخیره در دستگاه'}
-            </span>
+          {/* Card 3 (Left): Offline Local Storage Indicator */}
+          <div className="flex h-full min-h-[62px] w-full items-center gap-3 rounded-xl border border-[#D4E6D6] bg-[#F3FAF4] px-3.5 py-2.5 text-right">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#DFF0E1] text-[#2E7D32]">
+              <CheckCircle2 className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-semibold text-[#1F5624]">
+                {isOnline ? 'وضعیت آفلاین آماده' : 'حالت آفلاین (بدون اینترنت)'}
+              </div>
+              <div className="mt-0.5 truncate text-xs text-[#3C5A40]">
+                داده‌ها در دستگاه ذخیره شده است
+              </div>
+            </div>
           </div>
         </div>
 
@@ -649,7 +670,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
           </div>
         )}
-      </section>
+      </footer>
     </div>
   );
 };

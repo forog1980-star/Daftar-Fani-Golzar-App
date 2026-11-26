@@ -7,40 +7,62 @@ import {
   HelpCircle,
   Home,
   LogOut,
+  Settings,
   Wallet,
   X,
 } from 'lucide-react';
 import { AppRoute, GolzarImageRecord } from '../../types';
+import { SupportTab } from '../support/SupportView';
 import { GolzarGalleryWidget } from '../dashboard/GolzarGalleryWidget';
 
 interface SidebarNavProps {
   currentRoute: AppRoute;
+  currentSupportTab?: SupportTab;
   mobileOpen: boolean;
   golzarImages: GolzarImageRecord[];
   onCloseMobile: () => void;
-  onNavigate: (route: AppRoute) => void;
+  onNavigate: (route: AppRoute, options?: { supportTab?: SupportTab }) => void;
   onOpenGolzarManager: () => void;
   onExit: () => void;
 }
 
-// Exact 8-item ordered right sidebar menu
-const MENU_ITEMS: Array<{
+type SidebarItem = {
+  key: string;
   route: AppRoute | 'exit';
+  supportTab?: SupportTab;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-}> = [
-  { route: 'dashboard', label: 'داشبورد', icon: Home },
-  { route: 'projects', label: 'پرونده پروژه‌ها', icon: FolderKanban },
-  { route: 'budget', label: 'بودجه و اعتبارات', icon: Wallet },
-  { route: 'actions', label: 'اقدامات و پیگیری‌ها', icon: CheckSquare },
-  { route: 'documents', label: 'اسناد و مکاتبات', icon: FileText },
-  { route: 'reports', label: 'گزارش‌ها', icon: BarChart3 },
-  { route: 'support', label: 'پشتیبانی', icon: HelpCircle },
-  { route: 'exit', label: 'خروج', icon: LogOut },
+  dividerBefore?: boolean;
+};
+
+const MENU_ITEMS: SidebarItem[] = [
+  { key: 'dashboard', route: 'dashboard', label: 'داشبورد', icon: Home },
+  { key: 'projects', route: 'projects', label: 'پرونده پروژه‌ها', icon: FolderKanban },
+  { key: 'budget', route: 'budget', label: 'بودجه و اعتبارات', icon: Wallet },
+  { key: 'actions', route: 'actions', label: 'اقدامات و پیگیری‌ها', icon: CheckSquare },
+  { key: 'documents', route: 'documents', label: 'اسناد و مکاتبات', icon: FileText },
+  { key: 'reports', route: 'reports', label: 'گزارش‌ها', icon: BarChart3 },
+  {
+    key: 'settings',
+    route: 'support',
+    supportTab: 'settings',
+    label: 'تنظیمات',
+    icon: Settings,
+    dividerBefore: true,
+  },
+  {
+    key: 'guide',
+    route: 'support',
+    supportTab: 'guide',
+    label: 'راهنما',
+    icon: HelpCircle,
+  },
+  { key: 'exit', route: 'exit', label: 'خروج', icon: LogOut, dividerBefore: true },
 ];
 
 export const SidebarNav: React.FC<SidebarNavProps> = ({
   currentRoute,
+  currentSupportTab,
   mobileOpen,
   golzarImages,
   onCloseMobile,
@@ -54,13 +76,21 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         {MENU_ITEMS.map((item) => {
           const Icon = item.icon;
           const isExit = item.route === 'exit';
+
           const isActive =
-            item.route === currentRoute ||
-            (item.route === 'projects' && currentRoute === 'project-detail') ||
-            (item.route === 'dashboard' && currentRoute === 'home');
+            item.key === 'settings'
+              ? currentRoute === 'support' && currentSupportTab !== 'guide'
+              : item.key === 'guide'
+                ? currentRoute === 'support' && currentSupportTab === 'guide'
+                : item.route === currentRoute ||
+                  (item.route === 'projects' && currentRoute === 'project-detail') ||
+                  (item.route === 'dashboard' && currentRoute === 'home');
 
           return (
-            <div key={item.route} className={isExit ? 'mt-2 border-t border-[#ECE7DC] pt-2' : ''}>
+            <div
+              key={item.key}
+              className={item.dividerBefore ? 'mt-2 border-t border-[#ECE7DC] pt-2' : ''}
+            >
               <button
                 type="button"
                 onClick={() => {
@@ -68,7 +98,10 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                   if (isExit) {
                     onExit();
                   } else {
-                    onNavigate(item.route as AppRoute);
+                    onNavigate(
+                      item.route as AppRoute,
+                      item.supportTab ? { supportTab: item.supportTab } : undefined
+                    );
                   }
                 }}
                 className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-right text-sm transition-colors cursor-pointer ${
@@ -95,7 +128,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         })}
       </nav>
 
-      {/* Golzar Shohada Rotating Image Card in bottom of right sidebar (matching approved mockup) */}
+      {/* Golzar Shohada Rotating Image Card in bottom of right sidebar */}
       {includeGallery && (
         <div className="mt-auto pt-2">
           <GolzarGalleryWidget
@@ -112,7 +145,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     <>
       {/* Desktop Persistent Right Sidebar Card */}
       <aside className="hidden w-56 shrink-0 py-4 pr-4 xl:w-60 xl:pr-6 lg:block">
-        <div className="sticky top-[82px] flex max-h-[calc(100vh-98px)] flex-col overflow-y-auto rounded-2xl border border-[#E5E0D5] bg-[#FFFFFF] p-3">
+        <div className="sticky top-[74px] flex max-h-[calc(100vh-90px)] flex-col overflow-y-auto rounded-2xl border border-[#E5E0D5] bg-[#FFFFFF] p-3">
           {renderMenuContent(true)}
         </div>
       </aside>

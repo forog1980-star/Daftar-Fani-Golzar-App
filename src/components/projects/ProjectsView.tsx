@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Edit2, FolderOpen, Plus, Search, Trash2 } from 'lucide-react';
+import { Edit2, FolderOpen, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
 import { Project, ProjectStatus } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
 import { formatJalaliDate, formatRial, toPersianDigits } from '../../utils/format';
@@ -10,6 +10,24 @@ import { ConfirmDialog } from '../layout/ConfirmDialog';
 interface ProjectsViewProps {
   store: AppStore;
   onOpenProject: (project: Project) => void;
+}
+
+const PERSIAN_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
+const ARABIC_DIGITS = '٠١٢٣٤٥٦٧٨٩';
+
+function normalizeSearchText(input: string): string {
+  if (!input) return '';
+  let out = input
+    .replace(/[۰-۹]/g, (d) => String(PERSIAN_DIGITS.indexOf(d)))
+    .replace(/[٠-٩]/g, (d) => String(ARABIC_DIGITS.indexOf(d)))
+    .replace(/ي/g, 'ی')
+    .replace(/ك/g, 'ک')
+    .replace(/ة/g, 'ه')
+    .replace(/\u200c/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+  return out;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({ store, onOpenProject }) => {
@@ -39,75 +57,123 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ store, onOpenProject
     'تکمیل‌شده',
   ];
 
+  const normalizedQuery = useMemo(() => normalizeSearchText(search), [search]);
+
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const tokens = normalizedQuery ? normalizedQuery.split(' ').filter(Boolean) : [];
     return store.projects.filter((p) => {
       if (typeFilter !== 'همه' && p.type !== typeFilter) return false;
       if (statusFilter !== 'همه' && p.status !== statusFilter) return false;
-      if (!q) return true;
-      return (
-        p.title.toLowerCase().includes(q) ||
-        p.code.toLowerCase().includes(q) ||
-        p.contractor.toLowerCase().includes(q) ||
-        p.location.toLowerCase().includes(q) ||
-        p.contractNumber.toLowerCase().includes(q)
+      if (tokens.length === 0) return true;
+
+      const searchable = normalizeSearchText(
+        `${p.title} ${p.code} ${p.contractor} ${p.location} ${p.contractNumber}`
       );
+      return tokens.every((token) => searchable.includes(token));
     });
-  }, [store.projects, search, typeFilter, statusFilter]);
+  }, [store.projects, normalizedQuery, typeFilter, statusFilter]);
+
+  const hasActiveFilters = Boolean(normalizedQuery) || typeFilter !== 'همه' || statusFilter !== 'همه';
+
+  const resetFilters = () => {
+    setSearch('');
+    setTypeFilter('همه');
+    setStatusFilter('همه');
+  };
 
   return (
     <div className="animate-page-in mx-auto max-w-[1280px] px-4 py-5 sm:px-6 space-y-5">
-      {/* Toolbar */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-[#E2DDD2] bg-[#FFFFFF] p-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-1 flex-col gap-2.5 sm:flex-row sm:items-center">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-[#788290]" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="جست‌وجو در نام، کد، پیمانکار، محل اجرا یا شماره قرارداد..."
-              className="h-10 w-full rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] pr-9 pl-3 text-sm text-[#263448] focus:border-[#243B5A] focus:outline-none"
-            />
+      {/* Toolbar with Live Search */}
+      <div className="rounded-2xl border border-[#E2DDD2] bg-[#FFFFFF] p-4 space-y-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex flex-1 flex-col gap-2.5 sm:flex-row sm:items-center">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-[#788290]" />
+              <input
+                type="search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape' && search) {
+                    setSearch('');
+                  }
+                }}
+                placeholder="جست‌وجوی آنی با عنوان یا کد پروژه (پیمانکار، محل اجرا یا شماره قرارداد)..."
+                aria-label="جست‌وجوی آنی پروژه‌ها با عنوان یا کد پروژه"
+                className="h-10 w-full rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] pr-9 pl-9 text-sm text-[#263448] focus:border-[#243B5A] focus:bg-[#FFFFFF] focus:outline-none transition-colors"
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute left-2.5 top-2 inline-flex h-6 w-6 items-center justify-center rounded-lg text-[#788290] hover:bg-[#E8E5DE] hover:text-[#243B5A] cursor-pointer"
+                  aria-label="پاک کردن جست‌وجو"
+                  title="پاک کردن جست‌وجو"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="h-10 rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] px-3 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
+                aria-label="فیلتر نوع پروژه"
+              >
+                {projectTypes.map((t) => (
+                  <option key={t} value={t}>
+                    نوع: {t}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="h-10 rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] px-3 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
+                aria-label="فیلتر وضعیت پروژه"
+              >
+                {statuses.map((s) => (
+                  <option key={s} value={s}>
+                    وضعیت: {s}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="h-10 rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] px-3 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
-              aria-label="فیلتر نوع پروژه"
-            >
-              {projectTypes.map((t) => (
-                <option key={t} value={t}>
-                  نوع: {t}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-10 rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] px-3 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
-              aria-label="فیلتر وضعیت پروژه"
-            >
-              {statuses.map((s) => (
-                <option key={s} value={s}>
-                  وضعیت: {s}
-                </option>
-              ))}
-            </select>
-          </div>
+          <button
+            type="button"
+            onClick={() => setEditing(null)}
+            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] whitespace-nowrap shrink-0 cursor-pointer lg:w-auto"
+          >
+            <Plus className="h-4 w-4" />
+            <span>ثبت پروژه جدید</span>
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setEditing(null)}
-          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] whitespace-nowrap shrink-0 cursor-pointer lg:w-auto"
-        >
-          <Plus className="h-4 w-4" />
-          <span>ثبت پروژه جدید</span>
-        </button>
+        {/* Live Search Result Summary */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#EFECE4] pt-2.5 text-xs text-[#5B6573]">
+            <span className="tabular-nums">
+              نتیجه جست‌وجو: نمایش{' '}
+              <strong className="font-semibold text-[#1D3250]">
+                {toPersianDigits(filtered.length)}
+              </strong>{' '}
+              از {toPersianDigits(store.projects.length)} پرونده پروژه
+            </span>
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="inline-flex items-center gap-1 rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-2.5 py-1 text-[11px] font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span>پاک کردن جست‌وجو و فیلترها</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Projects Table with Dedicated Project Thumbnails */}
@@ -115,15 +181,30 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ store, onOpenProject
         {filtered.length === 0 ? (
           <div className="p-8 text-center">
             <p className="text-sm text-[#5B6573]">
-              هیچ پرونده پروژه‌ای با فیلترهای انتخاب‌شده یافت نشد.
+              {hasActiveFilters
+                ? 'هیچ پرونده پروژه‌ای مطابق عبارت جست‌وجو یا فیلترهای انتخاب‌شده یافت نشد.'
+                : 'هنوز پرونده پروژه‌ای ثبت نشده است.'}
             </p>
-            <button
-              type="button"
-              onClick={() => setEditing(null)}
-              className="mt-4 rounded-lg border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
-            >
-              ایجاد پرونده پروژه جدید
-            </button>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={resetFilters}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] px-4 text-xs font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  <span>نمایش همه پروژه‌ها</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setEditing(null)}
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>ایجاد پرونده پروژه جدید</span>
+              </button>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -164,7 +245,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ store, onOpenProject
                               {p.title}
                             </button>
                             <div className="mt-0.5 text-xs text-[#788290]">
-                              {p.code} · {p.location || 'محل نامشخص'}
+                              <span className="font-medium text-[#243B5A] tabular-nums">
+                                {p.code}
+                              </span>{' '}
+                              · {p.location || 'محل نامشخص'}
                             </div>
                           </div>
                         </div>

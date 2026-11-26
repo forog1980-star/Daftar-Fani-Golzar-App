@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlignRight,
   BarChart3,
@@ -28,13 +28,15 @@ import {
 } from '../../utils/exportEngine';
 import { SignatureBlockEditor } from '../documents/SignatureBlockEditor';
 import { STATUS_COLORS, StatusDonutChart } from '../dashboard/StatusDonutChart';
+import { getNeutralProjectImage, OFFICIAL_GOLZAR_LOGO } from '../../utils/officialAssets';
+
+export type ReportType = 'projects' | 'budget' | 'proposals' | 'actions' | 'documents' | 'single-project';
+type ReportDisplayMode = 'table' | 'narrative' | 'chart';
 
 interface ReportsViewProps {
   store: AppStore;
+  initialReportType?: ReportType;
 }
-
-type ReportType = 'projects' | 'budget' | 'proposals' | 'actions' | 'documents' | 'single-project';
-type ReportDisplayMode = 'table' | 'narrative' | 'chart';
 
 interface SingleProjectReportSections {
   includeLetterhead: boolean;
@@ -96,9 +98,16 @@ const ORDERED_STATUSES: ProjectStatus[] = [
   'تکمیل‌شده',
 ];
 
-export const ReportsView: React.FC<ReportsViewProps> = ({ store }) => {
-  const [reportType, setReportType] = useState<ReportType>('projects');
+export const ReportsView: React.FC<ReportsViewProps> = ({
+  store,
+  initialReportType = 'projects',
+}) => {
+  const [reportType, setReportType] = useState<ReportType>(initialReportType);
   const [displayMode, setDisplayMode] = useState<ReportDisplayMode>('table');
+
+  useEffect(() => {
+    setReportType(initialReportType);
+  }, [initialReportType]);
   const [selectedProjectId, setSelectedProjectId] = useState(store.projects[0]?.id ?? '');
   const [reportNumber, setReportNumber] = useState(`گ-${Math.floor(100 + Math.random() * 899)}`);
   const [letterhead, setLetterhead] = useState<LetterheadConfig>(store.settings.letterhead);
@@ -912,15 +921,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ store }) => {
           effectiveLetterhead.unitName ||
           effectiveLetterhead.showDateAndNumber) && (
           <div className="border-b border-[#E2DDD2] pb-4 text-center">
-            {store.settings.officialLogoDataUrl && (
-              <div className="mb-2 flex justify-center">
-                <img
-                  src={store.settings.officialLogoDataUrl}
-                  alt="آرم رسمی دفتر فنی"
-                  className="h-12 w-12 object-contain"
-                />
-              </div>
-            )}
+            <div className="mb-2.5 flex justify-center">
+              <img
+                src={store.settings.officialLogoDataUrl || OFFICIAL_GOLZAR_LOGO}
+                alt="آرم رسمی گلزار شهدای تهران"
+                className="h-12 w-auto max-w-[220px] object-contain"
+              />
+            </div>
             {effectiveLetterhead.organizationName && (
               <div className="text-base font-semibold text-[#243B5A]">
                 {effectiveLetterhead.organizationName}
@@ -955,17 +962,24 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ store }) => {
           selectedProject &&
           singleSections.includeImagesAndAttachments && (
             <div className="flex flex-col gap-3 rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-3.5 sm:flex-row sm:items-center">
-              <div className="h-28 w-full shrink-0 overflow-hidden rounded-lg border border-[#E2DDD2] bg-[#FFFFFF] sm:w-44">
-                {selectedProjectImage ? (
-                  <img
-                    src={selectedProjectImage.dataUrl}
-                    alt={selectedProject.title}
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-[#8C96A4]">
-                    <ImageIcon className="h-5 w-5" />
-                    <span className="text-[11px]">بدون تصویر اختصاصی</span>
+              <div className="relative h-28 w-full shrink-0 overflow-hidden rounded-lg border border-[#E2DDD2] bg-[#FFFFFF] sm:w-44">
+                <img
+                  src={
+                    selectedProjectImage
+                      ? selectedProjectImage.dataUrl
+                      : getNeutralProjectImage(selectedProject.id)
+                  }
+                  alt={
+                    selectedProjectImage
+                      ? selectedProject.title
+                      : `تصویر پیش‌فرض گلزار — ${selectedProject.title}`
+                  }
+                  className="h-full w-full object-cover"
+                />
+                {!selectedProjectImage && (
+                  <div className="absolute inset-x-0 bottom-0 bg-[#1D3250]/75 px-2 py-1 text-[10px] text-[#FAF8F3] flex items-center gap-1">
+                    <ImageIcon className="h-3 w-3 shrink-0" />
+                    <span>تصویر پیش‌فرض گلزار</span>
                   </div>
                 )}
               </div>
@@ -975,7 +989,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ store }) => {
                 </div>
                 <div>
                   تصویر اختصاصی:{' '}
-                  {selectedProjectImage ? selectedProjectImage.fileName : 'ثبت نشده است'}
+                  {selectedProjectImage
+                    ? selectedProjectImage.fileName
+                    : 'ثبت نشده (تصویر پیش‌فرض گلزار نمایش داده می‌شود)'}
                 </div>
                 <div>
                   تعداد پیوست‌های فایل محلی: {toPersianDigits(selectedProjectAttachments.length)}{' '}

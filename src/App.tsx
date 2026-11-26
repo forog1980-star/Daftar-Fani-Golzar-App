@@ -13,7 +13,7 @@ import { ProjectDetailView } from './components/projects/ProjectDetailView';
 import { BudgetView } from './components/budget/BudgetView';
 import { ActionsView } from './components/actions/ActionsView';
 import { DocumentsView } from './components/documents/DocumentsView';
-import { ReportsView } from './components/reports/ReportsView';
+import { ReportType, ReportsView } from './components/reports/ReportsView';
 import { SupportTab, SupportView } from './components/support/SupportView';
 import { ExitAuthOverlay } from './components/support/ExitAuthOverlay';
 import { formatJalaliDateTime } from './utils/format';
@@ -22,6 +22,7 @@ interface HistoryEntry {
   route: AppRoute;
   projectId?: string;
   supportTab?: SupportTab;
+  reportType?: ReportType;
 }
 
 export default function App() {
@@ -36,14 +37,18 @@ export default function App() {
   const current = history[history.length - 1];
 
   const navigate = useCallback(
-    (route: AppRoute, options?: { projectId?: string; supportTab?: SupportTab }) => {
+    (
+      route: AppRoute,
+      options?: { projectId?: string; supportTab?: SupportTab; reportType?: ReportType }
+    ) => {
       const normalizedRoute: AppRoute = route === 'home' ? 'dashboard' : route;
       setHistory((prev) => {
         const top = prev[prev.length - 1];
         if (
           top.route === normalizedRoute &&
           top.projectId === options?.projectId &&
-          top.supportTab === options?.supportTab
+          top.supportTab === options?.supportTab &&
+          top.reportType === options?.reportType
         ) {
           return prev;
         }
@@ -53,6 +58,7 @@ export default function App() {
             route: normalizedRoute,
             projectId: options?.projectId,
             supportTab: options?.supportTab,
+            reportType: options?.reportType,
           },
         ];
       });
@@ -161,18 +167,21 @@ export default function App() {
         <SidebarNav
           currentRoute={current.route}
           mobileOpen={mobileMenuOpen}
+          golzarImages={store.golzarImages}
           onCloseMobile={() => setMobileMenuOpen(false)}
           onNavigate={(r) => navigate(r)}
+          onOpenGolzarManager={() => navigate('support', { supportTab: 'media' })}
           onExit={handleRequestExit}
         />
 
-        <main className="min-w-0 flex-1 pb-14">
+        <main className="min-w-0 flex-1 pb-10">
           {(current.route === 'dashboard' || current.route === 'home') && (
             <DashboardView
               store={store}
               onNavigate={(r) => navigate(r)}
               onOpenProject={handleOpenProject}
               onOpenGolzarManager={() => navigate('support', { supportTab: 'media' })}
+              onOpenReport={(reportType) => navigate('reports', { reportType })}
             />
           )}
 
@@ -196,7 +205,9 @@ export default function App() {
 
           {current.route === 'documents' && <DocumentsView store={store} />}
 
-          {current.route === 'reports' && <ReportsView store={store} />}
+          {current.route === 'reports' && (
+            <ReportsView store={store} initialReportType={current.reportType ?? 'projects'} />
+          )}
 
           {current.route === 'support' && (
             <SupportView store={store} initialTab={current.supportTab ?? 'settings'} />

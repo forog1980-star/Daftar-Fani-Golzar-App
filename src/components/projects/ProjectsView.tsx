@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import { Edit2, FolderOpen, Image as ImageIcon, Plus, Search, Trash2 } from 'lucide-react';
+import { Edit2, FolderOpen, Plus, Search, Trash2 } from 'lucide-react';
 import { Project, ProjectStatus } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
 import { formatJalaliDate, formatRial, toPersianDigits } from '../../utils/format';
+import { getNeutralProjectImage } from '../../utils/officialAssets';
 import { ProjectFormModal } from './ProjectFormModal';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
 
@@ -146,15 +147,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ store, onOpenProject
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="flex h-11 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-[#E2DDD2] bg-[#FAF8F3]">
-                            {pImg ? (
-                              <img
-                                src={pImg.dataUrl}
-                                alt={p.title}
-                                className="h-full w-full object-cover"
-                              />
-                            ) : (
-                              <ImageIcon className="h-4 w-4 text-[#9BA3AE]" />
-                            )}
+                            <img
+                              src={pImg ? pImg.dataUrl : getNeutralProjectImage(p.id)}
+                              alt={pImg ? p.title : `تصویر پیش‌فرض گلزار — ${p.title}`}
+                              className="h-full w-full object-cover"
+                            />
                           </div>
                           <div className="min-w-0">
                             <button

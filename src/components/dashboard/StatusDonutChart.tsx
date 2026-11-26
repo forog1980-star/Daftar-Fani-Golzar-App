@@ -13,14 +13,17 @@ interface StatusDonutChartProps {
   total: number;
   selectedStatus: ProjectStatus | 'همه';
   onSelectStatus: (status: ProjectStatus | 'همه') => void;
+  centerValue?: string;
+  centerLabel?: string;
 }
 
+// Calm, clearly distinguishable administrative colors aligned with the approved dashboard mockup
 export const STATUS_COLORS: Record<ProjectStatus, string> = {
-  'در حال اجرا': '#243B5A', // Primary Navy
-  'شروع‌نشده': '#8E99A8', // Calm cool gray
-  'دارای مشکل': '#A65252', // Muted administrative crimson
-  'متوقف': '#B99A62', // Matte gold
-  'تکمیل‌شده': '#5B7C6F', // Soft sage green
+  'در حال اجرا': '#4B8EE2',
+  'تکمیل‌شده': '#5CA374',
+  'دارای مشکل': '#E5A24C',
+  'متوقف': '#C2C6CC',
+  'شروع‌نشده': '#7C8EA6',
 };
 
 export const StatusDonutChart: React.FC<StatusDonutChartProps> = ({
@@ -28,9 +31,11 @@ export const StatusDonutChart: React.FC<StatusDonutChartProps> = ({
   total,
   selectedStatus,
   onSelectStatus,
+  centerValue,
+  centerLabel = 'کل پروژه‌ها',
 }) => {
-  const size = 188;
-  const strokeWidth = 26;
+  const size = 168;
+  const strokeWidth = 28;
   const center = size / 2;
   const radius = center - strokeWidth / 2 - 4;
   const circumference = 2 * Math.PI * radius;
@@ -39,8 +44,39 @@ export const StatusDonutChart: React.FC<StatusDonutChartProps> = ({
   let cumulativeFraction = 0;
 
   return (
-    <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="relative flex shrink-0 items-center justify-center">
+    <div className="flex w-full flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Interactive Legend (RTL start = right side, matching mockup) */}
+      <div className="order-2 w-full flex-1 space-y-1.5 sm:order-1">
+        {segments.map((seg) => {
+          const active = selectedStatus === seg.status;
+          return (
+            <button
+              key={seg.status}
+              type="button"
+              onClick={() => onSelectStatus(active ? 'همه' : seg.status)}
+              className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5 text-xs transition-colors cursor-pointer ${
+                active
+                  ? 'border-[#243B5A] bg-[#E5EBF2] font-medium text-[#243B5A]'
+                  : 'border-transparent bg-transparent text-[#263448] hover:bg-[#F5F2EB]'
+              }`}
+            >
+              <span className="flex items-center gap-2 min-w-0">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: seg.color }}
+                />
+                <span className="truncate">{seg.status}</span>
+              </span>
+              <span className="shrink-0 tabular-nums text-[11px] text-[#5B6573]">
+                {toPersianDigits(seg.count)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* SVG Donut Ring */}
+      <div className="relative order-1 flex shrink-0 items-center justify-center sm:order-2">
         <svg
           width={size}
           height={size}
@@ -48,7 +84,6 @@ export const StatusDonutChart: React.FC<StatusDonutChartProps> = ({
           role="img"
           aria-label="نمودار وضعیت پروژه‌ها"
         >
-          {/* Base track */}
           <circle
             cx={center}
             cy={center}
@@ -73,7 +108,7 @@ export const StatusDonutChart: React.FC<StatusDonutChartProps> = ({
                   fill="none"
                   stroke={seg.color}
                   strokeWidth={isSelected ? strokeWidth + 4 : strokeWidth}
-                  strokeDasharray={`${Math.max(0, dashLength - 1.5)} ${circumference}`}
+                  strokeDasharray={`${Math.max(0, dashLength - 1)} ${circumference}`}
                   strokeDashoffset={dashOffset}
                   transform={`rotate(-90 ${center} ${center})`}
                   className="cursor-pointer transition-all duration-200"
@@ -91,42 +126,11 @@ export const StatusDonutChart: React.FC<StatusDonutChartProps> = ({
           className="absolute inset-0 m-auto flex h-24 w-24 flex-col items-center justify-center rounded-full text-center cursor-pointer"
           title="نمایش همه وضعیت‌ها"
         >
-          <span className="text-2xl font-semibold tabular-nums text-[#243B5A]">
-            {toPersianDigits(total)}
+          <span className="text-2xl font-bold tabular-nums text-[#1D3250]">
+            {centerValue ?? toPersianDigits(total)}
           </span>
-          <span className="text-[11px] text-[#5B6573]">کل پروژه‌ها</span>
+          <span className="mt-0.5 text-[11px] text-[#5B6573]">{centerLabel}</span>
         </button>
-      </div>
-
-      {/* Interactive Legend */}
-      <div className="w-full flex-1 space-y-1.5">
-        {segments.map((seg) => {
-          const pct = total > 0 ? Math.round((seg.count / total) * 100) : 0;
-          const active = selectedStatus === seg.status;
-          return (
-            <button
-              key={seg.status}
-              type="button"
-              onClick={() => onSelectStatus(active ? 'همه' : seg.status)}
-              className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-xs transition-colors cursor-pointer ${
-                active
-                  ? 'border-[#243B5A] bg-[#E5EBF2] font-medium text-[#243B5A]'
-                  : 'border-transparent bg-[#FAF8F3] text-[#263448] hover:border-[#E8E5DE]'
-              }`}
-            >
-              <span className="flex items-center gap-2 min-w-0">
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                  style={{ backgroundColor: seg.color }}
-                />
-                <span className="truncate">{seg.status}</span>
-              </span>
-              <span className="shrink-0 tabular-nums text-[#5B6573]">
-                {toPersianDigits(seg.count)} ({toPersianDigits(pct)}٪)
-              </span>
-            </button>
-          );
-        })}
       </div>
     </div>
   );

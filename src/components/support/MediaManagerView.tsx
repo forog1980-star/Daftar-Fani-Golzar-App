@@ -13,6 +13,7 @@ import { GolzarImageRecord } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
 import { compressImageFile } from '../../utils/imageMedia';
 import { formatFileSize, generateId, toPersianDigits } from '../../utils/format';
+import { BUILTIN_GOLZAR_GALLERY, OFFICIAL_GOLZAR_LOGO } from '../../utils/officialAssets';
 import { ProjectImageUploader } from '../projects/ProjectImageUploader';
 
 interface MediaManagerViewProps {
@@ -190,9 +191,28 @@ export const MediaManagerView: React.FC<MediaManagerViewProps> = ({ store }) => 
         </div>
 
         {store.golzarImages.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-[#D7D2C6] bg-[#FAF8F3] p-6 text-center text-xs text-[#788290]">
-            هنوز تصویری برای گلزار شهدا بارگذاری نشده است. هیچ تصویر اینترنتی یا ساختگی جایگزین
-            نمی‌شود.
+          <div className="space-y-3 rounded-lg border border-[#E2DDD2] bg-[#FAF8F3] p-4">
+            <div className="text-xs font-medium text-[#243B5A]">
+              تصاویر پیش‌فرض رسمی گلزار شهدا ({toPersianDigits(BUILTIN_GOLZAR_GALLERY.length)} تصویر فعال در نمایش چرخشی):
+            </div>
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+              {BUILTIN_GOLZAR_GALLERY.map((item) => (
+                <div
+                  key={item.id}
+                  className="overflow-hidden rounded-lg border border-[#E2DDD2] bg-[#FFFFFF]"
+                >
+                  <div className="aspect-[16/10] w-full">
+                    <img src={item.src} alt={item.caption} className="h-full w-full object-cover" />
+                  </div>
+                  <div className="truncate px-2 py-1.5 text-[11px] text-[#5B6573]">
+                    {item.caption}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-[#788290]">
+              با افزودن تصاویر جدید از دکمه بالا، تصاویر اختصاصی شما جایگزین فهرست نمایش چرخشی می‌شوند.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -323,26 +343,18 @@ export const MediaManagerView: React.FC<MediaManagerViewProps> = ({ store }) => 
             <span>آرم رسمی دفتر فنی اداره گلزار شهدا</span>
           </h3>
           <p className="mt-1 text-xs leading-6 text-[#5B6573]">
-            آرم فعلی در صورت عدم بارگذاری، صرفاً نشان موقت نرم‌افزار است. پس از دریافت فایل تصویر
-            آرم رسمی کارفرما (PNG یا JPG)، آن را اینجا بارگذاری کنید تا با حفظ تناسب ابعاد در
-            سربرگ صفحه و گزارش‌ها جایگزین شود.
+            آرم رسمی افقی گلزار شهدای تهران (سبز و طلایی) به‌صورت پیش‌فرض در سربرگ، گزارش‌ها و صفحه
+            خروج فعال است. در صورت نیاز می‌توانید نسخه دیگری بارگذاری یا به آرم رسمی پیش‌فرض بازگردید.
           </p>
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-          <div className="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] p-2">
-            {store.settings.officialLogoDataUrl ? (
-              <img
-                src={store.settings.officialLogoDataUrl}
-                alt="آرم رسمی دفتر فنی"
-                className="h-full w-full object-contain"
-              />
-            ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center rounded-lg bg-[#243B5A] text-[#FAF8F3]">
-                <span className="text-xs font-semibold">دفتر فنی</span>
-                <span className="text-[10px] text-[#B99A62]">جایگاه موقت</span>
-              </div>
-            )}
+          <div className="flex h-20 min-w-[200px] max-w-[280px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-4 py-2">
+            <img
+              src={store.settings.officialLogoDataUrl || OFFICIAL_GOLZAR_LOGO}
+              alt="آرم رسمی گلزار شهدای تهران"
+              className="h-full w-full object-contain"
+            />
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5">

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { AppSettings } from '../../types';
+import { OFFICIAL_GOLZAR_LOGO } from '../../utils/officialAssets';
 
 interface ExitAuthOverlayProps {
   mode: 'exited' | 'login';
@@ -33,18 +34,12 @@ export const ExitAuthOverlay: React.FC<ExitAuthOverlayProps> = ({
     <div className="flex min-h-screen items-center justify-center bg-[#FAF8F3] p-4">
       <div className="w-full max-w-md rounded-xl border border-[#E2DDD2] bg-[#FFFFFF] p-7 space-y-5">
         <div className="border-b border-[#E8E5DE] pb-4 text-center">
-          {settings.officialLogoDataUrl ? (
-            <img
-              src={settings.officialLogoDataUrl}
-              alt="آرم رسمی دفتر فنی"
-              className="mx-auto h-14 w-14 object-contain"
-            />
-          ) : (
-            <div className="text-3xl font-semibold text-[#243B5A]" dir="ltr">
-              R
-            </div>
-          )}
-          <h2 className="mt-2 text-base font-semibold text-[#243B5A]">
+          <img
+            src={settings.officialLogoDataUrl || OFFICIAL_GOLZAR_LOGO}
+            alt="آرم رسمی گلزار شهدای تهران"
+            className="mx-auto h-14 w-auto max-w-[240px] object-contain"
+          />
+          <h2 className="mt-3 text-base font-semibold text-[#243B5A]">
             دفتر فنی اداره گلزار شهدا
           </h2>
           <p className="mt-1 text-xs leading-6 text-[#5B6573]">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   BarChart3,
   CheckSquare,
@@ -70,6 +70,19 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   onOpenGolzarManager,
   onExit,
 }) => {
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCloseMobile();
+    };
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [mobileOpen, onCloseMobile]);
   const renderMenuContent = (includeGallery: boolean) => (
     <div className="flex h-full flex-col justify-between gap-4">
       <nav className="space-y-1" aria-label="منوی اصلی نرم‌افزار">

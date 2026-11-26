@@ -46,12 +46,16 @@
   }
 }
 
-@keyframes splashRFadeOut {
+@keyframes splashLogoFadeOut {
   0% {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  10% {
     opacity: 1;
     transform: scale(1);
   }
-  55% {
+  52% {
     opacity: 1;
     transform: scale(1);
   }
@@ -72,8 +76,8 @@
   }
 }
 
-.animate-splash-r {
-  animation: splashRFadeOut 1.05s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+.animate-splash-logo {
+  animation: splashLogoFadeOut 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .animate-page-in {
@@ -81,7 +85,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-splash-r,
+  .animate-splash-logo,
   .animate-page-in {
     animation-duration: 0.01ms !important;
   }

@@ -291,9 +291,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 پروژه‌ای با وضعیت انتخاب‌شده ثبت نشده است.
               </div>
             ) : (
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
-                {/* Dedicated Project Image (or Neutral Golzar Floral Fallback when not yet uploaded) */}
-                <div className="relative h-44 w-full shrink-0 overflow-hidden rounded-xl border border-[#E2DDD2] bg-[#FAF8F3] sm:h-auto sm:w-40 lg:w-44">
+              <div className="flex flex-col gap-4 md:flex-row md:items-stretch">
+                {/* Dedicated Project Image (Desktop/Tablet only — hidden on mobile to avoid duplicate Golzar photo clutter) */}
+                <div className="relative hidden md:block md:w-40 lg:w-44 shrink-0 overflow-hidden rounded-xl border border-[#E2DDD2] bg-[#FAF8F3]">
                   {selectedProjectImage ? (
                     <img
                       src={selectedProjectImage.dataUrl}

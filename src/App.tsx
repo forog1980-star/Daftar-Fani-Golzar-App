@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, AlertCircle, X } from 'lucide-react';
 import { AppRoute, Project } from './types';
 import { useAppStore } from './hooks/useAppStore';
@@ -53,8 +53,33 @@ export default function App() {
   const [sessionState, setSessionState] = useState<'active' | 'exited'>('active');
   const [authUnlocked, setAuthUnlocked] = useState(false);
   const [confirmExitOpen, setConfirmExitOpen] = useState(false);
+  const mobileMenuOpenRef = useRef(false);
+  mobileMenuOpenRef.current = mobileMenuOpen;
+  const historyRef = useRef<HistoryEntry[]>(history);
+  historyRef.current = history;
 
   const current = history[history.length - 1];
+
+  // Sync browser/phone hardware Back button with our exact 1-step-back history stack
+  useEffect(() => {
+    try {
+      window.history.replaceState({ daftarFaniApp: true }, '');
+    } catch {
+      // Ignore in restricted iframe contexts
+    }
+
+    const handlePopState = () => {
+      if (mobileMenuOpenRef.current) {
+        setMobileMenuOpen(false);
+        return;
+      }
+      setHistory((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const navigate = useCallback((route: AppRoute, options?: NavigateOptions) => {
     const normalizedRoute: AppRoute = route === 'home' ? 'dashboard' : route;
@@ -70,20 +95,40 @@ export default function App() {
       subTab: options?.subTab,
     };
 
-    setHistory((prev) => {
-      const top = prev[prev.length - 1];
-      if (
-        top.route === nextEntry.route &&
-        top.projectId === nextEntry.projectId &&
-        top.supportTab === nextEntry.supportTab &&
-        top.reportType === nextEntry.reportType &&
-        top.reportDisplayMode === nextEntry.reportDisplayMode &&
-        top.subTab === nextEntry.subTab
-      ) {
-        return prev;
+    const prev = historyRef.current;
+
+    if (normalizedRoute === 'dashboard') {
+      if (prev.length !== 1 || prev[0].route !== 'dashboard') {
+        setHistory([{ route: 'dashboard' }]);
       }
-      return [...prev, nextEntry];
+      if (options?.scrollToTop !== false) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+      return;
+    }
+
+    const top = prev[prev.length - 1];
+    if (
+      top.route === nextEntry.route &&
+      top.projectId === nextEntry.projectId &&
+      top.supportTab === nextEntry.supportTab &&
+      top.reportType === nextEntry.reportType &&
+      top.reportDisplayMode === nextEntry.reportDisplayMode &&
+      top.subTab === nextEntry.subTab
+    ) {
+      return;
+    }
+
+    setHistory((curr) => {
+      const updated = [...curr, nextEntry];
+      return updated.length > 40 ? updated.slice(updated.length - 40) : updated;
     });
+
+    try {
+      window.history.pushState({ daftarFaniApp: true }, '');
+    } catch {
+      // Ignore in restricted iframe contexts
+    }
 
     if (options?.scrollToTop !== false) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -153,7 +198,12 @@ export default function App() {
   }, [current, store.projects]);
 
   if (showSplash) {
-    return <SplashIntro onComplete={handleSplashComplete} />;
+    return (
+      <SplashIntro
+        logoUrl={store.settings.officialLogoDataUrl}
+        onComplete={handleSplashComplete}
+      />
+    );
   }
 
   if (store.loading) {

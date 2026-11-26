@@ -1,0 +1,793 @@
+import {
+  ActionItem,
+  AppSettings,
+  BudgetProposal,
+  DocumentItem,
+  FormSubmission,
+  FormTemplate,
+  PaymentRecord,
+  Person,
+  Project,
+  ProjectBudget,
+  ProjectStage,
+} from '../types';
+import { getDefaultDeviceName, getOrCreateDeviceId } from '../utils/format';
+
+// Complete 18-stage catalog per Section 8
+export const MASTER_STAGE_CATALOG: Array<{ key: string; title: string }> = [
+  { key: 'approval_notification', title: 'تصویب و ابلاغ پروژه' },
+  { key: 'technical_specs', title: 'تهیه اطلاعات و مشخصات فنی' },
+  { key: 'official_appraisal', title: 'کارشناسی رسمی' },
+  { key: 'setad_registration', title: 'ثبت در سامانه ستاد' },
+  { key: 'tender_winner', title: 'مناقصه و تعیین برنده' },
+  { key: 'work_order_issue', title: 'ابلاغ دستورکار' },
+  { key: 'site_handover', title: 'تحویل محل و تجهیز کارگاه' },
+  { key: 'execution', title: 'اجرای کار' },
+  { key: 'supervision_minor_orders', title: 'نظارت و دستورکارهای جزئی' },
+  { key: 'work_completion_minutes', title: 'صورتجلسه انجام کار' },
+  { key: 'statement_submission', title: 'ارائه صورت‌وضعیت' },
+  { key: 'technical_financial_review', title: 'رسیدگی فنی و مالی' },
+  { key: 'payment', title: 'پرداخت' },
+  { key: 'temporary_handover', title: 'تحویل موقت' },
+  { key: 'final_statement', title: 'صورت‌وضعیت قطعی' },
+  { key: 'insurance_clearance', title: 'مفاصاحساب بیمه' },
+  { key: 'final_handover', title: 'تحویل قطعی' },
+  { key: 'completion_announcement', title: 'اعلام پایان کار' },
+];
+
+export const DEFAULT_PROCESS_TEMPLATES: Record<string, string[]> = {
+  عمرانی: MASTER_STAGE_CATALOG.map((s) => s.key),
+  بهسازی: [
+    'approval_notification',
+    'technical_specs',
+    'official_appraisal',
+    'setad_registration',
+    'work_order_issue',
+    'site_handover',
+    'execution',
+    'supervision_minor_orders',
+    'work_completion_minutes',
+    'statement_submission',
+    'technical_financial_review',
+    'payment',
+    'temporary_handover',
+    'final_handover',
+    'completion_announcement',
+  ],
+  مرمت: [
+    'approval_notification',
+    'technical_specs',
+    'official_appraisal',
+    'work_order_issue',
+    'site_handover',
+    'execution',
+    'supervision_minor_orders',
+    'work_completion_minutes',
+    'statement_submission',
+    'technical_financial_review',
+    'payment',
+    'final_handover',
+    'completion_announcement',
+  ],
+  فرهنگی: [
+    'approval_notification',
+    'technical_specs',
+    'work_order_issue',
+    'execution',
+    'work_completion_minutes',
+    'statement_submission',
+    'technical_financial_review',
+    'payment',
+    'completion_announcement',
+  ],
+};
+
+export function buildStagesForProjectType(
+  type: string,
+  templates: Record<string, string[]> = DEFAULT_PROCESS_TEMPLATES
+): ProjectStage[] {
+  const enabledSet = new Set(templates[type] ?? DEFAULT_PROCESS_TEMPLATES['عمرانی']);
+  return MASTER_STAGE_CATALOG.map((stage, idx) => ({
+    id: `stg_${stage.key}`,
+    key: stage.key,
+    title: stage.title,
+    order: idx + 1,
+    enabled: enabledSet.has(stage.key),
+    status: 'انجام‌نشده',
+  }));
+}
+
+export function createDefaultSettings(): AppSettings {
+  return {
+    id: 'app-settings',
+    deviceId: getOrCreateDeviceId(),
+    deviceName: getDefaultDeviceName(),
+    auth: {
+      enabled: false, // Strictly disabled by default per Section 16
+      testUsername: '000',
+      testPassword: '000',
+    },
+    letterhead: {
+      organizationName: 'اداره گلزار شهدا',
+      unitName: 'دفتر فنی و عمرانی',
+      subtitle: 'فرم و گزارش رسمی دفتر فنی اداره گلزار شهدا',
+      showDateAndNumber: true,
+      showSignaturesFooter: true,
+    },
+    processTemplates: { ...DEFAULT_PROCESS_TEMPLATES },
+    sampleDataInitialized: false,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+// Section 12: Two distinct, separate reference forms (NOT merged)
+export function createReferenceFormTemplates(deviceId: string): FormTemplate[] {
+  const now = new Date().toISOString();
+  return [
+    {
+      id: 'ref_form_statement_review',
+      code: 'FRM-TF-01',
+      title: 'رسیدگی به صورت‌وضعیت ـ مدیریت اداره گلزار شهدا',
+      workflowPurpose:
+        'گردش کار بررسی فنی، متره، کنترل کسورات قانونی و تأیید مالی صورت‌وضعیت‌های موقت و قطعی پیمانکاران',
+      version: 1,
+      isReferenceForm: true,
+      defaultSignatoryCount: 4,
+      blocks: [
+        {
+          id: 'blk_sr_1',
+          kind: 'heading',
+          label: 'مشخصات پروژه و قرارداد',
+        },
+        {
+          id: 'blk_sr_2',
+          kind: 'field',
+          fieldKey: 'projectTitle',
+          label: 'نام و موضوع پروژه',
+          fieldType: 'text',
+          required: true,
+        },
+        {
+          id: 'blk_sr_3',
+          kind: 'field',
+          fieldKey: 'contractorName',
+          label: 'نام پیمانکار / مجری',
+          fieldType: 'text',
+          required: true,
+        },
+        {
+          id: 'blk_sr_4',
+          kind: 'field',
+          fieldKey: 'contractNoAndDate',
+          label: 'شماره و تاریخ قرارداد',
+          fieldType: 'text',
+          required: true,
+        },
+        {
+          id: 'blk_sr_5',
+          kind: 'field',
+          fieldKey: 'statementType',
+          label: 'نوع و شماره صورت‌وضعیت',
+          fieldType: 'select',
+          options: ['صورت‌وضعیت موقت شماره ۱', 'صورت‌وضعیت موقت شماره ۲', 'صورت‌وضعیت موقت شماره ۳', 'صورت‌وضعیت قطعی'],
+          required: true,
+        },
+        {
+          id: 'blk_sr_6',
+          kind: 'field',
+          fieldKey: 'periodRange',
+          label: 'دوره کارکرد (از تاریخ تا تاریخ)',
+          fieldType: 'text',
+        },
+        {
+          id: 'blk_sr_7',
+          kind: 'divider',
+          label: 'جدول رسیدگی فنی و مالی صورت‌وضعیت',
+        },
+        {
+          id: 'blk_sr_8',
+          kind: 'table',
+          fieldKey: 'reviewItems',
+          label: 'اقلام و خلاصه مالی رسیدگی',
+          columns: [
+            { key: 'title', label: 'شرح ردیف / فصل', type: 'text' },
+            { key: 'claimed', label: 'مبلغ پیشنهادی پیمانکار (ریال)', type: 'currency' },
+            { key: 'verified', label: 'مبلغ تأییدشده دفتر فنی (ریال)', type: 'currency' },
+            { key: 'difference', label: 'اختلاف / کسورات (ریال)', type: 'currency' },
+          ],
+        },
+        {
+          id: 'blk_sr_9',
+          kind: 'field',
+          fieldKey: 'grossApproved',
+          label: 'جمع کل ناخالص تأییدشده (ریال)',
+          fieldType: 'currency',
+          required: true,
+        },
+        {
+          id: 'blk_sr_10',
+          kind: 'field',
+          fieldKey: 'insuranceDeduction',
+          label: 'کسر سپرده بیمه (ریال)',
+          fieldType: 'currency',
+        },
+        {
+          id: 'blk_sr_11',
+          kind: 'field',
+          fieldKey: 'performanceGuarantee',
+          label: 'کسر سپرده حسن انجام کار (ریال)',
+          fieldType: 'currency',
+        },
+        {
+          id: 'blk_sr_12',
+          kind: 'field',
+          fieldKey: 'netPayable',
+          label: 'مبلغ خالص قابل پرداخت (ریال)',
+          fieldType: 'currency',
+          required: true,
+        },
+        {
+          id: 'blk_sr_13',
+          kind: 'field',
+          fieldKey: 'technicalOpinion',
+          label: 'نظریه کارشناسی دفتر فنی و مستندات پیوست',
+          fieldType: 'textarea',
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'ref_form_delivery_minutes',
+      code: 'FRM-TF-02',
+      title: 'صورتجلسه تحویل خدمات، کالا و اقلام موضوع قرارداد',
+      workflowPurpose:
+        'گردش کار تحویل عینی، بررسی انطباق کمّی و کیفی خدمات، کالاها و تجهیزات تحویلی توسط کمیسیون و ناظر',
+      version: 1,
+      isReferenceForm: true,
+      defaultSignatoryCount: 3,
+      blocks: [
+        {
+          id: 'blk_dm_1',
+          kind: 'heading',
+          label: 'اطلاعات جلسه تحویل',
+        },
+        {
+          id: 'blk_dm_2',
+          kind: 'field',
+          fieldKey: 'deliveryDate',
+          label: 'تاریخ تحویل',
+          fieldType: 'date',
+          required: true,
+        },
+        {
+          id: 'blk_dm_3',
+          kind: 'field',
+          fieldKey: 'deliveryLocation',
+          label: 'محل تحویل (قطعه / انبار / بخش)',
+          fieldType: 'text',
+          required: true,
+        },
+        {
+          id: 'blk_dm_4',
+          kind: 'field',
+          fieldKey: 'contractSubject',
+          label: 'موضوع قرارداد یا دستورکار',
+          fieldType: 'text',
+          required: true,
+        },
+        {
+          id: 'blk_dm_5',
+          kind: 'field',
+          fieldKey: 'supplierName',
+          label: 'تحویل‌دهنده (پیمانکار / تأمین‌کننده)',
+          fieldType: 'text',
+          required: true,
+        },
+        {
+          id: 'blk_dm_6',
+          kind: 'divider',
+          label: 'فهرست خدمات، کالاها و اقلام تحویلی',
+        },
+        {
+          id: 'blk_dm_7',
+          kind: 'table',
+          fieldKey: 'deliveredItems',
+          label: 'جدول تطبیق کمّی و کیفی اقلام',
+          columns: [
+            { key: 'itemTitle', label: 'شرح کالا / خدمت', type: 'text' },
+            { key: 'unit', label: 'واحد', type: 'text' },
+            { key: 'contractQty', label: 'مقدار قرارداد', type: 'number' },
+            { key: 'deliveredQty', label: 'مقدار تحویلی', type: 'number' },
+            { key: 'qualityStatus', label: 'وضعیت کیفی و توضیحات', type: 'text' },
+          ],
+        },
+        {
+          id: 'blk_dm_8',
+          kind: 'field',
+          fieldKey: 'complianceConfirmed',
+          label: 'تطابق کامل مشخصات فنی با مفاد قرارداد و استانداردها تأیید می‌شود',
+          fieldType: 'checkbox',
+        },
+        {
+          id: 'blk_dm_9',
+          kind: 'field',
+          fieldKey: 'defectsOrNotes',
+          label: 'نواقص احتمالی، مهلت رفع نقص و ملاحظات تحویل‌گیرنده',
+          fieldType: 'textarea',
+        },
+      ],
+      createdAt: now,
+      updatedAt: now,
+      updatedByDevice: deviceId,
+    },
+  ];
+}
+
+// Clearly labeled test/sample dataset for evaluation (never presented as real organizational data)
+export function createSampleDataset(deviceId: string): {
+  projects: Project[];
+  budgets: ProjectBudget[];
+  payments: PaymentRecord[];
+  proposals: BudgetProposal[];
+  actions: ActionItem[];
+  documents: DocumentItem[];
+  people: Person[];
+  formSubmissions: FormSubmission[];
+} {
+  const now = new Date();
+  const iso = (daysOffset: number) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + daysOffset);
+    return d.toISOString().slice(0, 10);
+  };
+  const ts = now.toISOString();
+
+  const p1Stages = buildStagesForProjectType('بهسازی').map((st) => {
+    if (st.order <= 7 && st.enabled) return { ...st, status: 'انجام‌شده' as const, completedDate: iso(-30 + st.order * 3) };
+    if (st.key === 'execution') return { ...st, status: 'در حال انجام' as const, notes: 'اجرای سنگفرش و زیرسازی بخش شمالی' };
+    return st;
+  });
+
+  const p2Stages = buildStagesForProjectType('مرمت').map((st) => {
+    if (st.order <= 5 && st.enabled) return { ...st, status: 'انجام‌شده' as const, completedDate: iso(-45 + st.order * 4) };
+    if (st.key === 'execution') return { ...st, status: 'در حال انجام' as const, notes: 'توقف موقت به دلیل تأخیر در تأمین سنگ مرمر مطابق نمونه' };
+    return st;
+  });
+
+  const p3Stages = buildStagesForProjectType('فرهنگی').map((st) => {
+    if (st.key === 'approval_notification') return { ...st, status: 'انجام‌شده' as const, completedDate: iso(-5) };
+    return st;
+  });
+
+  const projects: Project[] = [
+    {
+      id: 'smp_proj_1',
+      code: 'TF-1405-01',
+      title: 'بهسازی معابر و سیستم روشنایی قطعه ۲۴ (نمونه آزمایشی)',
+      type: 'بهسازی',
+      location: 'قطعه ۲۴ ـ ضلع غربی',
+      responsibleDepartment: 'معاونت فنی و عمرانی',
+      client: 'اداره گلزار شهدا',
+      contractor: 'شرکت پیمانکاری نمونه عمران پایدار',
+      contractNumber: '۱۴۰۵/ف/۱۲۴',
+      contractDate: iso(-65),
+      contractAmount: 18500000000,
+      contractDuration: '۶ ماه شمسی',
+      notificationDate: iso(-60),
+      ceoOrderNumber: '۴۰۵/م/۸۱۲',
+      ceoOrderDate: iso(-72),
+      ceoOrderNotes: 'ابلاغ اجرای اولویت‌دار پیش از مراسم سالانه',
+      status: 'در حال اجرا',
+      physicalProgress: 62,
+      description: 'داده آزمایشی نمونه جهت بررسی عملکرد پرونده پروژه، مراحل اجرایی و محاسبات مالی.',
+      stages: p1Stages,
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'smp_proj_2',
+      code: 'TF-1405-02',
+      title: 'مرمت سایه‌بان و سازه یادمان مرکزی (نمونه آزمایشی)',
+      type: 'مرمت',
+      location: 'محوطه یادمان مرکزی',
+      responsibleDepartment: 'دفتر فنی اداره گلزار شهدا',
+      client: 'اداره گلزار شهدا',
+      contractor: 'گروه مرمت و ابنیه نمونه',
+      contractNumber: '۱۴۰۵/ف/۱۵۸',
+      contractDate: iso(-90),
+      contractAmount: 12400000000,
+      contractDuration: '۴ ماه شمسی',
+      notificationDate: iso(-85),
+      ceoOrderNumber: '۴۰۵/م/۶۹۰',
+      ceoOrderDate: iso(-95),
+      ceoOrderNotes: 'لزوم نظارت مستمر بر کیفیت مصالح مصرفی',
+      status: 'دارای مشکل',
+      physicalProgress: 38,
+      description: 'داده آزمایشی نمونه با وضعیت دارای مشکل برای نمایش هشدارهای داشبورد.',
+      stages: p2Stages,
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'smp_proj_3',
+      code: 'TF-1405-03',
+      title: 'نصب تابلوهای راهنما و المان‌های معرفی شهدا (نمونه آزمایشی)',
+      type: 'فرهنگی',
+      location: 'ورودی اصلی و قطعات ۱ تا ۱۰',
+      responsibleDepartment: 'معاونت فرهنگی و هنری',
+      client: 'اداره گلزار شهدا',
+      contractor: 'در دست انتخاب مجری',
+      contractNumber: '',
+      contractDate: '',
+      contractAmount: 4200000000,
+      contractDuration: '۳ ماه شمسی',
+      notificationDate: iso(-7),
+      ceoOrderNumber: '۴۰۵/م/۹۴۵',
+      ceoOrderDate: iso(-10),
+      ceoOrderNotes: 'تهیه برآورد و مشخصات فنی توسط دفتر فنی',
+      status: 'شروع‌نشده',
+      physicalProgress: 0,
+      description: 'داده آزمایشی نمونه برای پروژه فرهنگی در مرحله آغازین.',
+      stages: p3Stages,
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+  ];
+
+  const budgets: ProjectBudget[] = [
+    {
+      id: 'bud_smp_proj_1',
+      projectId: 'smp_proj_1',
+      approvedCredit: 20000000000,
+      notifiedCredit: 19000000000,
+      allocatedCredit: 15000000000,
+      fundedCredit: 14000000000,
+      committedAmount: 18500000000,
+      submittedStatementAmount: 11200000000,
+      approvedStatementAmount: 10450000000,
+      notes: 'تخصیص مرحله دوم در دست پیگیری مالی',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'bud_smp_proj_2',
+      projectId: 'smp_proj_2',
+      approvedCredit: 13000000000,
+      notifiedCredit: 12400000000,
+      allocatedCredit: 8500000000,
+      fundedCredit: 7000000000,
+      committedAmount: 12400000000,
+      submittedStatementAmount: 5200000000,
+      approvedStatementAmount: 4600000000,
+      notes: 'نیازمند اصلاح صورت‌وضعیت موقت شماره ۲',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'bud_smp_proj_3',
+      projectId: 'smp_proj_3',
+      approvedCredit: 5000000000,
+      notifiedCredit: 4500000000,
+      allocatedCredit: 2000000000,
+      fundedCredit: 1500000000,
+      committedAmount: 0,
+      submittedStatementAmount: 0,
+      approvedStatementAmount: 0,
+      notes: 'اعتبار اولیه مصوب شده است',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+  ];
+
+  const payments: PaymentRecord[] = [
+    {
+      id: 'pay_smp_1',
+      projectId: 'smp_proj_1',
+      date: iso(-40),
+      amount: 3700000000,
+      voucherNumber: 'سند-۴۰۵-۳۱۱',
+      statementRef: 'پیش‌پرداخت قرارداد',
+      description: 'پرداخت ۲۰ درصد پیش‌پرداخت پس از ارائه ضمانت‌نامه بانکی (نمونه)',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'pay_smp_2',
+      projectId: 'smp_proj_1',
+      date: iso(-15),
+      amount: 5800000000,
+      voucherNumber: 'سند-۴۰۵-۵۰۹',
+      statementRef: 'صورت‌وضعیت موقت شماره ۱',
+      description: 'تسویه صورت‌وضعیت موقت ۱ پس از کسر سپرده‌های قانونی (نمونه)',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'pay_smp_3',
+      projectId: 'smp_proj_2',
+      date: iso(-28),
+      amount: 4100000000,
+      voucherNumber: 'سند-۴۰۵-۴۲۲',
+      statementRef: 'صورت‌وضعیت موقت شماره ۱',
+      description: 'پرداخت بخش اول مرمت سازه فلزی (نمونه)',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+  ];
+
+  const proposals: BudgetProposal[] = [
+    {
+      id: 'prop_smp_1',
+      fiscalYear: '۱۴۰۶',
+      title: 'بازسازی شبکه آبیاری تحت فشار قطعات شرقی (نمونه آزمایشی)',
+      description: 'جایگزینی لوله‌های فرسوده و هوشمندسازی شیرآلات آبیاری فضای سبز گلزار شهدا',
+      priority: 'فوری',
+      estimatedAmount: 26000000000,
+      department: 'معاونت فنی و عمرانی',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'prop_smp_2',
+      fiscalYear: '۱۴۰۶',
+      title: 'ساماندهی سیستم صوت و اطلاع‌رسانی محوطه (نمونه آزمایشی)',
+      description: 'تجهیز و یکپارچه‌سازی سیستم صوتی مراسم‌ها در قطعات اصلی',
+      priority: 'بالا',
+      estimatedAmount: 9500000000,
+      department: 'معاونت فرهنگی و هنری',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+  ];
+
+  const actions: ActionItem[] = [
+    {
+      id: 'act_smp_1',
+      title: 'بررسی و تأیید صورت‌وضعیت موقت شماره ۲ قطعه ۲۴',
+      description: 'کنترل متره و برآورد کارکرد سنگفرش و پایه‌های روشنایی با حضور ناظر مقیم',
+      projectId: 'smp_proj_1',
+      registeredDate: iso(-6),
+      dueDate: iso(2),
+      priority: 'فوری',
+      status: 'در حال انجام',
+      followUpResult: 'متره کارهای روشنایی کنترل شد؛ کنترل نهایی سنگفرش باقی مانده است.',
+      notes: 'داده آزمایشی نمونه',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'act_smp_2',
+      title: 'اخذ تعهدنامه زمان‌بندی جدید از پیمانکار مرمت یادمان',
+      description: 'پیگیری تأخیر تأمین سنگ مرمر و ارسال اخطار کتبی اول طبق ماده ۴۶ شرایط عمومی پیمان',
+      projectId: 'smp_proj_2',
+      registeredDate: iso(-12),
+      dueDate: iso(-3),
+      priority: 'فوری',
+      status: 'عقب‌افتاده',
+      followUpResult: 'پیمانکار درخواست جلسه حضوری برای ارائه برنامه جبرانی داده است.',
+      notes: 'نیازمند طرح در جلسه مدیریت اداره',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'act_smp_3',
+      title: 'تدوین مشخصات فنی تابلوهای معرفی شهدا',
+      description: 'مشخص کردن جنس ورق، رنگ الکترواستاتیک و استاندارد فونداسیون تابلوها',
+      projectId: 'smp_proj_3',
+      registeredDate: iso(-4),
+      dueDate: iso(5),
+      priority: 'عادی',
+      status: 'در انتظار',
+      followUpResult: 'در حال جمع‌بندی نقشه تیپ تابلوها',
+      notes: '',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+  ];
+
+  const people: Person[] = [
+    {
+      id: 'per_smp_1',
+      fullName: 'مهندس رضایی (نمونه)',
+      roleTitle: 'رئیس دفتر فنی',
+      department: 'دفتر فنی اداره گلزار شهدا',
+      personnelCode: '۱۰۴۲',
+      active: true,
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'per_smp_2',
+      fullName: 'مهندس کریمی (نمونه)',
+      roleTitle: 'کارشناس ناظر عمرانی',
+      department: 'دفتر فنی اداره گلزار شهدا',
+      personnelCode: '۱۰۸۷',
+      active: true,
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'per_smp_3',
+      fullName: 'آقای حسینی (نمونه)',
+      roleTitle: 'مسئول امور مالی و رسیدگی',
+      department: 'امور مالی و اداری',
+      personnelCode: '۱۱۲۵',
+      active: true,
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'per_smp_4',
+      fullName: 'آقای محمدی (نمونه)',
+      roleTitle: 'مدیر اداره گلزار شهدا',
+      department: 'مدیریت اداره',
+      personnelCode: '۱۰۰۱',
+      active: true,
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+  ];
+
+  const documents: DocumentItem[] = [
+    {
+      id: 'doc_smp_1',
+      category: 'دستورکار',
+      documentNumber: 'دک-۱۴۰۵/۴۴',
+      date: iso(-22),
+      subject: 'دستورکار شماره ۱ ـ اصلاح مسیر کابل‌کشی روشنایی قطعه ۲۴',
+      senderOrReceiver: 'شرکت پیمانکاری نمونه عمران پایدار',
+      projectId: 'smp_proj_1',
+      summary: 'ابلاغ تغییر عمق ترانشه و استفاده از لوله پلی‌اتیلن استاندارد جهت حفاظت کابل‌ها.',
+      status: 'جاری',
+      attachmentIds: [],
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'doc_smp_2',
+      category: 'نامه صادره',
+      documentNumber: '۱۴۰۵/۲۱۰/۹۸۳',
+      date: iso(-8),
+      subject: 'تذکر کتبی بابت تأخیر در تأمین مصالح پروژه مرمت یادمان',
+      senderOrReceiver: 'گروه مرمت و ابنیه نمونه',
+      projectId: 'smp_proj_2',
+      summary: 'تأکید بر رعایت برنامه زمان‌بندی مصوب و ارسال گزارش هفتگی پیشرفت.',
+      status: 'نیازمند پیگیری',
+      attachmentIds: [],
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+    {
+      id: 'doc_smp_3',
+      category: 'صورتجلسه',
+      documentNumber: 'صج-۱۴۰۵/۱۹',
+      date: iso(-35),
+      subject: 'صورتجلسه تحویل کارگاه و تعیین نقاط اجرایی قطعه ۲۴',
+      senderOrReceiver: 'ناظر دفتر فنی و نماینده پیمانکار',
+      projectId: 'smp_proj_1',
+      summary: 'تحویل کامل محور اجرایی و صورت‌برداری وضعیت موجود پیش از شروع عملیات.',
+      status: 'بایگانی‌شده',
+      attachmentIds: [],
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+  ];
+
+  const formSubmissions: FormSubmission[] = [
+    {
+      id: 'sub_smp_1',
+      templateId: 'ref_form_statement_review',
+      templateTitle: 'رسیدگی به صورت‌وضعیت ـ مدیریت اداره گلزار شهدا',
+      templateVersion: 1,
+      projectId: 'smp_proj_1',
+      submissionNumber: 'رس-۱۴۰۵-۰۱',
+      submissionDate: iso(-16),
+      values: {
+        projectTitle: 'بهسازی معابر و سیستم روشنایی قطعه ۲۴ (نمونه آزمایشی)',
+        contractorName: 'شرکت پیمانکاری نمونه عمران پایدار',
+        contractNoAndDate: '۱۴۰۵/ف/۱۲۴',
+        statementType: 'صورت‌وضعیت موقت شماره ۱',
+        periodRange: 'از اول مهر تا پایان مهر ۱۴۰۵',
+        reviewItems: [
+          {
+            title: 'عملیات زیرسازی و جدول‌گذاری',
+            claimed: '4200000000',
+            verified: '4050000000',
+            difference: '150000000',
+          },
+          {
+            title: 'تأمین و نصب پایه‌های روشنایی',
+            claimed: '3100000000',
+            verified: '2950000000',
+            difference: '150000000',
+          },
+        ],
+        grossApproved: '7000000000',
+        insuranceDeduction: '500000000',
+        performanceGuarantee: '700000000',
+        netPayable: '5800000000',
+        technicalOpinion: 'احجام اجراشده با متره کارگاهی تطبیق داده شد و پرداخت خالص تأیید می‌گردد (نمونه آزمایشی).',
+      },
+      signatures: [
+        {
+          id: 'sig_smp_1',
+          personId: 'per_smp_2',
+          snapshotFullName: 'مهندس کریمی (نمونه)',
+          snapshotRoleTitle: 'کارشناس ناظر عمرانی',
+          signedDate: iso(-16),
+          comment: 'احجام کارکرد با بازدید میدانی تطبیق دارد.',
+          isSignedConfirmed: true,
+        },
+        {
+          id: 'sig_smp_2',
+          personId: 'per_smp_1',
+          snapshotFullName: 'مهندس رضایی (نمونه)',
+          snapshotRoleTitle: 'رئیس دفتر فنی',
+          signedDate: iso(-15),
+          comment: 'از نظر فنی و قراردادی مورد تأیید است.',
+          isSignedConfirmed: true,
+        },
+      ],
+      status: 'تأییدشده',
+      isSample: true,
+      createdAt: ts,
+      updatedAt: ts,
+      updatedByDevice: deviceId,
+    },
+  ];
+
+  return {
+    projects,
+    budgets,
+    payments,
+    proposals,
+    actions,
+    documents,
+    people,
+    formSubmissions,
+  };
+}

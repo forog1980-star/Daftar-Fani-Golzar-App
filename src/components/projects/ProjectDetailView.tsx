@@ -33,6 +33,7 @@ import { ProjectImageUploader } from './ProjectImageUploader';
 import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
 import { exportToWordDocx } from '../../utils/exportEngine';
+import { getNeutralProjectImage } from '../../utils/officialAssets';
 
 interface ProjectDetailViewProps {
   projectId: string;
@@ -312,17 +313,16 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
       <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-            <div className="h-24 w-full shrink-0 overflow-hidden rounded-lg border border-[#E2DDD2] bg-[#FAF8F3] sm:w-32">
-              {projectImage ? (
-                <img
-                  src={projectImage.dataUrl}
-                  alt={project.title}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-[#9BA3AE]">
-                  <ImageIcon className="h-5 w-5" />
-                  <span className="text-[10px]">بدون تصویر</span>
+            <div className="relative h-24 w-full shrink-0 overflow-hidden rounded-xl border border-[#E2DDD2] bg-[#FAF8F3] sm:w-32">
+              <img
+                src={projectImage ? projectImage.dataUrl : getNeutralProjectImage(project.id)}
+                alt={projectImage ? project.title : `تصویر پیش‌فرض گلزار — ${project.title}`}
+                className="h-full w-full object-cover"
+              />
+              {!projectImage && (
+                <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1 bg-[#1D3250]/75 px-1.5 py-0.5 text-[10px] text-[#FAF8F3]">
+                  <ImageIcon className="h-2.5 w-2.5 shrink-0" />
+                  <span>تصویر پیش‌فرض</span>
                 </div>
               )}
             </div>
@@ -350,45 +350,45 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center shrink-0">
             <button
               type="button"
               onClick={() => onNavigate('budget')}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#CEC8BA] bg-[#FAF8F3] px-3 py-1.5 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] px-3 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer whitespace-nowrap"
             >
-              <Wallet className="h-3.5 w-3.5 text-[#243B5A]" />
-              <span>بخش بودجه</span>
+              <Wallet className="h-3.5 w-3.5 shrink-0 text-[#243B5A]" />
+              <span>بودجه</span>
             </button>
             <button
               type="button"
               onClick={exportSingleProjectWord}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#CEC8BA] bg-[#FAF8F3] px-3 py-1.5 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] px-3 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer whitespace-nowrap"
             >
-              <Download className="h-3.5 w-3.5 text-[#243B5A]" />
+              <Download className="h-3.5 w-3.5 shrink-0 text-[#243B5A]" />
               <span>خروجی Word</span>
             </button>
             <button
               type="button"
               onClick={() => setEditingProject(true)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#243B5A] px-3 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-3 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap"
             >
-              <Edit2 className="h-3.5 w-3.5" />
-              <span>ویرایش مشخصات</span>
+              <Edit2 className="h-3.5 w-3.5 shrink-0" />
+              <span>ویرایش</span>
             </button>
           </div>
         </div>
 
         {/* Navigation Tabs */}
-        <div className="mt-5 flex flex-wrap gap-1.5 border-t border-[#E8E5DE] pt-3">
+        <div className="mt-5 grid grid-cols-2 gap-1.5 border-t border-[#E8E5DE] pt-3 sm:flex sm:flex-wrap">
           {tabs.map((t) => (
             <button
               key={t.key}
               type="button"
               onClick={() => setTab(t.key)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
+              className={`inline-flex h-9 items-center justify-center rounded-xl px-3 text-xs font-medium transition-colors whitespace-nowrap cursor-pointer ${
                 tab === t.key
                   ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
-                  : 'border border-transparent text-[#5B6573] hover:bg-[#F2EEE6] hover:text-[#263448]'
+                  : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#5B6573] hover:bg-[#F2EEE6] hover:text-[#263448]'
               }`}
             >
               {t.label}

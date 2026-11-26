@@ -167,16 +167,16 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
   return (
     <div className="space-y-5">
       {/* Form Builder Header & Word/Excel Importer */}
-      <div className="border border-[#E2DDD0] bg-[#FFFFFF] p-4 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-1.5">
+      <div className="rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 space-y-3 shadow-[0_2px_8px_rgba(29,50,80,0.04)]">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap">
             <button
               type="button"
               onClick={() => setViewMode('templates')}
-              className={`px-3.5 py-1.5 text-xs font-medium cursor-pointer ${
+              className={`inline-flex h-9 items-center justify-center rounded-xl px-3.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 viewMode === 'templates'
                   ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
-                  : 'border border-transparent text-[#5B6268] hover:bg-[#F3EFE6]'
+                  : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#5B6268] hover:bg-[#F3EFE6]'
               }`}
             >
               قالب‌های فرم و دو فرم مرجع ({toPersianDigits(store.formTemplates.length)})
@@ -184,19 +184,19 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
             <button
               type="button"
               onClick={() => setViewMode('submissions')}
-              className={`px-3.5 py-1.5 text-xs font-medium cursor-pointer ${
+              className={`inline-flex h-9 items-center justify-center rounded-xl px-3.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 viewMode === 'submissions'
                   ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
-                  : 'border border-transparent text-[#5B6268] hover:bg-[#F3EFE6]'
+                  : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#5B6268] hover:bg-[#F3EFE6]'
               }`}
             >
               فرم‌های تکمیل‌شده ({toPersianDigits(store.formSubmissions.length)})
             </button>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex items-center gap-1.5 border border-[#243B5A] bg-[#243B5A] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer">
-              <FileUp className="h-3.5 w-3.5" />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:items-center shrink-0">
+            <label className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-3.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap">
+              <FileUp className="h-3.5 w-3.5 shrink-0" />
               <span>ورود الگوی Word یا Excel</span>
               <input
                 type="file"
@@ -208,9 +208,9 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
             <button
               type="button"
               onClick={createBlankTemplate}
-              className="inline-flex items-center gap-1.5 border border-[#CEC7B6] bg-[#FAF8F3] px-3.5 py-1.5 text-xs font-medium text-[#2B3033] hover:bg-[#ECE7DA] cursor-pointer"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#CEC7B6] bg-[#FAF8F3] px-3.5 text-xs font-medium text-[#2B3033] hover:bg-[#ECE7DA] cursor-pointer whitespace-nowrap"
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus className="h-3.5 w-3.5 shrink-0" />
               <span>طراحی قالب جدید</span>
             </button>
           </div>
@@ -221,12 +221,12 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
         </p>
 
         {importStatus && (
-          <div className="border border-[#D5DEC8] bg-[#F2F6EE] px-3 py-2 text-xs text-[#2D6A4F]">
+          <div className="rounded-xl border border-[#D5DEC8] bg-[#F2F6EE] px-3 py-2 text-xs text-[#2D6A4F]">
             {importStatus}
           </div>
         )}
         {importError && (
-          <div className="border border-[#DFC0C0] bg-[#FAF0F0] px-3 py-2 text-xs text-[#B43E3E]">
+          <div className="rounded-xl border border-[#DFC0C0] bg-[#FAF0F0] px-3 py-2 text-xs text-[#B43E3E]">
             {importError}
           </div>
         )}

@@ -735,9 +735,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
       {/* 2. Report Controls: Display Mode, Project Selector, Optional Sections, Letterhead & Export Buttons */}
       <section className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           {/* 3 Display Modes: Narrative / Table / Chart */}
-          <div className="flex flex-wrap items-center gap-1.5">
+          <div className="grid w-full grid-cols-3 gap-1.5 sm:w-auto sm:flex sm:items-center">
             {(
               [
                 { key: 'narrative', label: 'گزارش متنی', icon: AlignRight },
@@ -755,13 +755,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                   key={mode.key}
                   type="button"
                   onClick={() => setDisplayMode(mode.key)}
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-medium cursor-pointer ${
+                  className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                     displayMode === mode.key
                       ? 'border border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'
                       : 'border border-[#E2DDD2] bg-[#FAF8F3] text-[#263448] hover:bg-[#E5EBF2]'
                   }`}
                 >
-                  <Icon className="h-3.5 w-3.5" />
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
                   <span>{mode.label}</span>
                 </button>
               );
@@ -769,12 +769,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </div>
 
           {reportType === 'single-project' && (
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-[#5B6573]">انتخاب پروژه:</label>
+            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
+              <label className="text-xs text-[#5B6573] shrink-0">انتخاب پروژه:</label>
               <select
                 value={selectedProject?.id ?? ''}
                 onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="max-w-[280px] rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-3 py-1.5 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
+                className="h-9 w-full rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none sm:max-w-[280px]"
               >
                 {store.projects.map((p) => (
                   <option key={p.id} value={p.id}>
@@ -866,42 +866,42 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         </div>
 
         {/* Export Action Buttons */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#E8E5DE] pt-4">
+        <div className="flex flex-col gap-3 border-t border-[#E8E5DE] pt-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="text-xs text-[#5B6573]">
             خروجی Word و Excel کاملاً راست‌چین با فونت Zar اندازه ۱۴ پوینت و جدول‌بندی استاندارد
             اداری تولید می‌شوند.
           </div>
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap sm:items-center shrink-0">
             <button
               type="button"
               onClick={() => handleExport('word')}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#243B5A] px-3.5 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-3.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="h-3.5 w-3.5 shrink-0" />
               <span>خروجی Word</span>
             </button>
             <button
               type="button"
               onClick={() => handleExport('excel')}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#3D6B59] bg-[#FFFFFF] px-3.5 py-2 text-xs font-medium text-[#3D6B59] hover:bg-[#E7ECE6] cursor-pointer"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#3D6B59] bg-[#FFFFFF] px-3.5 text-xs font-medium text-[#3D6B59] hover:bg-[#E7ECE6] cursor-pointer whitespace-nowrap"
             >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
+              <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
               <span>خروجی Excel</span>
             </button>
             <button
               type="button"
               onClick={() => handleExport('pdf')}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-3.5 py-2 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3.5 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer whitespace-nowrap"
             >
-              <Printer className="h-3.5 w-3.5" />
+              <Printer className="h-3.5 w-3.5 shrink-0" />
               <span>چاپ / PDF</span>
             </button>
             <button
               type="button"
               onClick={() => handleExport('json')}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-3.5 py-2 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3.5 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer whitespace-nowrap"
             >
-              <FileJson className="h-3.5 w-3.5" />
+              <FileJson className="h-3.5 w-3.5 shrink-0" />
               <span>JSON</span>
             </button>
           </div>

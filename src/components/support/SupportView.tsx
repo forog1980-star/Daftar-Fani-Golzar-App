@@ -157,7 +157,7 @@ export const SupportView: React.FC<SupportViewProps> = ({ store, initialTab = 's
   return (
     <div className="animate-page-in mx-auto max-w-[1280px] space-y-5 px-4 py-5 sm:px-6">
       {/* Support Tabs */}
-      <div className="flex flex-wrap gap-1.5 rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-3">
+      <div className="grid grid-cols-2 gap-2 rounded-2xl border border-[#E2DDD2] bg-[#FFFFFF] p-3 shadow-[0_2px_8px_rgba(29,50,80,0.04)] sm:grid-cols-3 lg:grid-cols-6">
         {(
           [
             { key: 'settings', label: 'تنظیمات ظاهری و سازمانی' },
@@ -176,10 +176,10 @@ export const SupportView: React.FC<SupportViewProps> = ({ store, initialTab = 's
               setNotice('');
               setError('');
             }}
-            className={`rounded-lg px-3.5 py-2 text-xs font-medium cursor-pointer ${
+            className={`inline-flex min-h-[40px] items-center justify-center rounded-xl px-2.5 py-2 text-center text-xs font-medium leading-4 transition-colors cursor-pointer ${
               tab === t.key
                 ? 'border border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'
-                : 'border border-transparent text-[#263448] hover:bg-[#F2EEE6]'
+                : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#263448] hover:bg-[#F2EEE6]'
             }`}
           >
             {t.label}

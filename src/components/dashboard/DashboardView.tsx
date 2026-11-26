@@ -255,8 +255,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           )}
         </div>
 
-        {/* 6 Quick Report Navigation Pills (horizontal scroll on mobile, full row on desktop) */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        {/* 6 Quick Report Navigation Buttons — evenly aligned proportional grid */}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
           {QUICK_REPORT_TABS.map((tab, idx) => {
             const Icon = tab.icon;
             const isPrimary = idx === 0;
@@ -265,14 +265,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 key={tab.key}
                 type="button"
                 onClick={() => onOpenReport(tab.key)}
-                className={`inline-flex shrink-0 items-center gap-1.5 rounded-xl border px-3.5 py-2 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                className={`inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border px-2.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                   isPrimary
                     ? 'border-[#243B5A] bg-[#243B5A] text-[#FAF8F3] hover:bg-[#354F73]'
                     : 'border-[#E2E6EE] bg-[#F5F7FB] text-[#243B5A] hover:border-[#243B5A] hover:bg-[#E5EBF2]'
                 }`}
               >
-                <Icon className="h-3.5 w-3.5" />
-                <span>{tab.label}</span>
+                <Icon className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{tab.label}</span>
               </button>
             );
           })}
@@ -557,54 +557,61 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         />
       </section>
 
-      {/* Row 4: Bottom Status Strip (Last Backup | Real Recent Changes | Local Offline Status) */}
-      <section className="rounded-2xl border border-[#E5E0D5] bg-[#FFFFFF] px-4 py-3 space-y-3">
-        <div className="flex flex-col gap-2.5 text-xs md:flex-row md:items-center md:justify-between">
-          {/* Right: Last Backup */}
+      {/* Row 4: Bottom Status Strip — 3 Equal Proportional Columns on Laptop/Desktop, 3 Rows on Mobile */}
+      <section className="rounded-2xl border border-[#E5E0D5] bg-[#FFFFFF] p-3 space-y-3">
+        <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3 text-xs">
+          {/* Column 1 (Right): Last Backup */}
           <button
             type="button"
             onClick={() => onNavigate('support')}
-            className="flex items-center gap-2 rounded-xl border border-[#ECE8DF] bg-[#F8F7F4] px-3 py-2 text-right hover:border-[#243B5A] cursor-pointer"
+            className="flex min-h-[46px] min-w-0 items-center justify-between gap-2 rounded-xl border border-[#ECE8DF] bg-[#F8F7F4] px-3.5 py-2.5 text-right transition-colors hover:border-[#243B5A] hover:bg-[#F2EEE6]/70 cursor-pointer"
           >
-            <Database className="h-4 w-4 shrink-0 text-[#243B5A]" />
-            <span className="font-semibold text-[#243B5A]">آخرین پشتیبان‌گیری:</span>
-            <span className="tabular-nums text-[#5B6573]">
-              {settings.lastBackupAt
-                ? formatJalaliDateTime(settings.lastBackupAt)
-                : 'هنوز انجام نشده است'}
-            </span>
+            <div className="flex items-center gap-2 min-w-0">
+              <Database className="h-4 w-4 shrink-0 text-[#243B5A]" />
+              <span className="font-semibold text-[#243B5A] shrink-0">آخرین پشتیبان‌گیری:</span>
+              <span className="truncate tabular-nums text-[#5B6573]">
+                {settings.lastBackupAt
+                  ? formatJalaliDateTime(settings.lastBackupAt)
+                  : 'انجام نشده'}
+              </span>
+            </div>
           </button>
 
-          {/* Center: Real Recent Changes (with toggle to inspect full activity table) */}
+          {/* Column 2 (Center): Real Recent Changes (with toggle to inspect full activity table) */}
           <button
             type="button"
             onClick={() => setShowAllActivities((v) => !v)}
-            className="flex items-center justify-between gap-2 rounded-xl border border-[#ECE8DF] bg-[#F8F7F4] px-3 py-2 text-right hover:border-[#243B5A] cursor-pointer"
+            className="flex min-h-[46px] min-w-0 items-center justify-between gap-2 rounded-xl border border-[#ECE8DF] bg-[#F8F7F4] px-3.5 py-2.5 text-right transition-colors hover:border-[#243B5A] hover:bg-[#F2EEE6]/70 cursor-pointer"
+            title={
+              latestActivity
+                ? `${formatJalaliDateTime(latestActivity.timestamp)} — ${latestActivity.summary}`
+                : 'مشاهده فهرست آخرین تغییرات'
+            }
           >
             <div className="flex items-center gap-2 min-w-0">
               <Clock className="h-4 w-4 shrink-0 text-[#243B5A]" />
               <span className="font-semibold text-[#243B5A] shrink-0">آخرین تغییرات:</span>
               <span className="truncate tabular-nums text-[#5B6573]">
                 {latestActivity
-                  ? `${formatJalaliDateTime(latestActivity.timestamp)} — ${latestActivity.summary}`
-                  : 'هنوز رویداد واقعی ثبت نشده است'}
+                  ? formatJalaliDateTime(latestActivity.timestamp)
+                  : 'تغییری ثبت نشده'}
               </span>
             </div>
             {activities.length > 0 &&
               (showAllActivities ? (
-                <ChevronUp className="h-3.5 w-3.5 shrink-0 text-[#243B5A]" />
+                <ChevronUp className="h-4 w-4 shrink-0 text-[#243B5A]" />
               ) : (
-                <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[#243B5A]" />
+                <ChevronDown className="h-4 w-4 shrink-0 text-[#243B5A]" />
               ))}
           </button>
 
-          {/* Left: Offline Local Storage Indicator */}
-          <div className="flex items-center gap-2 px-1 text-[#263448]">
+          {/* Column 3 (Left): Offline Local Storage Indicator */}
+          <div className="flex min-h-[46px] min-w-0 items-center gap-2 rounded-xl border border-[#DCE8DD] bg-[#F4F9F4] px-3.5 py-2.5 text-[#263448]">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-[#4D9B4A]" />
-            <span className="font-medium">
+            <span className="truncate font-medium">
               {isOnline
-                ? 'آفلاین: داده‌ها در دستگاه شما ذخیره شده است'
-                : 'آفلاین (بدون اینترنت): داده‌ها در دستگاه شما ذخیره شده است'}
+                ? 'آفلاین: داده‌ها در دستگاه ذخیره شده است'
+                : 'آفلاین (بدون اینترنت): ذخیره در دستگاه'}
             </span>
           </div>
         </div>

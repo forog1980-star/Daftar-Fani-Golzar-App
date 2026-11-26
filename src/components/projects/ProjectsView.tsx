@@ -58,50 +58,52 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ store, onOpenProject
   return (
     <div className="animate-page-in mx-auto max-w-[1280px] px-4 py-5 sm:px-6 space-y-5">
       {/* Toolbar */}
-      <div className="flex flex-col gap-3 rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 flex-wrap items-center gap-2.5">
+      <div className="flex flex-col gap-3 rounded-2xl border border-[#E2DDD2] bg-[#FFFFFF] p-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-1 flex-col gap-2.5 sm:flex-row sm:items-center">
           <div className="relative flex-1 min-w-[200px]">
-            <Search className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-[#788290]" />
+            <Search className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-[#788290]" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="جست‌وجو در نام، کد، پیمانکار، محل اجرا یا شماره قرارداد..."
-              className="w-full rounded-lg border border-[#CEC8BA] bg-[#FAF8F3] py-2 pr-9 pl-3 text-sm text-[#263448] focus:border-[#243B5A] focus:outline-none"
+              className="h-10 w-full rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] pr-9 pl-3 text-sm text-[#263448] focus:border-[#243B5A] focus:outline-none"
             />
           </div>
 
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="rounded-lg border border-[#CEC8BA] bg-[#FAF8F3] px-3 py-2 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
-            aria-label="فیلتر نوع پروژه"
-          >
-            {projectTypes.map((t) => (
-              <option key={t} value={t}>
-                نوع: {t}
-              </option>
-            ))}
-          </select>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              className="h-10 rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] px-3 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
+              aria-label="فیلتر نوع پروژه"
+            >
+              {projectTypes.map((t) => (
+                <option key={t} value={t}>
+                  نوع: {t}
+                </option>
+              ))}
+            </select>
 
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-[#CEC8BA] bg-[#FAF8F3] px-3 py-2 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
-            aria-label="فیلتر وضعیت پروژه"
-          >
-            {statuses.map((s) => (
-              <option key={s} value={s}>
-                وضعیت: {s}
-              </option>
-            ))}
-          </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-10 rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] px-3 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
+              aria-label="فیلتر وضعیت پروژه"
+            >
+              {statuses.map((s) => (
+                <option key={s} value={s}>
+                  وضعیت: {s}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <button
           type="button"
           onClick={() => setEditing(null)}
-          className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] whitespace-nowrap shrink-0 cursor-pointer"
+          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] whitespace-nowrap shrink-0 cursor-pointer lg:w-auto"
         >
           <Plus className="h-4 w-4" />
           <span>ثبت پروژه جدید</span>

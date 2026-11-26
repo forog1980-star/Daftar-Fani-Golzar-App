@@ -175,25 +175,25 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
     <div className="animate-page-in mx-auto max-w-6xl px-4 py-6 sm:px-6 space-y-6">
       {/* Totals Strip */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="border border-[#E2DDD0] bg-[#FFFFFF] p-4">
+        <div className="rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 shadow-[0_2px_8px_rgba(29,50,80,0.04)]">
           <div className="text-xs text-[#5B6268]">جمع اعتبار مصوب</div>
           <div className="mt-2 text-base font-semibold tabular-nums text-[#2B3033]">
             {formatRial(totals.approved)}
           </div>
         </div>
-        <div className="border border-[#E2DDD0] bg-[#FFFFFF] p-4">
+        <div className="rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 shadow-[0_2px_8px_rgba(29,50,80,0.04)]">
           <div className="text-xs text-[#5B6268]">جمع تأمین اعتبار</div>
           <div className="mt-2 text-base font-semibold tabular-nums text-[#243B5A]">
             {formatRial(totals.funded)}
           </div>
         </div>
-        <div className="border border-[#E2DDD0] bg-[#FFFFFF] p-4">
+        <div className="rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 shadow-[0_2px_8px_rgba(29,50,80,0.04)]">
           <div className="text-xs text-[#5B6268]">جمع مبالغ پرداخت‌شده</div>
           <div className="mt-2 text-base font-semibold tabular-nums text-[#2D6A4F]">
             {formatRial(totals.paid)}
           </div>
         </div>
-        <div className="border border-[#E2DDD0] bg-[#FFFFFF] p-4">
+        <div className="rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 shadow-[0_2px_8px_rgba(29,50,80,0.04)]">
           <div className="text-xs text-[#5B6268]">جمع مانده اعتبار</div>
           <div
             className={`mt-2 text-base font-semibold tabular-nums ${
@@ -206,8 +206,8 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
       </div>
 
       {/* Sub-navigation */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border border-[#E2DDD0] bg-[#FFFFFF] px-4 py-3">
-        <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-col gap-3 rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-3.5 shadow-[0_2px_8px_rgba(29,50,80,0.04)] lg:flex-row lg:items-center lg:justify-between">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
           {[
             { key: 'credits' as const, label: 'وضعیت اعتبارات پروژه‌ها' },
             { key: 'payments' as const, label: `سوابق پرداخت‌ها (${toPersianDigits(store.payments.length)})` },
@@ -217,10 +217,10 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
               key={t.key}
               type="button"
               onClick={() => setSubTab(t.key)}
-              className={`px-3.5 py-1.5 text-xs font-medium cursor-pointer ${
+              className={`inline-flex h-9 items-center justify-center rounded-xl px-3.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
                 subTab === t.key
                   ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
-                  : 'border border-transparent text-[#5B6268] hover:bg-[#F3EFE6]'
+                  : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#5B6268] hover:bg-[#F3EFE6]'
               }`}
             >
               {t.label}
@@ -228,36 +228,38 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
           ))}
         </div>
 
-        <div className="flex items-center gap-2">
-          {subTab === 'payments' && (
-            <button
-              type="button"
-              onClick={() => {
-                setPayProjectId(store.projects[0]?.id ?? '');
-                setPaymentModalOpen(true);
-              }}
-              className="inline-flex items-center gap-1.5 border border-[#243B5A] bg-[#243B5A] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>ثبت پرداخت جدید</span>
-            </button>
-          )}
-          {subTab === 'proposals' && (
-            <button
-              type="button"
-              onClick={() => openProposalEditor(null)}
-              className="inline-flex items-center gap-1.5 border border-[#243B5A] bg-[#243B5A] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>ثبت پیشنهاد بودجه سال آینده</span>
-            </button>
-          )}
-        </div>
+        {(subTab === 'payments' || subTab === 'proposals') && (
+          <div className="flex items-center gap-2 shrink-0">
+            {subTab === 'payments' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPayProjectId(store.projects[0]?.id ?? '');
+                  setPaymentModalOpen(true);
+                }}
+                className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:w-auto"
+              >
+                <Plus className="h-3.5 w-3.5 shrink-0" />
+                <span>ثبت پرداخت جدید</span>
+              </button>
+            )}
+            {subTab === 'proposals' && (
+              <button
+                type="button"
+                onClick={() => openProposalEditor(null)}
+                className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:w-auto"
+              >
+                <Plus className="h-3.5 w-3.5 shrink-0" />
+                <span>ثبت پیشنهاد بودجه سال آینده</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Tab 1: Per-Project Financial Matrix */}
       {subTab === 'credits' && (
-        <div className="border border-[#E2DDD0] bg-[#FFFFFF] overflow-x-auto">
+        <div className="overflow-x-auto rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] shadow-[0_2px_8px_rgba(29,50,80,0.04)]">
           {projectFinancialRows.length === 0 ? (
             <div className="p-8 text-center text-sm text-[#7C8287]">
               ابتدا از بخش پرونده پروژه‌ها یک پروژه ثبت کنید تا جدول اعتبارات آن نمایش داده شود.

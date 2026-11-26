@@ -82,15 +82,15 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
   return (
     <div className="animate-page-in mx-auto max-w-6xl px-4 py-6 sm:px-6 space-y-5">
       {/* Top Section Switch: Correspondence Archive vs Organizational Form Builder */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border border-[#E2DDD0] bg-[#FFFFFF] px-4 py-3">
-        <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col gap-3 rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-3.5 shadow-[0_2px_8px_rgba(29,50,80,0.04)] lg:flex-row lg:items-center lg:justify-between">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap">
           <button
             type="button"
             onClick={() => setSectionTab('archive')}
-            className={`px-4 py-2 text-xs font-medium cursor-pointer ${
+            className={`inline-flex h-10 items-center justify-center rounded-xl px-4 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               sectionTab === 'archive'
                 ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
-                : 'border border-transparent text-[#5B6268] hover:bg-[#F3EFE6]'
+                : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#5B6268] hover:bg-[#F3EFE6]'
             }`}
           >
             ثبت و بایگانی اسناد و مکاتبات ({toPersianDigits(store.documents.length)})
@@ -98,10 +98,10 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
           <button
             type="button"
             onClick={() => setSectionTab('forms')}
-            className={`px-4 py-2 text-xs font-medium cursor-pointer ${
+            className={`inline-flex h-10 items-center justify-center rounded-xl px-4 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
               sectionTab === 'forms'
                 ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
-                : 'border border-transparent text-[#5B6268] hover:bg-[#F3EFE6]'
+                : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#5B6268] hover:bg-[#F3EFE6]'
             }`}
           >
             فرم‌ساز سازمانی و فرم‌های مرجع ({toPersianDigits(store.formSubmissions.length)})
@@ -112,9 +112,9 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
           <button
             type="button"
             onClick={() => setEditingDoc(null)}
-            className="inline-flex items-center gap-1.5 border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
+            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:w-auto shrink-0"
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus className="h-3.5 w-3.5 shrink-0" />
             <span>ثبت سند یا مکاتبه جدید</span>
           </button>
         )}
@@ -125,47 +125,49 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
       ) : (
         <>
           {/* Filter Bar */}
-          <div className="flex flex-wrap items-center gap-2.5 border border-[#E2DDD0] bg-[#FFFFFF] p-4">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-[#7C8287]" />
+          <div className="flex flex-col gap-2.5 rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 shadow-[0_2px_8px_rgba(29,50,80,0.04)] lg:flex-row lg:items-center">
+            <div className="relative flex-1 min-w-0">
+              <Search className="pointer-events-none absolute right-3 top-3 h-4 w-4 text-[#7C8287]" />
               <input
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="جست‌وجو در موضوع، شماره سند، فرستنده/گیرنده یا خلاصه..."
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] py-2 pr-9 pl-3 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
+                className="h-10 w-full rounded-xl border border-[#CEC7B6] bg-[#FAF8F3] pr-9 pl-3 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
               />
             </div>
 
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-xs text-[#2B3033]"
-            >
-              <option value="همه">همه انواع اسناد</option>
-              {DOC_CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:flex lg:items-center">
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="h-10 w-full rounded-xl border border-[#CEC7B6] bg-[#FAF8F3] px-3 text-xs text-[#2B3033] lg:w-auto"
+              >
+                <option value="همه">همه انواع اسناد</option>
+                {DOC_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
 
-            <select
-              value={projectFilter}
-              onChange={(e) => setProjectFilter(e.target.value)}
-              className="border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-xs text-[#2B3033]"
-            >
-              <option value="همه">همه پروژه‌ها</option>
-              {store.projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.code} — {p.title}
-                </option>
-              ))}
-            </select>
+              <select
+                value={projectFilter}
+                onChange={(e) => setProjectFilter(e.target.value)}
+                className="h-10 w-full rounded-xl border border-[#CEC7B6] bg-[#FAF8F3] px-3 text-xs text-[#2B3033] lg:w-auto"
+              >
+                <option value="همه">همه پروژه‌ها</option>
+                {store.projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.code} — {p.title}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Documents Table */}
-          <div className="border border-[#E2DDD0] bg-[#FFFFFF] overflow-x-auto">
+          <div className="overflow-x-auto rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] shadow-[0_2px_8px_rgba(29,50,80,0.04)]">
             {filteredDocs.length === 0 ? (
               <div className="p-8 text-center text-sm text-[#7C8287]">
                 سند یا مکاتبه‌ای با فیلتر انتخاب‌شده ثبت نشده است.

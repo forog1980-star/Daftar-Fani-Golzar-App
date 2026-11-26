@@ -88,7 +88,7 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store }) => {
                 onClick={() => setFilterMode(f.key)}
                 className={`px-3 py-1.5 text-xs font-medium cursor-pointer ${
                   filterMode === f.key
-                    ? 'border border-[#2D5A63] bg-[#E5EFF0] text-[#2D5A63]'
+                    ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
                     : 'border border-transparent text-[#5B6268] hover:bg-[#F3EFE6]'
                 }`}
               >
@@ -100,7 +100,7 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store }) => {
           <button
             type="button"
             onClick={() => setEditing(null)}
-            className="inline-flex items-center gap-1.5 border border-[#2D5A63] bg-[#2D5A63] px-4 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#234850] cursor-pointer"
+            className="inline-flex items-center gap-1.5 border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>ثبت اقدام جدید</span>
@@ -114,7 +114,7 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store }) => {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="جست‌وجو در عنوان، شرح اقدام، نتیجه پیگیری یا نام پروژه..."
-            className="w-full border border-[#CEC7B6] bg-[#FAF8F3] py-2 pr-9 pl-3 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+            className="w-full border border-[#CEC7B6] bg-[#FAF8F3] py-2 pr-9 pl-3 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
           />
         </div>
       </div>
@@ -172,7 +172,7 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store }) => {
                             ? 'text-[#2D6A4F]'
                             : overdue
                               ? 'text-[#B43E3E]'
-                              : 'text-[#2D5A63]'
+                              : 'text-[#243B5A]'
                         }`}
                       >
                         {overdue && act.status !== 'تکمیل‌شده' ? 'عقب‌افتاده' : act.status}
@@ -196,7 +196,7 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store }) => {
                         <button
                           type="button"
                           onClick={() => setEditing(act)}
-                          className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] text-[#5B6268] hover:text-[#2D5A63] cursor-pointer"
+                          className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] text-[#5B6268] hover:text-[#243B5A] cursor-pointer"
                           title="ویرایش و ثبت نتیجه پیگیری"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
@@ -423,7 +423,7 @@ const ActionEditorWindow: React.FC<{
           </button>
           <button
             type="submit"
-            className="border border-[#2D5A63] bg-[#2D5A63] px-4 py-2 text-xs text-[#FAF8F3]"
+            className="border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3]"
           >
             {isNew ? 'ثبت اقدام' : 'ذخیره تغییرات'}
           </button>

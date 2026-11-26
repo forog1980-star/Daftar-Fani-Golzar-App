@@ -31,54 +31,59 @@ export const ExitAuthOverlay: React.FC<ExitAuthOverlayProps> = ({
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#FAF8F3] p-4">
-      <div className="w-full max-w-md border border-[#E2DDD0] bg-[#FFFFFF] p-7 space-y-5">
-        <div className="border-b border-[#ECE7DA] pb-4 text-center">
-          <div className="text-2xl font-semibold text-[#2D5A63]" dir="ltr">
-            R
-          </div>
-          <h2 className="mt-2 text-base font-semibold text-[#2B3033]">
+      <div className="w-full max-w-md rounded-xl border border-[#E2DDD2] bg-[#FFFFFF] p-7 space-y-5">
+        <div className="border-b border-[#E8E5DE] pb-4 text-center">
+          {settings.officialLogoDataUrl ? (
+            <img
+              src={settings.officialLogoDataUrl}
+              alt="آرم رسمی دفتر فنی"
+              className="mx-auto h-14 w-14 object-contain"
+            />
+          ) : (
+            <div className="text-3xl font-semibold text-[#243B5A]" dir="ltr">
+              R
+            </div>
+          )}
+          <h2 className="mt-2 text-base font-semibold text-[#243B5A]">
             دفتر فنی اداره گلزار شهدا
           </h2>
-          <p className="mt-1 text-xs text-[#5B6268]">
+          <p className="mt-1 text-xs leading-6 text-[#5B6573]">
             {mode === 'exited'
-              ? 'نشست کاری شما به صورت ایمن بسته شد. تمام داده‌ها در حافظه محلی دستگاه ذخیره هستند.'
-              : 'حالت آزمایشی ورود فعال است.'}
+              ? 'نشست کاری شما با موفقیت بسته شد. تمام اطلاعات در حافظه محلی دستگاه ذخیره هستند.'
+              : 'سامانه محلی مدیریت پروژه‌ها و اعتبارات'}
           </p>
         </div>
 
         {mode === 'login' && settings.auth.enabled ? (
           <form onSubmit={handleLogin} className="space-y-3.5">
             {error && (
-              <div className="border border-[#DFC0C0] bg-[#FAF0F0] px-3 py-2 text-xs text-[#B43E3E]">
+              <div className="rounded-lg border border-[#D8B4B4] bg-[#FBF1F1] px-3 py-2 text-xs text-[#9E3B3B]">
                 {error}
               </div>
             )}
             <div>
-              <label className="mb-1 block text-xs text-[#5B6268]">نام کاربری</label>
+              <label className="mb-1 block text-xs text-[#5B6573]">نام کاربری</label>
               <input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#263448]"
                 dir="ltr"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-[#5B6268]">رمز عبور</label>
+              <label className="mb-1 block text-xs text-[#5B6573]">رمز عبور</label>
               <input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#263448]"
                 dir="ltr"
               />
             </div>
-            <p className="text-[11px] leading-5 text-[#7C8287]">
-              توجه: مقادیر 000 / 000 صرفاً جهت تست داخلی معماری ورود هستند و جایگزین سازوکار امنیت واقعی نیستند.
-            </p>
             <button
               type="submit"
-              className="w-full border border-[#2D5A63] bg-[#2D5A63] py-2.5 text-sm font-medium text-[#FAF8F3] hover:bg-[#234850] cursor-pointer"
+              className="w-full rounded-lg border border-[#243B5A] bg-[#243B5A] py-2.5 text-sm font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
             >
               ورود به نرم‌افزار
             </button>
@@ -88,9 +93,9 @@ export const ExitAuthOverlay: React.FC<ExitAuthOverlayProps> = ({
             <button
               type="button"
               onClick={onEnterApp}
-              className="w-full border border-[#2D5A63] bg-[#2D5A63] py-2.5 text-sm font-medium text-[#FAF8F3] hover:bg-[#234850] cursor-pointer"
+              className="w-full rounded-lg border border-[#243B5A] bg-[#243B5A] py-2.5 text-sm font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
             >
-              ورود مجدد به صفحه اصلی
+              ورود مجدد به سامانه
             </button>
           </div>
         )}

@@ -1,6 +1,8 @@
 import JSZip from 'jszip';
 import {
   AttachmentRecord,
+  GolzarImageRecord,
+  ProjectImageRecord,
   SyncConflict,
   SyncEntityStore,
   SyncPackage,
@@ -50,6 +52,9 @@ export async function createFullZipBackup(deviceId: string, deviceName: string):
   for (const store of SYNC_STORES) {
     dataPayload[store] = await db.getAll(store);
   }
+  const golzarImages = await db.getAll('golzarImages');
+  const projectImages = await db.getAll('projectImages');
+  const settings = await db.get('settings', 'app-settings');
 
   const attachments = await db.getAll('attachments');
   const attachmentsManifest = [];
@@ -73,12 +78,17 @@ export async function createFullZipBackup(deviceId: string, deviceName: string):
   }
 
   const manifest = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     backupType: 'daftar-fani-full-backup',
     exportedAt: new Date().toISOString(),
     sourceDeviceId: deviceId,
     sourceDeviceName: deviceName,
-    data: dataPayload,
+    data: {
+      ...dataPayload,
+      golzarImages,
+      projectImages,
+    },
+    officialLogoDataUrl: settings?.officialLogoDataUrl,
     attachments: attachmentsManifest,
   };
 
@@ -142,6 +152,8 @@ export async function restoreFullZipBackup(
     formTemplates: parsed.data.formTemplates ?? [],
     formSubmissions: parsed.data.formSubmissions ?? [],
     attachments: restoredAttachments,
+    golzarImages: parsed.data.golzarImages ?? [],
+    projectImages: parsed.data.projectImages ?? [],
   };
 
   const snapshot = await replaceAllDataFromBackup(
@@ -150,6 +162,18 @@ export async function restoreFullZipBackup(
     `نسخه خودکار پیش از بازیابی ${file.name}`
   );
 
+  if (parsed.officialLogoDataUrl) {
+    const db = await getDB();
+    const cur = await db.get('settings', 'app-settings');
+    if (cur) {
+      await db.put('settings', {
+        ...cur,
+        officialLogoDataUrl: parsed.officialLogoDataUrl,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+  }
+
   return {
     snapshot,
     restoredCounts: {
@@ -157,21 +181,27 @@ export async function restoreFullZipBackup(
       documents: restoreData.documents.length,
       actions: restoreData.actions.length,
       attachments: restoreData.attachments.length,
+      images: (restoreData.golzarImages?.length ?? 0) + (restoreData.projectImages?.length ?? 0),
     },
   };
 }
 
-// Equal-Peer Sync Package (for USB transfer or Direct Wireless WebRTC transfer)
+// Equal-Peer JSON Sync Package (Strictly JSON file transfer via Eitaa or USB)
 export async function buildSyncPackage(
   deviceId: string,
   deviceName: string,
-  includeAttachments = true
+  includeAttachments = true,
+  includeMedia = true
 ): Promise<SyncPackage> {
   const db = await getDB();
   const records = {} as Record<SyncEntityStore, Record<string, unknown>[]>;
   for (const store of SYNC_STORES) {
     records[store] = (await db.getAll(store)) as unknown as Record<string, unknown>[];
   }
+
+  const golzarImages = includeMedia ? await db.getAll('golzarImages') : [];
+  const projectImages = includeMedia ? await db.getAll('projectImages') : [];
+  const settings = await db.get('settings', 'app-settings');
 
   const attachments = await db.getAll('attachments');
   const attachmentsMeta = [];
@@ -191,37 +221,29 @@ export async function buildSyncPackage(
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     exportedAt: new Date().toISOString(),
     sourceDeviceId: deviceId,
     sourceDeviceName: deviceName,
     records,
+    golzarImages,
+    projectImages,
+    officialLogoDataUrl: includeMedia ? settings?.officialLogoDataUrl : undefined,
     attachmentsMeta,
   };
 }
 
-export async function exportUsbSyncPackage(deviceId: string, deviceName: string): Promise<void> {
-  const pkg = await buildSyncPackage(deviceId, deviceName, true);
-  const blob = new Blob([JSON.stringify(pkg)], { type: 'application/json;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `daftar-fani-sync-${todayIsoDate()}.dfsync.json`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 300);
-}
-
 export interface SyncAnalysisResult {
+  schemaVersion: number;
   sourceDeviceName: string;
   sourceDeviceId: string;
   newRecords: Array<{ store: SyncEntityStore; record: Record<string, unknown> }>;
   identicalCount: number;
   conflicts: SyncConflict[];
   newAttachments: AttachmentRecord[];
+  newGolzarImages: GolzarImageRecord[];
+  newProjectImages: ProjectImageRecord[];
+  incomingLogoDataUrl?: string;
 }
 
 function getRecordDisplayLabel(store: SyncEntityStore, rec: Record<string, unknown>): string {
@@ -237,10 +259,10 @@ function getRecordDisplayLabel(store: SyncEntityStore, rec: Record<string, unkno
   );
 }
 
-// Strict Conflict Detection: NEVER overwrites or deletes silently!
+// Strict Pre-Check & Conflict Detection: NEVER writes or deletes silently!
 export async function analyzeIncomingSyncPackage(pkg: SyncPackage): Promise<SyncAnalysisResult> {
   if (!pkg || !pkg.records) {
-    throw new Error('بسته همگام‌سازی معتبر نیست.');
+    throw new Error('بسته JSON معتبر نیست.');
   }
 
   const db = await getDB();
@@ -265,7 +287,6 @@ export async function analyzeIncomingSyncPackage(pkg: SyncPackage): Promise<Sync
         if (localFp === remoteFp) {
           identicalCount++;
         } else {
-          // Any differing content on same ID is flagged as conflict for user decision
           conflicts.push({
             id: generateId('conf'),
             store,
@@ -302,28 +323,51 @@ export async function analyzeIncomingSyncPackage(pkg: SyncPackage): Promise<Sync
     }
   }
 
+  const localGolzar = await db.getAll('golzarImages');
+  const localGolzarIds = new Set(localGolzar.map((g) => g.id));
+  const newGolzarImages = (pkg.golzarImages ?? []).filter((g) => !localGolzarIds.has(g.id));
+
+  const localProjImgs = await db.getAll('projectImages');
+  const localProjImgMap = new Map(localProjImgs.map((p) => [p.projectId, p]));
+  const newProjectImages = (pkg.projectImages ?? []).filter((p) => {
+    const existing = localProjImgMap.get(p.projectId);
+    return !existing || existing.updatedAt < p.updatedAt;
+  });
+
   return {
+    schemaVersion: pkg.schemaVersion || 1,
     sourceDeviceName: pkg.sourceDeviceName || 'دستگاه مقابل',
     sourceDeviceId: pkg.sourceDeviceId || 'unknown',
     newRecords,
     identicalCount,
     conflicts,
     newAttachments,
+    newGolzarImages,
+    newProjectImages,
+    incomingLogoDataUrl: pkg.officialLogoDataUrl,
   };
 }
 
-// Applies ONLY explicitly approved new items & user-resolved conflict decisions
+// Applies ONLY explicitly approved records, conflict decisions, and linked images
 export async function applyApprovedSyncDecisions(
   analysis: SyncAnalysisResult,
   resolvedConflicts: SyncConflict[],
   importNewRecords: boolean,
-  deviceId: string
-): Promise<{ added: number; updated: number; duplicated: number; keptLocal: number }> {
+  deviceId: string,
+  importMedia = true
+): Promise<{
+  added: number;
+  updated: number;
+  duplicated: number;
+  keptLocal: number;
+  mediaAdded: number;
+}> {
   const db = await getDB();
   let added = 0;
   let updated = 0;
   let duplicated = 0;
   let keptLocal = 0;
+  let mediaAdded = 0;
 
   if (importNewRecords) {
     for (const item of analysis.newRecords) {
@@ -332,6 +376,28 @@ export async function applyApprovedSyncDecisions(
     }
     for (const att of analysis.newAttachments) {
       await db.put('attachments', att);
+    }
+  }
+
+  if (importMedia) {
+    for (const gImg of analysis.newGolzarImages) {
+      await db.put('golzarImages', gImg);
+      mediaAdded++;
+    }
+    for (const pImg of analysis.newProjectImages) {
+      // Strictly preserves projectId linkage!
+      await db.put('projectImages', pImg);
+      mediaAdded++;
+    }
+    if (analysis.incomingLogoDataUrl) {
+      const curSettings = await db.get('settings', 'app-settings');
+      if (curSettings && !curSettings.officialLogoDataUrl) {
+        await db.put('settings', {
+          ...curSettings,
+          officialLogoDataUrl: analysis.incomingLogoDataUrl,
+          updatedAt: new Date().toISOString(),
+        });
+      }
     }
   }
 
@@ -358,5 +424,5 @@ export async function applyApprovedSyncDecisions(
     }
   }
 
-  return { added, updated, duplicated, keptLocal };
+  return { added, updated, duplicated, keptLocal, mediaAdded };
 }

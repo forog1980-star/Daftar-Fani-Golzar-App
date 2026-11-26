@@ -74,12 +74,12 @@ export const FloatingWindow: React.FC<FloatingWindowProps> = ({
   if (!isDesktop) {
     return (
       <div className="fixed inset-0 z-40 flex flex-col bg-[#FAF8F3]">
-        <div className="flex items-center justify-between border-b border-[#E2DDD0] bg-[#F3EFE6] px-4 py-3">
-          <h3 className="truncate text-sm font-semibold text-[#2B3033]">{title}</h3>
+        <div className="flex items-center justify-between border-b border-[#E2DDD2] bg-[#F2EEE6] px-4 py-3">
+          <h3 className="truncate text-sm font-semibold text-[#243B5A]">{title}</h3>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center border border-[#CEC7B6] bg-[#FFFFFF] text-[#2B3033] hover:bg-[#ECE7DA] cursor-pointer"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[#D7D2C6] bg-[#FFFFFF] text-[#263448] hover:bg-[#E5EBF2] cursor-pointer"
             aria-label="بستن پنجره"
           >
             <X className="h-4 w-4" />
@@ -92,7 +92,7 @@ export const FloatingWindow: React.FC<FloatingWindowProps> = ({
 
   return (
     <div
-      className="fixed z-40 flex flex-col border border-[#BDB6A4] bg-[#FFFFFF]"
+      className="fixed z-40 flex flex-col overflow-hidden rounded-[var(--app-radius)] border border-[#CFCAC0] bg-[#FFFFFF]"
       style={{
         left: `${pos.x}px`,
         top: `${pos.y}px`,
@@ -103,17 +103,17 @@ export const FloatingWindow: React.FC<FloatingWindowProps> = ({
     >
       <div
         onPointerDown={handleDragStart}
-        className="flex cursor-move select-none items-center justify-between border-b border-[#E2DDD0] bg-[#F3EFE6] px-4 py-2.5"
+        className="flex cursor-move select-none items-center justify-between border-b border-[#E2DDD2] bg-[#F2EEE6] px-4 py-2.5"
       >
         <div className="flex items-center gap-2 min-w-0">
-          <Move className="h-3.5 w-3.5 shrink-0 text-[#7C8287]" />
-          <h3 className="truncate text-sm font-semibold text-[#2B3033]">{title}</h3>
+          <Move className="h-3.5 w-3.5 shrink-0 text-[#5B6573]" />
+          <h3 className="truncate text-sm font-semibold text-[#243B5A]">{title}</h3>
         </div>
         <div className="flex items-center gap-1.5 shrink-0" onPointerDown={(e) => e.stopPropagation()}>
           <button
             type="button"
             onClick={() => setMinimized((m) => !m)}
-            className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] bg-[#FAF8F3] text-[#5B6268] hover:bg-[#ECE7DA] cursor-pointer"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#D7D2C6] bg-[#FAF8F3] text-[#5B6573] hover:bg-[#E5EBF2] cursor-pointer"
             title={minimized ? 'گستردن پنجره' : 'کوچک کردن پنجره'}
           >
             {minimized ? <Maximize2 className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
@@ -121,7 +121,7 @@ export const FloatingWindow: React.FC<FloatingWindowProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] bg-[#FAF8F3] text-[#5B6268] hover:border-[#B43E3E] hover:text-[#B43E3E] cursor-pointer"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-[#D7D2C6] bg-[#FAF8F3] text-[#5B6573] hover:border-[#9E3B3B] hover:text-[#9E3B3B] cursor-pointer"
             title="بستن"
           >
             <X className="h-3.5 w-3.5" />

@@ -8,10 +8,12 @@ import {
   DocumentItem,
   FormSubmission,
   FormTemplate,
+  GolzarImageRecord,
   PaymentRecord,
   Person,
   Project,
   ProjectBudget,
+  ProjectImageRecord,
 } from '../types';
 import {
   addActivity,
@@ -27,6 +29,13 @@ import {
 import { createDefaultSettings } from '../db/seedData';
 import { generateId } from '../utils/format';
 
+export interface SaveToast {
+  id: string;
+  message: string;
+  savedAt: string;
+  tone: 'success' | 'error';
+}
+
 export interface AppStoreState {
   loading: boolean;
   error: string | null;
@@ -40,6 +49,8 @@ export interface AppStoreState {
   people: Person[];
   formTemplates: FormTemplate[];
   formSubmissions: FormSubmission[];
+  golzarImages: GolzarImageRecord[];
+  projectImages: ProjectImageRecord[];
   activities: ActivityLog[];
   settings: AppSettings;
   snapshots: RollbackSnapshot[];
@@ -59,10 +70,31 @@ export function useAppStore() {
     people: [],
     formTemplates: [],
     formSubmissions: [],
+    golzarImages: [],
+    projectImages: [],
     activities: [],
     settings: createDefaultSettings(),
     snapshots: [],
   });
+
+  const [toast, setToast] = useState<SaveToast | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  const notifySave = useCallback((message: string, ok: boolean) => {
+    const savedAt = new Date().toISOString();
+    setToast({
+      id: generateId('toast'),
+      message,
+      savedAt,
+      tone: ok ? 'success' : 'error',
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3800);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   const refresh = useCallback(async () => {
     try {
@@ -101,20 +133,46 @@ export function useAppStore() {
     };
   }, [refresh]);
 
+  // Apply dynamic appearance tokens from settings to CSS custom properties
+  useEffect(() => {
+    const app = state.settings.appearance;
+    if (!app) return;
+    const root = document.documentElement;
+    root.style.setProperty('--app-primary', app.primaryColor || '#243B5A');
+    root.style.setProperty('--app-primary-light', app.headerColor || '#354F73');
+    root.style.setProperty('--app-card-surface', app.cardSurface || '#F2EEE6');
+    root.style.setProperty('--app-radius', `${app.radiusPx ?? 12}px`);
+  }, [state.settings.appearance]);
+
   const deviceId = state.settings.deviceId;
+
+  const touchLastSaved = useCallback(
+    async (now: string) => {
+      await putEntity('settings', {
+        ...state.settings,
+        lastSavedAt: now,
+        updatedAt: now,
+      });
+    },
+    [state.settings]
+  );
 
   const saveProject = useCallback(
     async (project: Project, isNew: boolean) => {
       const now = new Date().toISOString();
+      const prev = state.projects.find((p) => p.id === project.id);
       const record: Project = {
         ...project,
         createdAt: isNew ? now : project.createdAt,
         updatedAt: now,
         updatedByDevice: deviceId,
       };
-      await putEntity('projects', record);
+      const ok = await putEntity('projects', record);
+      if (!ok) {
+        notifySave('ذخیره‌سازی پرونده پروژه در حافظه محلی ناموفق بود.', false);
+        throw new Error('IndexedDB write verification failed');
+      }
 
-      // Ensure a matching budget ledger exists for every project
       const existingBudget = state.budgets.find((b) => b.projectId === record.id);
       if (!existingBudget) {
         await putEntity('budgets', {
@@ -134,22 +192,35 @@ export function useAppStore() {
         });
       }
 
+      const statusChanged = !isNew && prev && prev.status !== record.status;
       await addActivity({
         entityType: 'project',
         entityId: record.id,
         action: isNew ? 'ثبت' : 'ویرایش',
-        summary: `${isNew ? 'ثبت پروژه جدید' : 'به‌روزرسانی پروژه'}: ${record.title}`,
+        summary: isNew
+          ? `ایجاد پرونده پروژه: ${record.title}`
+          : statusChanged
+            ? `تغییر وضعیت پروژه «${record.title}» به «${record.status}»`
+            : `اصلاح اطلاعات پروژه: ${record.title}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave(isNew ? 'پرونده پروژه با موفقیت ذخیره شد.' : 'تغییرات پروژه با موفقیت ذخیره شد.', true);
       return record;
     },
-    [deviceId, refresh, state.budgets]
+    [deviceId, notifySave, refresh, state.budgets, state.projects, touchLastSaved]
   );
 
   const deleteProject = useCallback(
     async (project: Project) => {
-      await deleteEntity('projects', project.id);
+      const ok = await deleteEntity('projects', project.id);
+      if (!ok) {
+        notifySave('حذف پرونده پروژه ناموفق بود.', false);
+        return;
+      }
+      await deleteEntity('projectImages', `pimg_${project.id}`);
+      const now = new Date().toISOString();
       await addActivity({
         entityType: 'project',
         entityId: project.id,
@@ -157,9 +228,115 @@ export function useAppStore() {
         summary: `حذف پرونده پروژه: ${project.title}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('پرونده پروژه با موفقیت حذف شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
+  );
+
+  const saveProjectImage = useCallback(
+    async (projectId: string, projectTitle: string, img: Omit<ProjectImageRecord, 'id' | 'projectId' | 'createdAt' | 'updatedAt' | 'updatedByDevice'>) => {
+      const now = new Date().toISOString();
+      const record: ProjectImageRecord = {
+        id: `pimg_${projectId}`,
+        projectId,
+        ...img,
+        createdAt: now,
+        updatedAt: now,
+        updatedByDevice: deviceId,
+      };
+      const ok = await putEntity('projectImages', record);
+      if (!ok) {
+        notifySave('ذخیره تصویر پروژه ناموفق بود.', false);
+        return false;
+      }
+      await addActivity({
+        entityType: 'project',
+        entityId: projectId,
+        action: 'ویرایش',
+        summary: `ثبت/تعویض تصویر اختصاصی پروژه: ${projectTitle}`,
+        deviceId,
+      });
+      await touchLastSaved(now);
+      await refresh();
+      notifySave('تصویر اختصاصی پروژه ذخیره شد.', true);
+      return true;
+    },
+    [deviceId, notifySave, refresh, touchLastSaved]
+  );
+
+  const deleteProjectImage = useCallback(
+    async (projectId: string, projectTitle: string) => {
+      const ok = await deleteEntity('projectImages', `pimg_${projectId}`);
+      if (!ok) {
+        notifySave('حذف تصویر پروژه ناموفق بود.', false);
+        return;
+      }
+      const now = new Date().toISOString();
+      await addActivity({
+        entityType: 'project',
+        entityId: projectId,
+        action: 'حذف',
+        summary: `حذف تصویر اختصاصی پروژه: ${projectTitle}`,
+        deviceId,
+      });
+      await touchLastSaved(now);
+      await refresh();
+      notifySave('تصویر پروژه حذف شد.', true);
+    },
+    [deviceId, notifySave, refresh, touchLastSaved]
+  );
+
+  const saveGolzarImage = useCallback(
+    async (img: GolzarImageRecord, isNew: boolean) => {
+      const now = new Date().toISOString();
+      const record: GolzarImageRecord = {
+        ...img,
+        createdAt: isNew ? now : img.createdAt,
+        updatedAt: now,
+        updatedByDevice: deviceId,
+      };
+      const ok = await putEntity('golzarImages', record);
+      if (!ok) {
+        notifySave('ذخیره تصویر گلزار شهدا ناموفق بود.', false);
+        return false;
+      }
+      await addActivity({
+        entityType: 'document',
+        entityId: record.id,
+        action: isNew ? 'ثبت' : 'ویرایش',
+        summary: `${isNew ? 'افزودن تصویر جدید گلزار شهدا' : 'جایگزینی تصویر گلزار شهدا'}: ${record.caption || record.fileName}`,
+        deviceId,
+      });
+      await touchLastSaved(now);
+      await refresh();
+      notifySave('تصویر گلزار شهدا ذخیره شد.', true);
+      return true;
+    },
+    [deviceId, notifySave, refresh, touchLastSaved]
+  );
+
+  const deleteGolzarImage = useCallback(
+    async (img: GolzarImageRecord) => {
+      const ok = await deleteEntity('golzarImages', img.id);
+      if (!ok) {
+        notifySave('حذف تصویر ناموفق بود.', false);
+        return;
+      }
+      const now = new Date().toISOString();
+      await addActivity({
+        entityType: 'document',
+        entityId: img.id,
+        action: 'حذف',
+        summary: `حذف تصویر گلزار شهدا: ${img.caption || img.fileName}`,
+        deviceId,
+      });
+      await touchLastSaved(now);
+      await refresh();
+      notifySave('تصویر گلزار شهدا حذف شد.', true);
+    },
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const saveBudget = useCallback(
@@ -170,17 +347,23 @@ export function useAppStore() {
         updatedAt: now,
         updatedByDevice: deviceId,
       };
-      await putEntity('budgets', record);
+      const ok = await putEntity('budgets', record);
+      if (!ok) {
+        notifySave('ذخیره اطلاعات بودجه ناموفق بود.', false);
+        return;
+      }
       await addActivity({
         entityType: 'budget',
         entityId: record.id,
         action: 'ویرایش',
-        summary: `به‌روزرسانی اطلاعات بودجه و اعتبارات پروژه: ${projectTitle}`,
+        summary: `تغییر اطلاعات بودجه و اعتبارات پروژه: ${projectTitle}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('اطلاعات بودجه با موفقیت ذخیره شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const savePayment = useCallback(
@@ -192,7 +375,11 @@ export function useAppStore() {
         updatedAt: now,
         updatedByDevice: deviceId,
       };
-      await putEntity('payments', record);
+      const ok = await putEntity('payments', record);
+      if (!ok) {
+        notifySave('ثبت پرداخت در حافظه محلی ناموفق بود.', false);
+        return;
+      }
       await addActivity({
         entityType: 'payment',
         entityId: record.id,
@@ -200,14 +387,18 @@ export function useAppStore() {
         summary: `ثبت پرداخت (${record.voucherNumber || 'بدون شماره سند'}) برای پروژه ${projectTitle}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('سند پرداخت با موفقیت ثبت شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const deletePayment = useCallback(
     async (payment: PaymentRecord) => {
-      await deleteEntity('payments', payment.id);
+      const ok = await deleteEntity('payments', payment.id);
+      if (!ok) return;
+      const now = new Date().toISOString();
       await addActivity({
         entityType: 'payment',
         entityId: payment.id,
@@ -215,9 +406,11 @@ export function useAppStore() {
         summary: `حذف رکورد پرداخت ${payment.voucherNumber || payment.id}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('رکورد پرداخت حذف شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const saveProposal = useCallback(
@@ -229,7 +422,8 @@ export function useAppStore() {
         updatedAt: now,
         updatedByDevice: deviceId,
       };
-      await putEntity('proposals', record);
+      const ok = await putEntity('proposals', record);
+      if (!ok) return;
       await addActivity({
         entityType: 'proposal',
         entityId: record.id,
@@ -237,14 +431,18 @@ export function useAppStore() {
         summary: `${isNew ? 'ثبت پیشنهاد بودجه' : 'ویرایش پیشنهاد بودجه'}: ${record.title}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('پیشنهاد بودجه ذخیره شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const deleteProposal = useCallback(
     async (proposal: BudgetProposal) => {
-      await deleteEntity('proposals', proposal.id);
+      const ok = await deleteEntity('proposals', proposal.id);
+      if (!ok) return;
+      const now = new Date().toISOString();
       await addActivity({
         entityType: 'proposal',
         entityId: proposal.id,
@@ -252,9 +450,11 @@ export function useAppStore() {
         summary: `حذف پیشنهاد بودجه: ${proposal.title}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('پیشنهاد بودجه حذف شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const saveAction = useCallback(
@@ -266,7 +466,11 @@ export function useAppStore() {
         updatedAt: now,
         updatedByDevice: deviceId,
       };
-      await putEntity('actions', record);
+      const ok = await putEntity('actions', record);
+      if (!ok) {
+        notifySave('ثبت اقدام ناموفق بود.', false);
+        return;
+      }
       await addActivity({
         entityType: 'action',
         entityId: record.id,
@@ -274,14 +478,18 @@ export function useAppStore() {
         summary: `${isNew ? 'ثبت اقدام جدید' : 'به‌روزرسانی اقدام'}: ${record.title}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave(isNew ? 'اقدام جدید با موفقیت ثبت شد.' : 'تغییرات اقدام ذخیره شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const deleteAction = useCallback(
     async (action: ActionItem) => {
-      await deleteEntity('actions', action.id);
+      const ok = await deleteEntity('actions', action.id);
+      if (!ok) return;
+      const now = new Date().toISOString();
       await addActivity({
         entityType: 'action',
         entityId: action.id,
@@ -289,9 +497,11 @@ export function useAppStore() {
         summary: `حذف اقدام: ${action.title}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('اقدام حذف شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const saveDocument = useCallback(
@@ -303,22 +513,30 @@ export function useAppStore() {
         updatedAt: now,
         updatedByDevice: deviceId,
       };
-      await putEntity('documents', record);
+      const ok = await putEntity('documents', record);
+      if (!ok) {
+        notifySave('ذخیره سند ناموفق بود.', false);
+        return;
+      }
       await addActivity({
         entityType: 'document',
         entityId: record.id,
         action: isNew ? 'ثبت' : 'ویرایش',
-        summary: `${isNew ? 'ثبت سند' : 'ویرایش سند'} (${record.category}): ${record.subject}`,
+        summary: `${isNew ? 'ثبت' : 'اصلاح'} ${record.category}: ${record.subject}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave(`${record.category} با موفقیت ذخیره شد.`, true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const deleteDocument = useCallback(
     async (doc: DocumentItem) => {
-      await deleteEntity('documents', doc.id);
+      const ok = await deleteEntity('documents', doc.id);
+      if (!ok) return;
+      const now = new Date().toISOString();
       await addActivity({
         entityType: 'document',
         entityId: doc.id,
@@ -326,9 +544,11 @@ export function useAppStore() {
         summary: `حذف سند: ${doc.subject}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('سند حذف شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const addAttachment = useCallback(
@@ -346,23 +566,31 @@ export function useAppStore() {
         updatedAt: now,
         updatedByDevice: deviceId,
       };
-      await putEntity('attachments', record);
+      const ok = await putEntity('attachments', record);
+      if (!ok) {
+        notifySave('ذخیره فایل پیوست ناموفق بود.', false);
+        throw new Error('Attachment save failed');
+      }
       await addActivity({
         entityType: 'document',
         entityId: record.id,
         action: 'ثبت',
-        summary: `ذخیره فایل پیوست محلی: ${file.name}`,
+        summary: `ذخیره پیوست محلی: ${file.name}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('فایل پیوست در حافظه محلی ذخیره شد.', true);
       return record;
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const deleteAttachment = useCallback(
     async (att: AttachmentRecord) => {
-      await deleteEntity('attachments', att.id);
+      const ok = await deleteEntity('attachments', att.id);
+      if (!ok) return;
+      const now = new Date().toISOString();
       await addActivity({
         entityType: 'document',
         entityId: att.id,
@@ -370,9 +598,11 @@ export function useAppStore() {
         summary: `حذف پیوست: ${att.fileName}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('پیوست حذف شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const savePerson = useCallback(
@@ -384,17 +614,20 @@ export function useAppStore() {
         updatedAt: now,
         updatedByDevice: deviceId,
       };
-      await putEntity('people', record);
+      const ok = await putEntity('people', record);
+      if (!ok) return;
       await addActivity({
         entityType: 'person',
         entityId: record.id,
         action: isNew ? 'ثبت' : 'ویرایش',
-        summary: `${isNew ? 'افزودن شخص' : 'ویرایش مشخصات شخص'}: ${record.fullName} (${record.roleTitle})`,
+        summary: `${isNew ? 'افزودن شخص' : 'ویرایش شخص'}: ${record.fullName} (${record.roleTitle})`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('اطلاعات شخص ذخیره شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const saveFormTemplate = useCallback(
@@ -406,7 +639,8 @@ export function useAppStore() {
         updatedAt: now,
         updatedByDevice: deviceId,
       };
-      await putEntity('formTemplates', record);
+      const ok = await putEntity('formTemplates', record);
+      if (!ok) return;
       await addActivity({
         entityType: 'form',
         entityId: record.id,
@@ -414,14 +648,18 @@ export function useAppStore() {
         summary: `${isNew ? 'ایجاد قالب فرم' : 'ثبت نسخه جدید فرم'}: ${record.title} (نسخه ${record.version})`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('قالب فرم ذخیره شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const deleteFormTemplate = useCallback(
     async (template: FormTemplate) => {
-      await deleteEntity('formTemplates', template.id);
+      const ok = await deleteEntity('formTemplates', template.id);
+      if (!ok) return;
+      const now = new Date().toISOString();
       await addActivity({
         entityType: 'form',
         entityId: template.id,
@@ -429,9 +667,11 @@ export function useAppStore() {
         summary: `حذف قالب فرم: ${template.title}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('قالب فرم حذف شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const saveFormSubmission = useCallback(
@@ -443,22 +683,27 @@ export function useAppStore() {
         updatedAt: now,
         updatedByDevice: deviceId,
       };
-      await putEntity('formSubmissions', record);
+      const ok = await putEntity('formSubmissions', record);
+      if (!ok) return;
       await addActivity({
         entityType: 'form',
         entityId: record.id,
         action: isNew ? 'ثبت' : 'ویرایش',
-        summary: `${isNew ? 'تکمیل فرم سازمانی' : 'ویرایش فرم تکمیل‌شده'}: ${record.templateTitle}`,
+        summary: `${isNew ? 'ثبت فرم' : 'اصلاح فرم'}: ${record.templateTitle}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('فرم تکمیل‌شده با موفقیت ذخیره شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const deleteFormSubmission = useCallback(
     async (submission: FormSubmission) => {
-      await deleteEntity('formSubmissions', submission.id);
+      const ok = await deleteEntity('formSubmissions', submission.id);
+      if (!ok) return;
+      const now = new Date().toISOString();
       await addActivity({
         entityType: 'form',
         entityId: submission.id,
@@ -466,21 +711,42 @@ export function useAppStore() {
         summary: `حذف فرم تکمیل‌شده: ${submission.templateTitle}`,
         deviceId,
       });
+      await touchLastSaved(now);
       await refresh();
+      notifySave('فرم حذف شد.', true);
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh, touchLastSaved]
   );
 
   const saveSettings = useCallback(
     async (next: AppSettings) => {
+      const now = new Date().toISOString();
       const updated: AppSettings = {
         ...next,
-        updatedAt: new Date().toISOString(),
+        lastSavedAt: now,
+        updatedAt: now,
       };
-      await putEntity('settings', updated);
+      const ok = await putEntity('settings', updated);
       await refresh();
+      if (ok) notifySave('تنظیمات در حافظه محلی ذخیره شد.', true);
     },
-    [refresh]
+    [notifySave, refresh]
+  );
+
+  const recordImportActivity = useCallback(
+    async (summary: string) => {
+      const now = new Date().toISOString();
+      await addActivity({
+        entityType: 'sync',
+        entityId: generateId('jsonimp'),
+        action: 'همگام‌سازی',
+        summary,
+        deviceId,
+      });
+      await touchLastSaved(now);
+      notifySave('اطلاعات تأییدشده از فایل JSON در دستگاه ذخیره شد.', true);
+    },
+    [deviceId, notifySave, touchLastSaved]
   );
 
   const loadSampleDataNow = useCallback(async () => {
@@ -498,9 +764,10 @@ export function useAppStore() {
     async (snapshotId: string) => {
       const ok = await restoreFromSnapshot(snapshotId, deviceId);
       await refresh();
+      if (ok) notifySave('بازگشت به وضعیت قبلی با موفقیت انجام شد.', true);
       return ok;
     },
-    [deviceId, refresh]
+    [deviceId, notifySave, refresh]
   );
 
   const hasSampleData =
@@ -510,10 +777,18 @@ export function useAppStore() {
 
   return {
     ...state,
+    toast,
+    dismissToast: () => setToast(null),
+    hasUnsavedChanges,
+    setHasUnsavedChanges,
     hasSampleData,
     refresh,
     saveProject,
     deleteProject,
+    saveProjectImage,
+    deleteProjectImage,
+    saveGolzarImage,
+    deleteGolzarImage,
     saveBudget,
     savePayment,
     deletePayment,
@@ -531,6 +806,7 @@ export function useAppStore() {
     saveFormSubmission,
     deleteFormSubmission,
     saveSettings,
+    recordImportActivity,
     loadSampleDataNow,
     removeSampleDataNow,
     rollbackToSnapshot,

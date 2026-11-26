@@ -8,16 +8,19 @@ import {
   DocumentItem,
   FormSubmission,
   FormTemplate,
+  GolzarImageRecord,
   PaymentRecord,
   Person,
   Project,
   ProjectBudget,
+  ProjectImageRecord,
   SyncEntityStore,
 } from '../types';
 import {
   createDefaultSettings,
   createReferenceFormTemplates,
   createSampleDataset,
+  DEFAULT_APPEARANCE,
 } from './seedData';
 import { generateId } from '../utils/format';
 
@@ -36,6 +39,8 @@ export interface RollbackSnapshot {
     formTemplates: FormTemplate[];
     formSubmissions: FormSubmission[];
     attachments: AttachmentRecord[];
+    golzarImages?: GolzarImageRecord[];
+    projectImages?: ProjectImageRecord[];
   };
 }
 
@@ -50,13 +55,15 @@ interface DaftarFaniDB extends DBSchema {
   people: { key: string; value: Person };
   formTemplates: { key: string; value: FormTemplate };
   formSubmissions: { key: string; value: FormSubmission };
+  golzarImages: { key: string; value: GolzarImageRecord };
+  projectImages: { key: string; value: ProjectImageRecord };
   activities: { key: string; value: ActivityLog };
   settings: { key: string; value: AppSettings };
   snapshots: { key: string; value: RollbackSnapshot };
 }
 
 const DB_NAME = 'daftar-fani-golzar-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<DaftarFaniDB>> | null = null;
 
@@ -75,6 +82,8 @@ export function getDB(): Promise<IDBPDatabase<DaftarFaniDB>> {
           'people',
           'formTemplates',
           'formSubmissions',
+          'golzarImages',
+          'projectImages',
           'activities',
           'settings',
           'snapshots',
@@ -96,6 +105,13 @@ export async function initializeDatabase(): Promise<AppSettings> {
   if (!settings) {
     settings = createDefaultSettings();
     await db.put('settings', settings);
+  } else if (!settings.appearance) {
+    settings = {
+      ...settings,
+      appVersion: settings.appVersion || '1.2.0',
+      appearance: { ...DEFAULT_APPEARANCE },
+    };
+    await db.put('settings', settings);
   }
 
   // Ensure the two distinct reference organizational forms exist (Section 12)
@@ -108,7 +124,15 @@ export async function initializeDatabase(): Promise<AppSettings> {
     }
   }
 
-  // Seed clearly-labeled sample dataset once on first run so all modules are immediately testable
+  // Clean up any legacy sample initialization activity logs so «آخرین تغییرات» contains ONLY real user events
+  const allActivities = await db.getAll('activities');
+  for (const log of allActivities) {
+    if (log.entityId === 'sample_init') {
+      await db.delete('activities', log.id);
+    }
+  }
+
+  // Seed clearly-labeled sample dataset once on first run if empty (WITHOUT injecting fake activity logs)
   if (!settings.sampleDataInitialized) {
     const existingProjects = await db.getAll('projects');
     if (existingProjects.length === 0) {
@@ -139,7 +163,6 @@ export async function seedSampleRecords(deviceId: string): Promise<void> {
       'documents',
       'people',
       'formSubmissions',
-      'activities',
     ],
     'readwrite'
   );
@@ -152,16 +175,6 @@ export async function seedSampleRecords(deviceId: string): Promise<void> {
   for (const doc of sample.documents) await tx.objectStore('documents').put(doc);
   for (const per of sample.people) await tx.objectStore('people').put(per);
   for (const sub of sample.formSubmissions) await tx.objectStore('formSubmissions').put(sub);
-
-  await tx.objectStore('activities').put({
-    id: generateId('actlog'),
-    timestamp: new Date().toISOString(),
-    entityType: 'project',
-    entityId: 'sample_init',
-    action: 'ثبت',
-    summary: 'بارگذاری داده‌های آزمایشی نمونه جهت ارزیابی نرم‌افزار (غیرسازمانی)',
-    deviceId,
-  });
 
   await tx.done;
 }
@@ -196,7 +209,7 @@ export async function clearSampleRecords(deviceId: string): Promise<number> {
     entityType: 'backup',
     entityId: 'sample_clear',
     action: 'حذف',
-    summary: `حذف ${removed} رکورد آزمایشی نمونه (اطلاعات ثبت‌شده کاربر حفظ شدند)`,
+    summary: `حذف ${removed} رکورد آزمایشی نمونه`,
     deviceId,
   });
 
@@ -229,6 +242,8 @@ export async function loadAllData() {
     people,
     formTemplates,
     formSubmissions,
+    golzarImages,
+    projectImages,
     activities,
     settings,
     snapshots,
@@ -243,6 +258,8 @@ export async function loadAllData() {
     db.getAll('people'),
     db.getAll('formTemplates'),
     db.getAll('formSubmissions'),
+    db.getAll('golzarImages'),
+    db.getAll('projectImages'),
     db.getAll('activities'),
     db.get('settings', 'app-settings'),
     db.getAll('snapshots'),
@@ -250,6 +267,7 @@ export async function loadAllData() {
 
   activities.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
   snapshots.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  golzarImages.sort((a, b) => a.order - b.order);
 
   return {
     projects,
@@ -262,7 +280,9 @@ export async function loadAllData() {
     people,
     formTemplates,
     formSubmissions,
-    activities: activities.slice(0, 120),
+    golzarImages,
+    projectImages,
+    activities: activities.slice(0, 150),
     settings: settings ?? createDefaultSettings(),
     snapshots,
   };
@@ -271,17 +291,22 @@ export async function loadAllData() {
 export async function putEntity<K extends StoreNames<DaftarFaniDB>>(
   store: K,
   value: DaftarFaniDB[K]['value']
-): Promise<void> {
+): Promise<boolean> {
   const db = await getDB();
   await db.put(store, value);
+  const key = (value as { id: string }).id;
+  const verified = await db.get(store, key);
+  return Boolean(verified);
 }
 
 export async function deleteEntity<K extends StoreNames<DaftarFaniDB>>(
   store: K,
   id: string
-): Promise<void> {
+): Promise<boolean> {
   const db = await getDB();
   await db.delete(store, id);
+  const check = await db.get(store, id);
+  return !check;
 }
 
 export async function createRollbackSnapshot(reason: string): Promise<RollbackSnapshot> {
@@ -297,6 +322,8 @@ export async function createRollbackSnapshot(reason: string): Promise<RollbackSn
     formTemplates,
     formSubmissions,
     attachments,
+    golzarImages,
+    projectImages,
   ] = await Promise.all([
     db.getAll('projects'),
     db.getAll('budgets'),
@@ -308,6 +335,8 @@ export async function createRollbackSnapshot(reason: string): Promise<RollbackSn
     db.getAll('formTemplates'),
     db.getAll('formSubmissions'),
     db.getAll('attachments'),
+    db.getAll('golzarImages'),
+    db.getAll('projectImages'),
   ]);
 
   const snapshot: RollbackSnapshot = {
@@ -325,12 +354,13 @@ export async function createRollbackSnapshot(reason: string): Promise<RollbackSn
       formTemplates,
       formSubmissions,
       attachments,
+      golzarImages,
+      projectImages,
     },
   };
 
   await db.put('snapshots', snapshot);
 
-  // Keep only last 5 rollback snapshots to keep local storage lightweight
   const allSnaps = await db.getAll('snapshots');
   allSnaps.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   for (const old of allSnaps.slice(5)) {
@@ -356,13 +386,15 @@ export async function restoreFromSnapshot(snapshotId: string, deviceId: string):
     'formTemplates',
     'formSubmissions',
     'attachments',
+    'golzarImages',
+    'projectImages',
   ];
 
   const tx = db.transaction(stores, 'readwrite');
   for (const storeName of stores) {
     const store = tx.objectStore(storeName);
     await store.clear();
-    const items = snap.data[storeName];
+    const items = snap.data[storeName] ?? [];
     for (const item of items) {
       await store.put(item as never);
     }
@@ -385,7 +417,6 @@ export async function replaceAllDataFromBackup(
   deviceId: string,
   reason = 'پیش از بازیابی نسخه پشتیبان'
 ): Promise<RollbackSnapshot> {
-  // Always snapshot current state first so user can roll back (Section 14)
   const preSnap = await createRollbackSnapshot(reason);
 
   const db = await getDB();
@@ -400,6 +431,8 @@ export async function replaceAllDataFromBackup(
     'formTemplates',
     'formSubmissions',
     'attachments',
+    'golzarImages',
+    'projectImages',
   ];
 
   const tx = db.transaction(stores, 'readwrite');
@@ -417,7 +450,7 @@ export async function replaceAllDataFromBackup(
     entityType: 'backup',
     entityId: preSnap.id,
     action: 'بازیابی',
-    summary: 'بازیابی نسخه پشتیبان کامل انجام شد (نسخه بازگشت قبلی ذخیره شد)',
+    summary: 'بازیابی نسخه پشتیبان کامل انجام شد',
     deviceId,
   });
 

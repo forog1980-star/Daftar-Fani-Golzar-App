@@ -175,7 +175,7 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
               onClick={() => setViewMode('templates')}
               className={`px-3.5 py-1.5 text-xs font-medium cursor-pointer ${
                 viewMode === 'templates'
-                  ? 'border border-[#2D5A63] bg-[#E5EFF0] text-[#2D5A63]'
+                  ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
                   : 'border border-transparent text-[#5B6268] hover:bg-[#F3EFE6]'
               }`}
             >
@@ -186,7 +186,7 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
               onClick={() => setViewMode('submissions')}
               className={`px-3.5 py-1.5 text-xs font-medium cursor-pointer ${
                 viewMode === 'submissions'
-                  ? 'border border-[#2D5A63] bg-[#E5EFF0] text-[#2D5A63]'
+                  ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
                   : 'border border-transparent text-[#5B6268] hover:bg-[#F3EFE6]'
               }`}
             >
@@ -195,7 +195,7 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex items-center gap-1.5 border border-[#2D5A63] bg-[#2D5A63] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#234850] cursor-pointer">
+            <label className="inline-flex items-center gap-1.5 border border-[#243B5A] bg-[#243B5A] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer">
               <FileUp className="h-3.5 w-3.5" />
               <span>ورود الگوی Word یا Excel</span>
               <input
@@ -258,7 +258,7 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
                 <button
                   type="button"
                   onClick={() => setFillingTarget({ template: tpl, submission: null })}
-                  className="inline-flex items-center gap-1.5 border border-[#2D5A63] bg-[#2D5A63] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#234850] cursor-pointer"
+                  className="inline-flex items-center gap-1.5 border border-[#243B5A] bg-[#243B5A] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
                 >
                   <FileText className="h-3.5 w-3.5" />
                   <span>تکمیل فرم</span>
@@ -325,7 +325,7 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
                         <div className="text-[11px]">نسخه {toPersianDigits(sub.templateVersion)}</div>
                       </td>
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
-                        <div className="font-medium text-[#2D5A63]">{sub.status}</div>
+                        <div className="font-medium text-[#243B5A]">{sub.status}</div>
                         <div className="text-[11px] text-[#7C8287]">
                           {toPersianDigits(confirmedSigs)} امضای تأییدشده از{' '}
                           {toPersianDigits(sub.signatures.length)}
@@ -350,7 +350,7 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
                                 `form-${sub.submissionNumber || sub.id}`
                               )
                             }
-                            className="inline-flex items-center gap-1 border border-[#D4CEBF] bg-[#FFFFFF] px-2 py-1 text-xs text-[#2D5A63] hover:bg-[#E5EFF0] cursor-pointer"
+                            className="inline-flex items-center gap-1 border border-[#D4CEBF] bg-[#FFFFFF] px-2 py-1 text-xs text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
                             title="خروجی Word (فونت Zar 14)"
                           >
                             <Download className="h-3 w-3" />
@@ -594,7 +594,7 @@ const TemplateEditorWindow: React.FC<{
               type="checkbox"
               checked={saveAsNewVersion}
               onChange={(e) => setSaveAsNewVersion(e.target.checked)}
-              className="h-4 w-4 accent-[#2D5A63]"
+              className="h-4 w-4 accent-[#243B5A]"
             />
             <span>
               ذخیره به‌عنوان نسخه جدید (نسخه {toPersianDigits(initial.version + 1)}) تا نسخه قبلی و سوابق آن حفظ شوند
@@ -604,7 +604,7 @@ const TemplateEditorWindow: React.FC<{
 
         <div className="space-y-2 border-t border-[#E2DDD0] pt-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-[#2D5A63]">
+            <span className="text-xs font-semibold text-[#243B5A]">
               ساختار و ترتیب بخش‌های فرم ({toPersianDigits(blocks.length)} مورد)
             </span>
             <div className="flex flex-wrap gap-1.5">
@@ -639,7 +639,7 @@ const TemplateEditorWindow: React.FC<{
                   <button
                     type="button"
                     onClick={() => moveBlock(idx, -1)}
-                    className="border border-[#D4CEBF] bg-[#FFFFFF] p-1 text-[#5B6268] hover:text-[#2D5A63] cursor-pointer"
+                    className="border border-[#D4CEBF] bg-[#FFFFFF] p-1 text-[#5B6268] hover:text-[#243B5A] cursor-pointer"
                     title="انتقال به بالا"
                   >
                     <ArrowUp className="h-3.5 w-3.5" />
@@ -647,7 +647,7 @@ const TemplateEditorWindow: React.FC<{
                   <button
                     type="button"
                     onClick={() => moveBlock(idx, 1)}
-                    className="border border-[#D4CEBF] bg-[#FFFFFF] p-1 text-[#5B6268] hover:text-[#2D5A63] cursor-pointer"
+                    className="border border-[#D4CEBF] bg-[#FFFFFF] p-1 text-[#5B6268] hover:text-[#243B5A] cursor-pointer"
                     title="انتقال به پایین"
                   >
                     <ArrowDown className="h-3.5 w-3.5" />
@@ -707,7 +707,7 @@ const TemplateEditorWindow: React.FC<{
           </button>
           <button
             type="submit"
-            className="border border-[#2D5A63] bg-[#2D5A63] px-5 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#234850]"
+            className="border border-[#243B5A] bg-[#243B5A] px-5 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73]"
           >
             ذخیره قالب فرم
           </button>
@@ -849,7 +849,7 @@ const FormFillerWindow: React.FC<{
               return (
                 <h4
                   key={blk.id}
-                  className="border-b border-[#E2DDD0] pb-1.5 pt-2 text-sm font-semibold text-[#2D5A63]"
+                  className="border-b border-[#E2DDD0] pb-1.5 pt-2 text-sm font-semibold text-[#243B5A]"
                 >
                   {blk.label}
                 </h4>
@@ -878,7 +878,7 @@ const FormFillerWindow: React.FC<{
                     <button
                       type="button"
                       onClick={() => addTableRow(blk.fieldKey!)}
-                      className="inline-flex items-center gap-1 border border-[#2D5A63] bg-[#FAF8F3] px-2.5 py-1 text-xs text-[#2D5A63] hover:bg-[#E5EFF0] cursor-pointer"
+                      className="inline-flex items-center gap-1 border border-[#243B5A] bg-[#FAF8F3] px-2.5 py-1 text-xs text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
                     >
                       <Plus className="h-3 w-3" />
                       <span>افزودن ردیف</span>
@@ -949,7 +949,7 @@ const FormFillerWindow: React.FC<{
                       type="checkbox"
                       checked={Boolean(val)}
                       onChange={(e) => setFieldValue(blk.fieldKey!, e.target.checked)}
-                      className="h-4 w-4 accent-[#2D5A63]"
+                      className="h-4 w-4 accent-[#243B5A]"
                     />
                     <span>{blk.label}</span>
                   </label>
@@ -1021,7 +1021,7 @@ const FormFillerWindow: React.FC<{
           </button>
           <button
             type="submit"
-            className="border border-[#2D5A63] bg-[#2D5A63] px-5 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#234850]"
+            className="border border-[#243B5A] bg-[#243B5A] px-5 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73]"
           >
             {isNew ? 'ثبت فرم تکمیل‌شده' : 'ذخیره تغییرات فرم'}
           </button>

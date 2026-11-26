@@ -183,7 +183,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
         </div>
         <div className="border border-[#E2DDD0] bg-[#FFFFFF] p-4">
           <div className="text-xs text-[#5B6268]">جمع تأمین اعتبار</div>
-          <div className="mt-2 text-base font-semibold tabular-nums text-[#2D5A63]">
+          <div className="mt-2 text-base font-semibold tabular-nums text-[#243B5A]">
             {formatRial(totals.funded)}
           </div>
         </div>
@@ -219,7 +219,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
               onClick={() => setSubTab(t.key)}
               className={`px-3.5 py-1.5 text-xs font-medium cursor-pointer ${
                 subTab === t.key
-                  ? 'border border-[#2D5A63] bg-[#E5EFF0] text-[#2D5A63]'
+                  ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
                   : 'border border-transparent text-[#5B6268] hover:bg-[#F3EFE6]'
               }`}
             >
@@ -236,7 +236,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
                 setPayProjectId(store.projects[0]?.id ?? '');
                 setPaymentModalOpen(true);
               }}
-              className="inline-flex items-center gap-1.5 border border-[#2D5A63] bg-[#2D5A63] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#234850] cursor-pointer"
+              className="inline-flex items-center gap-1.5 border border-[#243B5A] bg-[#243B5A] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>ثبت پرداخت جدید</span>
@@ -246,7 +246,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
             <button
               type="button"
               onClick={() => openProposalEditor(null)}
-              className="inline-flex items-center gap-1.5 border border-[#2D5A63] bg-[#2D5A63] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#234850] cursor-pointer"
+              className="inline-flex items-center gap-1.5 border border-[#243B5A] bg-[#243B5A] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
             >
               <Plus className="h-3.5 w-3.5" />
               <span>ثبت پیشنهاد بودجه سال آینده</span>
@@ -284,7 +284,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
                       <button
                         type="button"
                         onClick={() => onOpenProject(row.project)}
-                        className="text-right font-medium text-[#2B3033] hover:text-[#2D5A63] hover:underline cursor-pointer"
+                        className="text-right font-medium text-[#2B3033] hover:text-[#243B5A] hover:underline cursor-pointer"
                       >
                         {row.project.title}
                       </button>
@@ -298,7 +298,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
                     </td>
                     <td className="px-3 py-3 tabular-nums whitespace-nowrap">
                       <div>{formatRial(row.budget.allocatedCredit)}</div>
-                      <div className="text-[11px] text-[#2D5A63]">{formatRial(row.budget.fundedCredit)}</div>
+                      <div className="text-[11px] text-[#243B5A]">{formatRial(row.budget.fundedCredit)}</div>
                     </td>
                     <td className="px-3 py-3 tabular-nums whitespace-nowrap">
                       {formatRial(row.budget.committedAmount)}
@@ -330,7 +330,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
                         <button
                           type="button"
                           onClick={() => setEditingBudget({ project: row.project, budget: row.budget })}
-                          className="inline-flex items-center gap-1 border border-[#2D5A63] bg-[#FAF8F3] px-2.5 py-1 text-xs text-[#2D5A63] hover:bg-[#E5EFF0] cursor-pointer"
+                          className="inline-flex items-center gap-1 border border-[#243B5A] bg-[#FAF8F3] px-2.5 py-1 text-xs text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
                         >
                           <Edit2 className="h-3 w-3" />
                           <span>ویرایش مالی</span>
@@ -349,7 +349,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
                         <button
                           type="button"
                           onClick={() => onOpenProject(row.project)}
-                          className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] text-[#5B6268] hover:text-[#2D5A63] cursor-pointer"
+                          className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] text-[#5B6268] hover:text-[#243B5A] cursor-pointer"
                           title="گشودن پرونده پروژه"
                         >
                           <FolderOpen className="h-3.5 w-3.5" />
@@ -479,7 +479,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
                             ? 'text-[#B43E3E]'
                             : pr.priority === 'بالا'
                               ? 'text-[#A66B1C]'
-                              : 'text-[#2D5A63]'
+                              : 'text-[#243B5A]'
                         }
                       >
                         {pr.priority}
@@ -493,7 +493,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
                         <button
                           type="button"
                           onClick={() => openProposalEditor(pr)}
-                          className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] text-[#5B6268] hover:text-[#2D5A63] cursor-pointer"
+                          className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] text-[#5B6268] hover:text-[#243B5A] cursor-pointer"
                         >
                           <Edit2 className="h-3.5 w-3.5" />
                         </button>
@@ -612,7 +612,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
               </button>
               <button
                 type="submit"
-                className="border border-[#2D5A63] bg-[#2D5A63] px-4 py-2 text-xs text-[#FAF8F3]"
+                className="border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3]"
               >
                 ثبت پرداخت
               </button>
@@ -703,7 +703,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({ store, onOpenProject }) 
               </button>
               <button
                 type="submit"
-                className="border border-[#2D5A63] bg-[#2D5A63] px-4 py-2 text-xs text-[#FAF8F3]"
+                className="border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3]"
               >
                 ذخیره پیشنهاد
               </button>
@@ -831,7 +831,7 @@ const BudgetEditWindow: React.FC<{
           </button>
           <button
             type="submit"
-            className="border border-[#2D5A63] bg-[#2D5A63] px-4 py-2 text-xs text-[#FAF8F3]"
+            className="border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3]"
           >
             ذخیره اطلاعات مالی
           </button>

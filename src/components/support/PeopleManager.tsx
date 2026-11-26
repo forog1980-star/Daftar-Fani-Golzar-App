@@ -67,7 +67,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ store }) => {
         <button
           type="button"
           onClick={() => setEditing(null)}
-          className="inline-flex items-center gap-1.5 border border-[#2D5A63] bg-[#2D5A63] px-4 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#234850] cursor-pointer"
+          className="inline-flex items-center gap-1.5 border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
         >
           <Plus className="h-3.5 w-3.5" />
           <span>افزودن شخص جدید</span>
@@ -133,7 +133,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ store }) => {
                         <button
                           type="button"
                           onClick={() => setEditing(person)}
-                          className="inline-flex items-center gap-1 border border-[#D4CEBF] bg-[#FFFFFF] px-2.5 py-1 text-xs text-[#2B3033] hover:border-[#2D5A63] cursor-pointer"
+                          className="inline-flex items-center gap-1 border border-[#D4CEBF] bg-[#FFFFFF] px-2.5 py-1 text-xs text-[#2B3033] hover:border-[#243B5A] cursor-pointer"
                         >
                           <Edit2 className="h-3 w-3" />
                           <span>ویرایش</span>
@@ -141,7 +141,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ store }) => {
                         <button
                           type="button"
                           onClick={() => toggleActive(person)}
-                          className="inline-flex items-center gap-1 border border-[#D4CEBF] bg-[#FFFFFF] px-2.5 py-1 text-xs text-[#5B6268] hover:border-[#2D5A63] cursor-pointer"
+                          className="inline-flex items-center gap-1 border border-[#D4CEBF] bg-[#FFFFFF] px-2.5 py-1 text-xs text-[#5B6268] hover:border-[#243B5A] cursor-pointer"
                         >
                           {person.active ? (
                             <>
@@ -163,7 +163,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ store }) => {
                               setSuccessorRole(person.roleTitle);
                               setSuccessorDept(person.department);
                             }}
-                            className="inline-flex items-center gap-1 border border-[#2D5A63] bg-[#FAF8F3] px-2.5 py-1 text-xs text-[#2D5A63] hover:bg-[#E5EFF0] cursor-pointer"
+                            className="inline-flex items-center gap-1 border border-[#243B5A] bg-[#FAF8F3] px-2.5 py-1 text-xs text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
                           >
                             <RefreshCw className="h-3 w-3" />
                             <span>جایگزینی</span>
@@ -239,7 +239,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ store }) => {
               </button>
               <button
                 type="submit"
-                className="border border-[#2D5A63] bg-[#2D5A63] px-4 py-2 text-xs text-[#FAF8F3]"
+                className="border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3]"
               >
                 ثبت جایگزینی
               </button>
@@ -448,7 +448,7 @@ const PersonEditorWindow: React.FC<{
           </button>
           <button
             type="submit"
-            className="border border-[#2D5A63] bg-[#2D5A63] px-5 py-2 text-xs text-[#FAF8F3]"
+            className="border border-[#243B5A] bg-[#243B5A] px-5 py-2 text-xs text-[#FAF8F3]"
           >
             {isNew ? 'افزودن شخص' : 'ذخیره تغییرات'}
           </button>

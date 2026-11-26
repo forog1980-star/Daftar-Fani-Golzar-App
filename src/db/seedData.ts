@@ -97,11 +97,20 @@ export function buildStagesForProjectType(
   }));
 }
 
+export const DEFAULT_APPEARANCE = {
+  primaryColor: '#243B5A',
+  headerColor: '#354F73',
+  cardSurface: '#F2EEE6',
+  radiusPx: 12,
+};
+
 export function createDefaultSettings(): AppSettings {
   return {
     id: 'app-settings',
     deviceId: getOrCreateDeviceId(),
     deviceName: getDefaultDeviceName(),
+    appVersion: '1.2.0',
+    appearance: { ...DEFAULT_APPEARANCE },
     auth: {
       enabled: false, // Strictly disabled by default per Section 16
       testUsername: '000',

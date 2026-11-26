@@ -127,7 +127,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
               placeholder="مثال: بهسازی و روشنایی قطعه ۱۶"
             />
           </div>
@@ -137,7 +137,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               type="text"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
             />
           </div>
         </div>
@@ -148,7 +148,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
             <select
               value={type}
               onChange={(e) => setType(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
             >
               {availableTypes.map((t) => (
                 <option key={t} value={t}>
@@ -162,7 +162,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
             >
               {PROJECT_STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -181,7 +181,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               max={100}
               value={physicalProgress}
               onChange={(e) => setPhysicalProgress(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
             />
           </div>
         </div>
@@ -193,7 +193,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               type="text"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
             />
           </div>
           <div>
@@ -204,7 +204,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               type="text"
               value={responsibleDepartment}
               onChange={(e) => setResponsibleDepartment(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
             />
           </div>
         </div>
@@ -216,7 +216,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               type="text"
               value={client}
               onChange={(e) => setClient(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
             />
           </div>
           <div>
@@ -225,13 +225,13 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               type="text"
               value={contractor}
               onChange={(e) => setContractor(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
             />
           </div>
         </div>
 
         <div className="border-t border-[#E2DDD0] pt-4">
-          <div className="mb-3 text-xs font-semibold text-[#2D5A63]">اطلاعات قرارداد و ابلاغ</div>
+          <div className="mb-3 text-xs font-semibold text-[#243B5A]">اطلاعات قرارداد و ابلاغ</div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs font-medium text-[#5B6268]">شماره قرارداد</label>
@@ -239,7 +239,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 type="text"
                 value={contractNumber}
                 onChange={(e) => setContractNumber(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
               />
             </div>
             <div>
@@ -248,7 +248,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 type="date"
                 value={contractDate}
                 onChange={(e) => setContractDate(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
               />
             </div>
             <div>
@@ -260,7 +260,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 min={0}
                 value={contractAmount}
                 onChange={(e) => setContractAmount(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
               />
             </div>
           </div>
@@ -273,7 +273,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 value={contractDuration}
                 onChange={(e) => setContractDuration(e.target.value)}
                 placeholder="مثال: ۶ ماه شمسی"
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
               />
             </div>
             <div>
@@ -282,14 +282,14 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 type="date"
                 value={notificationDate}
                 onChange={(e) => setNotificationDate(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
               />
             </div>
           </div>
         </div>
 
         <div className="border-t border-[#E2DDD0] pt-4">
-          <div className="mb-3 text-xs font-semibold text-[#2D5A63]">
+          <div className="mb-3 text-xs font-semibold text-[#243B5A]">
             اطلاعات دستور ابلاغ مدیرعامل
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -301,7 +301,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 type="text"
                 value={ceoOrderNumber}
                 onChange={(e) => setCeoOrderNumber(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
               />
             </div>
             <div>
@@ -312,7 +312,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 type="date"
                 value={ceoOrderDate}
                 onChange={(e) => setCeoOrderDate(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
               />
             </div>
             <div>
@@ -323,7 +323,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 type="text"
                 value={ceoOrderNotes}
                 onChange={(e) => setCeoOrderNotes(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
               />
             </div>
           </div>
@@ -335,7 +335,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
             rows={3}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+            className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
           />
         </div>
 
@@ -350,7 +350,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
           <button
             type="submit"
             disabled={saving}
-            className="border border-[#2D5A63] bg-[#2D5A63] px-5 py-2 text-sm font-medium text-[#FAF8F3] hover:bg-[#234850] disabled:opacity-60 cursor-pointer"
+            className="border border-[#243B5A] bg-[#243B5A] px-5 py-2 text-sm font-medium text-[#FAF8F3] hover:bg-[#354F73] disabled:opacity-60 cursor-pointer"
           >
             {saving ? 'در حال ذخیره...' : isNew ? 'ثبت پروژه' : 'ذخیره تغییرات'}
           </button>

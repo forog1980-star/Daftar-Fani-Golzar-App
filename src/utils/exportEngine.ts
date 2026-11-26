@@ -122,7 +122,7 @@ export async function exportToWordDocx(payload: ExportTablePayload, fileName: st
       bidirectional: true,
       alignment: AlignmentType.RIGHT,
       spacing: { before: 120, after: 140 },
-      children: [rtlTextRun(payload.title, { bold: true, size: ZAR_16PT, color: '2D5A63' })],
+      children: [rtlTextRun(payload.title, { bold: true, size: ZAR_16PT, color: '243B5A' })],
     })
   );
 
@@ -616,7 +616,7 @@ export function exportToPdfPrint(payload: ExportTablePayload): void {
     }
     .letterhead {
       text-align: center;
-      border-bottom: 1.5px solid #2D5A63;
+      border-bottom: 1.5px solid #243B5A;
       padding-bottom: 10px;
       margin-bottom: 14px;
     }
@@ -630,7 +630,7 @@ export function exportToPdfPrint(payload: ExportTablePayload): void {
       color: #5B6268;
       margin-bottom: 12px;
     }
-    .doc-title { font-size: 15pt; font-weight: bold; color: #2D5A63; margin: 8px 0 12px; }
+    .doc-title { font-size: 15pt; font-weight: bold; color: #243B5A; margin: 8px 0 12px; }
     table {
       width: 100%;
       border-collapse: collapse;

@@ -64,7 +64,7 @@ export const SignatureBlockEditor: React.FC<SignatureBlockEditorProps> = ({
         <button
           type="button"
           onClick={addSlot}
-          className="inline-flex items-center gap-1 border border-[#2D5A63] bg-[#FFFFFF] px-3 py-1.5 text-xs font-medium text-[#2D5A63] hover:bg-[#E5EFF0] cursor-pointer"
+          className="inline-flex items-center gap-1 border border-[#243B5A] bg-[#FFFFFF] px-3 py-1.5 text-xs font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
         >
           <Plus className="h-3.5 w-3.5" />
           <span>افزودن ردیف امضاکننده</span>
@@ -80,7 +80,7 @@ export const SignatureBlockEditor: React.FC<SignatureBlockEditorProps> = ({
           {signatures.map((sig, idx) => (
             <div key={sig.id} className="border border-[#E2DDD0] bg-[#FFFFFF] p-3.5 space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-[#2D5A63]">
+                <span className="text-xs font-semibold text-[#243B5A]">
                   امضاکننده شماره {idx + 1}
                 </span>
                 <button
@@ -161,7 +161,7 @@ export const SignatureBlockEditor: React.FC<SignatureBlockEditorProps> = ({
                     type="checkbox"
                     checked={sig.isSignedConfirmed}
                     onChange={(e) => updateSlot(sig.id, { isSignedConfirmed: e.target.checked })}
-                    className="h-4 w-4 accent-[#2D5A63]"
+                    className="h-4 w-4 accent-[#243B5A]"
                   />
                   <span>
                     امضا و تأیید رسمی این شخص انجام شده است (درج نام به‌تنهایی امضا محسوب نمی‌شود)

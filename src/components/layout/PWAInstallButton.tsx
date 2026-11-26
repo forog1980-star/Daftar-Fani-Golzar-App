@@ -19,7 +19,7 @@ export const PWAInstallButton: React.FC<{ compact?: boolean }> = ({ compact = fa
       <button
         type="button"
         onClick={install}
-        className="inline-flex items-center gap-2 border border-[#2D5A63] bg-[#2D5A63] px-4 py-2 text-sm font-medium text-[#FAF8F3] transition-colors hover:bg-[#234850] whitespace-nowrap shrink-0 cursor-pointer"
+        className="inline-flex items-center gap-2 border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-sm font-medium text-[#FAF8F3] transition-colors hover:bg-[#354F73] whitespace-nowrap shrink-0 cursor-pointer"
       >
         <Download className="h-4 w-4" />
         <span>نصب نرم‌افزار روی دستگاه</span>
@@ -35,7 +35,7 @@ export const PWAInstallButton: React.FC<{ compact?: boolean }> = ({ compact = fa
           onClick={() => setShowGuide(true)}
           className="inline-flex items-center gap-2 border border-[#CEC7B6] bg-[#FFFFFF] px-4 py-2 text-sm font-medium text-[#2B3033] transition-colors hover:bg-[#F3EFE6] whitespace-nowrap shrink-0 cursor-pointer"
         >
-          <Smartphone className="h-4 w-4 text-[#2D5A63]" />
+          <Smartphone className="h-4 w-4 text-[#243B5A]" />
           <span>{isIOS ? 'راهنمای نصب روی iOS' : 'راهنمای نصب PWA'}</span>
         </button>
 
@@ -65,7 +65,7 @@ export const PWAInstallButton: React.FC<{ compact?: boolean }> = ({ compact = fa
                 <button
                   type="button"
                   onClick={() => setShowGuide(false)}
-                  className="border border-[#2D5A63] bg-[#2D5A63] px-4 py-2 text-sm font-medium text-[#FAF8F3] hover:bg-[#234850] cursor-pointer"
+                  className="border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-sm font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
                 >
                   بستن
                 </button>

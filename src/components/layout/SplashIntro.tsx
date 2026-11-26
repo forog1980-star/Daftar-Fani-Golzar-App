@@ -18,7 +18,7 @@ export const SplashIntro: React.FC<SplashIntroProps> = ({ onComplete }) => {
       aria-label="صفحه آغازین دفتر فنی اداره گلزار شهدا"
     >
       <div
-        className="animate-splash-r select-none text-[120px] font-semibold leading-none tracking-tight text-[#2D5A63]"
+        className="animate-splash-r select-none text-[120px] font-semibold leading-none tracking-tight text-[#243B5A]"
         dir="ltr"
       >
         R

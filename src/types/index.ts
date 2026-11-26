@@ -284,6 +284,38 @@ export interface ActivityLog {
   deviceId: string;
 }
 
+export interface GolzarImageRecord {
+  id: string;
+  fileName: string;
+  caption: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataUrl: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+  updatedByDevice: string;
+}
+
+export interface ProjectImageRecord {
+  id: string; // Strictly tied to projectId (`pimg_${projectId}`)
+  projectId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataUrl: string;
+  createdAt: string;
+  updatedAt: string;
+  updatedByDevice: string;
+}
+
+export interface AppearanceConfig {
+  primaryColor: string; // Default #243B5A
+  headerColor: string; // Default #354F73
+  cardSurface: string; // Default #F2EEE6
+  radiusPx: number; // Default 12 (8 / 12 / 16)
+}
+
 export interface LetterheadConfig {
   organizationName: string;
   unitName: string;
@@ -296,6 +328,9 @@ export interface AppSettings {
   id: 'app-settings';
   deviceId: string;
   deviceName: string;
+  appVersion?: string;
+  officialLogoDataUrl?: string;
+  appearance?: AppearanceConfig;
   auth: {
     enabled: boolean; // Defaults strictly to false per Section 16
     testUsername: string; // '000' strictly for internal testing
@@ -306,6 +341,7 @@ export interface AppSettings {
   sampleDataInitialized: boolean;
   lastBackupAt?: string;
   lastSyncAt?: string;
+  lastSavedAt?: string;
   updatedAt: string;
 }
 
@@ -339,6 +375,9 @@ export interface SyncPackage {
   sourceDeviceId: string;
   sourceDeviceName: string;
   records: Record<SyncEntityStore, Record<string, unknown>[]>;
+  golzarImages?: GolzarImageRecord[];
+  projectImages?: ProjectImageRecord[];
+  officialLogoDataUrl?: string;
   attachmentsMeta: Array<{
     id: string;
     fileName: string;

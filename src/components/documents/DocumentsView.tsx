@@ -89,7 +89,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
             onClick={() => setSectionTab('archive')}
             className={`px-4 py-2 text-xs font-medium cursor-pointer ${
               sectionTab === 'archive'
-                ? 'border border-[#2D5A63] bg-[#E5EFF0] text-[#2D5A63]'
+                ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
                 : 'border border-transparent text-[#5B6268] hover:bg-[#F3EFE6]'
             }`}
           >
@@ -100,7 +100,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
             onClick={() => setSectionTab('forms')}
             className={`px-4 py-2 text-xs font-medium cursor-pointer ${
               sectionTab === 'forms'
-                ? 'border border-[#2D5A63] bg-[#E5EFF0] text-[#2D5A63]'
+                ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
                 : 'border border-transparent text-[#5B6268] hover:bg-[#F3EFE6]'
             }`}
           >
@@ -112,7 +112,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
           <button
             type="button"
             onClick={() => setEditingDoc(null)}
-            className="inline-flex items-center gap-1.5 border border-[#2D5A63] bg-[#2D5A63] px-4 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#234850] cursor-pointer"
+            className="inline-flex items-center gap-1.5 border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
             <span>ثبت سند یا مکاتبه جدید</span>
@@ -133,7 +133,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="جست‌وجو در موضوع، شماره سند، فرستنده/گیرنده یا خلاصه..."
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] py-2 pr-9 pl-3 text-sm text-[#2B3033] focus:border-[#2D5A63] focus:outline-none"
+                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] py-2 pr-9 pl-3 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
               />
             </div>
 
@@ -190,7 +190,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
                     return (
                       <tr key={doc.id} className="hover:bg-[#FAF8F3]">
                         <td className="px-4 py-3 text-xs whitespace-nowrap">
-                          <div className="font-medium text-[#2D5A63]">{doc.category}</div>
+                          <div className="font-medium text-[#243B5A]">{doc.category}</div>
                           <div className="mt-0.5 text-[#5B6268]">{doc.documentNumber || '—'}</div>
                         </td>
                         <td className="px-4 py-3">
@@ -220,7 +220,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
                             <div className="space-y-1">
                               {docAttachments.map((att) => (
                                 <div key={att.id} className="flex items-center gap-1.5">
-                                  <Paperclip className="h-3 w-3 text-[#2D5A63]" />
+                                  <Paperclip className="h-3 w-3 text-[#243B5A]" />
                                   <span className="max-w-[140px] truncate">{att.fileName}</span>
                                   {(att.mimeType.startsWith('image/') ||
                                     att.mimeType === 'application/pdf') && (
@@ -229,7 +229,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
                                       onClick={() =>
                                         setPreviewAtt({ att, url: URL.createObjectURL(att.data) })
                                       }
-                                      className="text-[#2D5A63] hover:underline cursor-pointer"
+                                      className="text-[#243B5A] hover:underline cursor-pointer"
                                       title="مشاهده"
                                     >
                                       <Eye className="h-3.5 w-3.5" />
@@ -253,7 +253,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({ store }) => {
                             <button
                               type="button"
                               onClick={() => setEditingDoc(doc)}
-                              className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] text-[#5B6268] hover:text-[#2D5A63] cursor-pointer"
+                              className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] text-[#5B6268] hover:text-[#243B5A] cursor-pointer"
                               title="ویرایش و پیوست"
                             >
                               <Edit2 className="h-3.5 w-3.5" />
@@ -499,7 +499,7 @@ const DocumentEditorWindow: React.FC<{
             <span className="text-xs font-medium text-[#2B3033]">
               پیوست‌های محلی (PDF، Word، Excel، تصویر)
             </span>
-            <label className="inline-flex items-center gap-1 border border-[#2D5A63] bg-[#FFFFFF] px-3 py-1 text-xs text-[#2D5A63] hover:bg-[#E5EFF0] cursor-pointer">
+            <label className="inline-flex items-center gap-1 border border-[#243B5A] bg-[#FFFFFF] px-3 py-1 text-xs text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer">
               <Upload className="h-3.5 w-3.5" />
               <span>افزودن فایل</span>
               <input
@@ -535,7 +535,7 @@ const DocumentEditorWindow: React.FC<{
           </button>
           <button
             type="submit"
-            className="border border-[#2D5A63] bg-[#2D5A63] px-5 py-2 text-xs font-medium text-[#FAF8F3]"
+            className="border border-[#243B5A] bg-[#243B5A] px-5 py-2 text-xs font-medium text-[#FAF8F3]"
           >
             {isNew ? 'ثبت سند' : 'ذخیره تغییرات'}
           </button>

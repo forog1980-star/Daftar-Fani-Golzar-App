@@ -8,6 +8,7 @@ interface AppHeaderProps {
   pageTitle: string;
   pageSubtitle?: string;
   canGoBack: boolean;
+  backTooltip?: string;
   officialLogoDataUrl?: string;
   onBack: () => void;
   onToggleMobileMenu: () => void;
@@ -18,6 +19,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   pageTitle,
   pageSubtitle,
   canGoBack,
+  backTooltip,
   officialLogoDataUrl,
   onBack,
   onToggleMobileMenu,
@@ -117,7 +119,7 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
                 type="button"
                 onClick={onBack}
                 className="inline-flex h-8 shrink-0 items-center justify-center gap-1 rounded-lg border border-[#DFD8CA] bg-[#FFFFFF] px-2.5 text-xs font-medium text-[#243B5A] transition-colors hover:border-[#243B5A] hover:bg-[#E5EBF2] whitespace-nowrap cursor-pointer"
-                title="بازگشت به مرحله قبل"
+                title={backTooltip || 'بازگشت به صفحه قبل'}
               >
                 <span>بازگشت</span>
                 <ArrowLeft className="h-3.5 w-3.5 shrink-0" />

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { CheckCircle2, AlertCircle, X } from 'lucide-react';
 import { AppRoute, Project } from './types';
 import { useAppStore } from './hooks/useAppStore';
@@ -17,24 +17,14 @@ import { ReportDisplayMode, ReportType, ReportsView } from './components/reports
 import { SupportTab, SupportView } from './components/support/SupportView';
 import { ExitAuthOverlay } from './components/support/ExitAuthOverlay';
 import { formatJalaliDateTime } from './utils/format';
-
-interface HistoryEntry {
-  route: AppRoute;
-  projectId?: string;
-  supportTab?: SupportTab;
-  reportType?: ReportType;
-  reportDisplayMode?: ReportDisplayMode;
-  subTab?: string;
-}
-
-interface NavigateOptions {
-  projectId?: string;
-  supportTab?: SupportTab;
-  reportType?: ReportType;
-  reportDisplayMode?: ReportDisplayMode;
-  subTab?: string;
-  scrollToTop?: boolean;
-}
+import {
+  createInitialHistory,
+  getParentLabel,
+  HistoryEntry,
+  NavigateOptions,
+  pushNavigationHistory,
+  resolveLogicalBackHistory,
+} from './utils/navigationHistory';
 
 const REPORT_TITLES: Record<ReportType, string> = {
   projects: 'گزارش جامع پروژه‌ها',
@@ -48,101 +38,35 @@ const REPORT_TITLES: Record<ReportType, string> = {
 export default function App() {
   const store = useAppStore();
   const [showSplash, setShowSplash] = useState(true);
-  const [history, setHistory] = useState<HistoryEntry[]>([{ route: 'dashboard' }]);
+  const [history, setHistory] = useState<HistoryEntry[]>(createInitialHistory);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sessionState, setSessionState] = useState<'active' | 'exited'>('active');
   const [authUnlocked, setAuthUnlocked] = useState(false);
   const [confirmExitOpen, setConfirmExitOpen] = useState(false);
-  const mobileMenuOpenRef = useRef(false);
-  mobileMenuOpenRef.current = mobileMenuOpen;
-  const historyRef = useRef<HistoryEntry[]>(history);
-  historyRef.current = history;
 
   const current = history[history.length - 1];
 
-  // Sync browser/phone hardware Back button with our exact 1-step-back history stack
-  useEffect(() => {
-    try {
-      window.history.replaceState({ daftarFaniApp: true }, '');
-    } catch {
-      // Ignore in restricted iframe contexts
-    }
-
-    const handlePopState = () => {
-      if (mobileMenuOpenRef.current) {
-        setMobileMenuOpen(false);
-        return;
-      }
-      setHistory((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
   const navigate = useCallback((route: AppRoute, options?: NavigateOptions) => {
-    const normalizedRoute: AppRoute = route === 'home' ? 'dashboard' : route;
-    const nextEntry: HistoryEntry = {
-      route: normalizedRoute,
-      projectId: options?.projectId,
-      supportTab:
-        normalizedRoute === 'support' ? (options?.supportTab ?? 'settings') : undefined,
-      reportType:
-        normalizedRoute === 'reports' ? (options?.reportType ?? 'projects') : undefined,
-      reportDisplayMode:
-        normalizedRoute === 'reports' ? (options?.reportDisplayMode ?? 'table') : undefined,
-      subTab: options?.subTab,
-    };
-
-    const prev = historyRef.current;
-
-    if (normalizedRoute === 'dashboard') {
-      if (prev.length !== 1 || prev[0].route !== 'dashboard') {
-        setHistory([{ route: 'dashboard' }]);
-      }
-      if (options?.scrollToTop !== false) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-      return;
-    }
-
-    const top = prev[prev.length - 1];
-    if (
-      top.route === nextEntry.route &&
-      top.projectId === nextEntry.projectId &&
-      top.supportTab === nextEntry.supportTab &&
-      top.reportType === nextEntry.reportType &&
-      top.reportDisplayMode === nextEntry.reportDisplayMode &&
-      top.subTab === nextEntry.subTab
-    ) {
-      return;
-    }
-
-    setHistory((curr) => {
-      const updated = [...curr, nextEntry];
-      return updated.length > 40 ? updated.slice(updated.length - 40) : updated;
-    });
-
-    try {
-      window.history.pushState({ daftarFaniApp: true }, '');
-    } catch {
-      // Ignore in restricted iframe contexts
-    }
+    setHistory((prev) => pushNavigationHistory(prev, route, options));
 
     if (options?.scrollToTop !== false) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, []);
 
+  // Always restores the logical parent page based on the page hierarchy & History Stack
   const handleBack = useCallback(() => {
-    setHistory((prev) => (prev.length > 1 ? prev.slice(0, -1) : [{ route: 'dashboard' }]));
+    setHistory((prev) => resolveLogicalBackHistory(prev));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
   const handleOpenProject = useCallback(
     (project: Project) => {
-      navigate('project-detail', { projectId: project.id, subTab: 'overview' });
+      navigate('project-detail', {
+        projectId: project.id,
+        subTab: 'overview',
+        mode: 'drill',
+      });
     },
     [navigate]
   );
@@ -156,6 +80,7 @@ export default function App() {
     setMobileMenuOpen(false);
     store.setHasUnsavedChanges(false);
     setAuthUnlocked(false);
+    setHistory(createInitialHistory());
     setSessionState('exited');
   }, [store]);
 
@@ -196,6 +121,8 @@ export default function App() {
         return { title: 'دفتر فنی اداره گلزار شهدا' };
     }
   }, [current, store.projects]);
+
+  const backTooltip = useMemo(() => `بازگشت به ${getParentLabel(history)}`, [history]);
 
   if (showSplash) {
     return (
@@ -239,7 +166,7 @@ export default function App() {
         settings={store.settings}
         onEnterApp={() => {
           setSessionState('active');
-          setHistory([{ route: 'dashboard' }]);
+          setHistory(createInitialHistory());
         }}
       />
     );
@@ -263,7 +190,8 @@ export default function App() {
         route={current.route}
         pageTitle={headerMeta.title}
         pageSubtitle={headerMeta.subtitle}
-        canGoBack={history.length > 1}
+        canGoBack={current.route !== 'dashboard' && current.route !== 'home'}
+        backTooltip={backTooltip}
         officialLogoDataUrl={store.settings.officialLogoDataUrl}
         onBack={handleBack}
         onToggleMobileMenu={() => setMobileMenuOpen((v) => !v)}
@@ -277,8 +205,10 @@ export default function App() {
           mobileOpen={mobileMenuOpen}
           golzarImages={store.golzarImages}
           onCloseMobile={() => setMobileMenuOpen(false)}
-          onNavigate={(r, opts) => navigate(r, opts)}
-          onOpenGolzarManager={() => navigate('support', { supportTab: 'media' })}
+          onNavigate={(r, opts) => navigate(r, { ...opts, mode: 'sidebar' })}
+          onOpenGolzarManager={() =>
+            navigate('support', { supportTab: 'media', mode: 'drill' })
+          }
           onExit={handleRequestExit}
         />
 
@@ -286,11 +216,17 @@ export default function App() {
           {(current.route === 'dashboard' || current.route === 'home') && (
             <DashboardView
               store={store}
-              onNavigate={(r) => navigate(r)}
+              onNavigate={(r) => navigate(r, { mode: 'drill' })}
               onOpenProject={handleOpenProject}
-              onOpenGolzarManager={() => navigate('support', { supportTab: 'media' })}
+              onOpenGolzarManager={() =>
+                navigate('support', { supportTab: 'media', mode: 'drill' })
+              }
               onOpenReport={(reportType) =>
-                navigate('reports', { reportType, reportDisplayMode: 'table' })
+                navigate('reports', {
+                  reportType,
+                  reportDisplayMode: 'table',
+                  mode: 'drill',
+                })
               }
             />
           )}
@@ -308,10 +244,11 @@ export default function App() {
                 navigate('project-detail', {
                   projectId: current.projectId,
                   subTab: tab,
+                  mode: 'replace',
                   scrollToTop: false,
                 })
               }
-              onNavigate={(r) => navigate(r)}
+              onNavigate={(r) => navigate(r, { mode: 'drill' })}
             />
           )}
 
@@ -320,7 +257,11 @@ export default function App() {
               store={store}
               activeTab={(current.subTab as BudgetSubTab) ?? 'credits'}
               onTabChange={(tab) =>
-                navigate('budget', { subTab: tab, scrollToTop: false })
+                navigate('budget', {
+                  subTab: tab,
+                  mode: 'replace',
+                  scrollToTop: false,
+                })
               }
               onOpenProject={handleOpenProject}
             />
@@ -333,7 +274,11 @@ export default function App() {
               store={store}
               activeTab={(current.subTab as DocumentsSectionTab) ?? 'archive'}
               onTabChange={(tab) =>
-                navigate('documents', { subTab: tab, scrollToTop: false })
+                navigate('documents', {
+                  subTab: tab,
+                  mode: 'replace',
+                  scrollToTop: false,
+                })
               }
             />
           )}
@@ -347,6 +292,7 @@ export default function App() {
                 navigate('reports', {
                   reportType: rt,
                   reportDisplayMode: current.reportDisplayMode ?? 'table',
+                  mode: 'replace',
                   scrollToTop: false,
                 })
               }
@@ -354,6 +300,7 @@ export default function App() {
                 navigate('reports', {
                   reportType: current.reportType ?? 'projects',
                   reportDisplayMode: mode,
+                  mode: 'replace',
                   scrollToTop: false,
                 })
               }
@@ -365,7 +312,11 @@ export default function App() {
               store={store}
               initialTab={current.supportTab ?? 'settings'}
               onTabChange={(tab) =>
-                navigate('support', { supportTab: tab, scrollToTop: false })
+                navigate('support', {
+                  supportTab: tab,
+                  mode: 'replace',
+                  scrollToTop: false,
+                })
               }
             />
           )}

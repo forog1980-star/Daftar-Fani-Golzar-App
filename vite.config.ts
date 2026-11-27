@@ -7,7 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   const base = process.env.GITHUB_PAGES === 'true' ? '/Daftar-Fani-Golzar-App/' : '/';
-  const appVersion = '1.3.1';
+  const appVersion = '1.3.2';
   const buildTimestamp = new Date().toISOString();
   const buildId = `${appVersion}-${buildTimestamp.replace(/[-:TZ.]/g, '').slice(0, 14)}`;
 

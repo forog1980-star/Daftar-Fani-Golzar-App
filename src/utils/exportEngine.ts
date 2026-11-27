@@ -394,14 +394,14 @@ function computeSmartColumnWidths(
 
   const weights = headers.map((header, idx) => {
     const h = header.trim();
-    if (h.includes('کد') || h === 'شماره') return 1.25;
+    if (h.includes('کد') || h === 'شماره') return 1.45;
     if (h.includes('درصد') || h === 'سال' || h === 'اولویت') return 0.92;
     if (h.includes('عنوان') || h.includes('نام پروژه') || h.includes('موضوع') || h.includes('شرح')) {
       return 2.05;
     }
     if (h.includes('توضیحات') || h.includes('نتیجه')) return 1.75;
     if (h.includes('تاریخ') || h.includes('مهلت') || h.includes('وضعیت') || h.includes('نوع')) {
-      return 1.05;
+      return 1.08;
     }
     // Estimate from sample data
     const sampleMax = Math.max(
@@ -412,7 +412,11 @@ function computeSmartColumnWidths(
   });
 
   const sumWeight = weights.reduce((a, b) => a + b, 0);
-  const widths = weights.map((w) => Math.max(920, Math.round((w / sumWeight) * totalWidth)));
+  const widths = weights.map((w, idx) => {
+    const h = headers[idx].trim();
+    const minW = h.includes('کد') ? 1180 : 920;
+    return Math.max(minW, Math.round((w / sumWeight) * totalWidth));
+  });
   const diff = totalWidth - widths.reduce((a, b) => a + b, 0);
   widths[0] += diff;
   return widths;
@@ -487,41 +491,89 @@ function buildUniversalRtlWordTable(options: {
   });
 }
 
-// Ensure Word OOXML section & default paragraph styles are strictly RTL (<w:bidi/> in sectPr & docDefaults)
+// Ensure Word OOXML section, tables, paragraphs, and default styles are 100% strictly RTL & Right-Aligned:
+// - <w:sectPr><w:bidi/> for RTL section flow
+// - <w:tblPr> gets <w:jc w:val="right"/> (in schema-valid position right after <w:tblW .../>)
+// - Every <w:pPr> with <w:bidi/> (except explicitly centered chart paragraphs) gets explicit <w:jc w:val="right"/>
+//   so BOTH desktop MS Word/LibreOffice AND mobile WPS/Honor Docs/Google Docs align every cell & paragraph RIGHT
+// - word/styles.xml <w:pPrDefault> and Normal style carry <w:bidi/><w:jc w:val="right"/>
 async function enforceDocxStrictRtlXml(blob: Blob): Promise<Blob> {
   const zip = await JSZip.loadAsync(blob);
 
   const docXmlFile = zip.file('word/document.xml');
   if (docXmlFile) {
     let docXml = await docXmlFile.async('string');
+
+    // 1. Section-level RTL
     if (docXml.includes('<w:sectPr>') && !docXml.includes('<w:sectPr><w:bidi/>')) {
       docXml = docXml.replace('<w:sectPr>', '<w:sectPr><w:bidi/>');
     }
+
+    // 2. Table-level right alignment (<w:jc w:val="right"/> immediately after <w:tblW .../> per CT_TblPr schema)
+    docXml = docXml.replace(/<w:tblPr>[\s\S]*?<\/w:tblPr>/g, (tblPr) => {
+      if (tblPr.includes('<w:jc ')) return tblPr;
+      if (/<w:tblW\b[^>]*\/>/.test(tblPr)) {
+        return tblPr.replace(/(<w:tblW\b[^>]*\/>)/, '$1<w:jc w:val="right"/>');
+      }
+      return tblPr.replace('<w:tblPr>', '<w:tblPr><w:jc w:val="right"/>');
+    });
+
+    // 3. Explicit physical right alignment (<w:jc w:val="right"/>) on every RTL paragraph & table cell
+    //    (preserving intentional <w:jc w:val="center"/> used for the donut chart image)
+    docXml = docXml.replace(/<w:pPr>[\s\S]*?<\/w:pPr>/g, (pPr) => {
+      if (pPr.includes('w:val="center"')) return pPr;
+      let next = pPr;
+      if (!next.includes('<w:bidi/>') && !next.includes('<w:bidi ')) {
+        next = next.replace('<w:pPr>', '<w:pPr><w:bidi/>');
+      }
+      // Replace any accidental left/start justification with absolute visual right alignment
+      if (/<w:jc\b[^>]*\/>/.test(next)) {
+        next = next.replace(/<w:jc\b[^>]*\/>/, '<w:jc w:val="right"/>');
+      } else {
+        next = next.replace('</w:pPr>', '<w:jc w:val="right"/></w:pPr>');
+      }
+      return next;
+    });
+
     zip.file('word/document.xml', docXml);
   }
 
   const stylesXmlFile = zip.file('word/styles.xml');
   if (stylesXmlFile) {
     let stylesXml = await stylesXmlFile.async('string');
-    if (stylesXml.includes('<w:pPrDefault><w:pPr>') && !stylesXml.includes('<w:pPrDefault><w:pPr><w:bidi/>')) {
-      stylesXml = stylesXml.replace('<w:pPrDefault><w:pPr>', '<w:pPrDefault><w:pPr><w:bidi/>');
+    if (stylesXml.includes('<w:pPrDefault><w:pPr>')) {
+      stylesXml = stylesXml.replace(/<w:pPrDefault><w:pPr>[\s\S]*?<\/w:pPr><\/w:pPrDefault>/, (blk) => {
+        let next = blk;
+        if (!next.includes('<w:bidi/>')) {
+          next = next.replace('<w:pPr>', '<w:pPr><w:bidi/>');
+        }
+        if (!next.includes('<w:jc ')) {
+          next = next.replace('</w:pPr>', '<w:jc w:val="right"/></w:pPr>');
+        }
+        return next;
+      });
     } else if (stylesXml.includes('<w:pPrDefault/>')) {
       stylesXml = stylesXml.replace(
         '<w:pPrDefault/>',
-        '<w:pPrDefault><w:pPr><w:bidi/></w:pPr></w:pPrDefault>'
+        '<w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr></w:pPrDefault>'
       );
     }
-    // Also ensure the Normal default paragraph style carries <w:bidi/>
+
+    // Also ensure the Normal default paragraph style carries <w:bidi/><w:jc w:val="right"/>
     stylesXml = stylesXml.replace(
       /<w:style\b[^>]*w:styleId="Normal"[^>]*>[\s\S]*?<\/w:style>/,
       (styleBlock) => {
-        if (styleBlock.includes('<w:bidi/>') || styleBlock.includes('<w:bidi ')) {
-          return styleBlock;
+        let next = styleBlock;
+        if (next.includes('<w:pPr>')) {
+          if (!next.includes('<w:bidi/>') && !next.includes('<w:bidi ')) {
+            next = next.replace('<w:pPr>', '<w:pPr><w:bidi/>');
+          }
+          if (!next.includes('<w:jc ')) {
+            next = next.replace('</w:pPr>', '<w:jc w:val="right"/></w:pPr>');
+          }
+          return next;
         }
-        if (styleBlock.includes('<w:pPr>')) {
-          return styleBlock.replace('<w:pPr>', '<w:pPr><w:bidi/>');
-        }
-        return styleBlock.replace('</w:style>', '<w:pPr><w:bidi/></w:pPr></w:style>');
+        return next.replace('</w:style>', '<w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr></w:style>');
       }
     );
     zip.file('word/styles.xml', stylesXml);
@@ -1091,7 +1143,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
     });
   }
 
-  const maxCols = Math.max(3, ...allRows.map((r) => r.cells.length));
+  const maxCols = Math.max(2, ...allRows.map((r) => r.cells.length));
 
   const colWidths = Array.from({ length: maxCols }, (_, ci) => {
     const maxLen = Math.max(
@@ -1395,12 +1447,15 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
   </sheetPr>
   <dimension ref="A1:${lastColLetter}${totalRowsCount}"/>
   <sheetViews>
-    <sheetView tabSelected="1" rightToLeft="1" workbookViewId="0" showGridLines="1"/>
+    <sheetView tabSelected="1" rightToLeft="1" workbookViewId="0" showGridLines="1">
+      <selection activeCell="A1" sqref="A1"/>
+    </sheetView>
   </sheetViews>
   <sheetFormatPr defaultRowHeight="24"/>
   <cols>${colsXml}</cols>
   <sheetData>${sheetDataXml}</sheetData>
   ${mergeCellsXml}
+  <printOptions horizontalCentered="1"/>
   <pageMargins left="0.5" right="0.5" top="0.65" bottom="0.65" header="0.3" footer="0.3"/>
   <pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0" horizontalDpi="300" verticalDpi="300"/>
   ${hasChartImage ? '<drawing r:id="rId1"/>' : ''}

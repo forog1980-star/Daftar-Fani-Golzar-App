@@ -29,8 +29,13 @@ export interface AppUpdateState {
 const LAST_CHECK_KEY = 'daftar-fani-last-update-check';
 const CUSTOM_VERSION_URL_KEY = 'daftar-fani-github-version-url';
 
+export const OFFICIAL_GITHUB_APP_URL =
+  'https://forog1980-star.github.io/Daftar-Fani-Golzar-App/';
+export const OFFICIAL_GITHUB_VERSION_URL =
+  'https://forog1980-star.github.io/Daftar-Fani-Golzar-App/version.json';
+
 export const LOCAL_APP_VERSION =
-  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.3.0';
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.3.1';
 export const LOCAL_BUILD_ID =
   typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'dev-local';
 
@@ -70,14 +75,20 @@ function emit(patch: Partial<AppUpdateState>) {
 /**
  * Normalizes a user-supplied GitHub URL into a direct fetchable version.json endpoint.
  * Accepts:
- *  - empty string -> uses deployed `./version.json` (GitHub Pages default)
+ *  - empty string -> uses deployed `./version.json` on GitHub Pages, or official GitHub Pages URL otherwise
  *  - `https://github.com/user/repo` -> `https://raw.githubusercontent.com/user/repo/main/public/version.json`
  *  - direct `https://.../version.json` URL
  */
 export function resolveVersionManifestUrl(customUrl: string): string {
   const trimmed = customUrl.trim();
   if (!trimmed) {
-    return new URL('./version.json', window.location.href).toString();
+    if (
+      typeof window !== 'undefined' &&
+      window.location.hostname.endsWith('github.io')
+    ) {
+      return new URL('./version.json', window.location.href).toString();
+    }
+    return OFFICIAL_GITHUB_VERSION_URL;
   }
 
   const ghRepoMatch = trimmed.match(
@@ -138,11 +149,27 @@ export function initAppUpdater(): void {
   if (!('serviceWorker' in navigator)) return;
 
   try {
+    let hadController = Boolean(navigator.serviceWorker.controller);
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (hadController) {
+        emit({
+          needRefresh: true,
+          status: 'update-available',
+          statusMessage:
+            'نسخه جدید نرم‌افزار فعال شد. برای مشاهده آخرین تغییرات دکمه «دریافت تغییرات و به‌روزرسانی محلی» را بزنید.',
+        });
+      }
+      hadController = true;
+    });
+
     triggerSwReload = registerSW({
       immediate: true,
       onRegisteredSW(_swUrl, registration) {
         swRegistration = registration ?? null;
         emit({ swRegistered: Boolean(registration) });
+        if (registration && navigator.onLine) {
+          registration.update().catch(() => {});
+        }
       },
       onOfflineReady() {
         emit({ offlineReady: true });
@@ -152,7 +179,7 @@ export function initAppUpdater(): void {
           needRefresh: true,
           status: 'update-available',
           statusMessage:
-            'نسخه جدید نرم‌افزار دریافت شد و آماده اعمال است. برای به‌روزرسانی محلی دکمه «اعمال نسخه جدید» را بزنید.',
+            'نسخه جدید نرم‌افزار دریافت شد و آماده اعمال است. برای به‌روزرسانی محلی دکمه «دریافت تغییرات و به‌روزرسانی محلی» را بزنید.',
         });
       },
       onRegisterError() {

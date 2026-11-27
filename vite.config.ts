@@ -7,7 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   const base = process.env.GITHUB_PAGES === 'true' ? '/Daftar-Fani-Golzar-App/' : '/';
-  const appVersion = '1.3.0';
+  const appVersion = '1.3.1';
   const buildTimestamp = new Date().toISOString();
   const buildId = `${appVersion}-${buildTimestamp.replace(/[-:TZ.]/g, '').slice(0, 14)}`;
 
@@ -21,7 +21,7 @@ export default defineConfig(() => {
       react(),
       tailwindcss(),
       VitePWA({
-        registerType: 'prompt',
+        registerType: 'autoUpdate',
         includeAssets: [
           'favicon.ico',
           'favicon-32x32.png',
@@ -65,9 +65,11 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          skipWaiting: true,
+          clientsClaim: true,
           cleanupOutdatedCaches: true,
-          globPatterns: ['**/*.{js,css,html,ico,png,jpg,jpeg,svg}'],
-          globIgnores: ['**/version.json'],
+          globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+          globIgnores: ['**/version.json', 'assets/aistudio/**'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         },
         devOptions: {
@@ -81,11 +83,11 @@ export default defineConfig(() => {
         apply: 'build',
         closeBundle(error?: Error): void {
           if (error) return;
-          const distDir = path.resolve(__dirname, 'dist');
+          const distDir = path.resolve(import.meta.dirname, 'dist');
           if (fs.existsSync(distDir)) {
             let notes: string[] = [];
             try {
-              const pubVersionPath = path.resolve(__dirname, 'public/version.json');
+              const pubVersionPath = path.resolve(import.meta.dirname, 'public/version.json');
               if (fs.existsSync(pubVersionPath)) {
                 const parsed = JSON.parse(fs.readFileSync(pubVersionPath, 'utf-8'));
                 if (Array.isArray(parsed.notes)) notes = parsed.notes;

@@ -17,6 +17,7 @@ import { DocumentsSectionTab, DocumentsView } from './components/documents/Docum
 import { ReportDisplayMode, ReportType, ReportsView } from './components/reports/ReportsView';
 import { SupportTab, SupportView } from './components/support/SupportView';
 import { ExitAuthOverlay } from './components/support/ExitAuthOverlay';
+import { HelpSectionId } from './components/help/helpContent';
 import { formatJalaliDateTime } from './utils/format';
 import {
   createInitialHistoryStack,
@@ -72,6 +73,17 @@ export default function App() {
     [navigate]
   );
 
+  const handleOpenHelp = useCallback(
+    (sectionId?: HelpSectionId | null) => {
+      navigate('support', {
+        supportTab: 'guide',
+        helpSection: sectionId ?? null,
+        mode: 'drill',
+      });
+    },
+    [navigate]
+  );
+
   const handleSplashComplete = useCallback(() => {
     setShowSplash(false);
   }, []);
@@ -116,7 +128,10 @@ export default function App() {
         };
       case 'support':
         return {
-          title: current.supportTab === 'guide' ? 'راهنما' : 'تنظیمات',
+          title:
+            current.supportTab === 'guide'
+              ? 'راهنمای نرم‌افزار و شرح بخش‌ها'
+              : 'تنظیمات',
         };
       default:
         return { title: 'دفتر فنی اداره گلزار شهدا' };
@@ -229,11 +244,16 @@ export default function App() {
                   mode: 'drill',
                 })
               }
+              onOpenHelp={handleOpenHelp}
             />
           )}
 
           {current.route === 'projects' && (
-            <ProjectsView store={store} onOpenProject={handleOpenProject} />
+            <ProjectsView
+              store={store}
+              onOpenProject={handleOpenProject}
+              onOpenHelp={handleOpenHelp}
+            />
           )}
 
           {current.route === 'project-detail' && current.projectId && (
@@ -265,10 +285,13 @@ export default function App() {
                 })
               }
               onOpenProject={handleOpenProject}
+              onOpenHelp={handleOpenHelp}
             />
           )}
 
-          {current.route === 'actions' && <ActionsView store={store} />}
+          {current.route === 'actions' && (
+            <ActionsView store={store} onOpenHelp={handleOpenHelp} />
+          )}
 
           {current.route === 'documents' && (
             <DocumentsView
@@ -281,6 +304,7 @@ export default function App() {
                   scrollToTop: false,
                 })
               }
+              onOpenHelp={handleOpenHelp}
             />
           )}
 
@@ -305,6 +329,7 @@ export default function App() {
                   scrollToTop: false,
                 })
               }
+              onOpenHelp={handleOpenHelp}
             />
           )}
 
@@ -312,9 +337,19 @@ export default function App() {
             <SupportView
               store={store}
               initialTab={current.supportTab ?? 'settings'}
+              initialHelpSection={current.helpSection ?? null}
               onTabChange={(tab) =>
                 navigate('support', {
                   supportTab: tab,
+                  helpSection: tab === 'guide' ? current.helpSection ?? null : null,
+                  mode: 'replace',
+                  scrollToTop: false,
+                })
+              }
+              onHelpSectionChange={(sec) =>
+                navigate('support', {
+                  supportTab: 'guide',
+                  helpSection: sec,
                   mode: 'replace',
                   scrollToTop: false,
                 })

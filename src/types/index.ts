@@ -89,10 +89,54 @@ export interface PaymentRecord {
 
 export type ProposalPriority = 'فوری' | 'بالا' | 'متوسط' | 'عادی';
 
+export type ProposalStatus =
+  | 'پیش‌نویس'
+  | 'در حال بررسی'
+  | 'ارسال‌شده'
+  | 'مصوب'
+  | 'نیاز به اصلاح';
+
+export type ProposalEstimateBasis =
+  | 'فهرست بها'
+  | 'استعلام قیمت'
+  | 'برآورد کارشناسی'
+  | 'قرارداد مشابه'
+  | 'ترکیبی';
+
+export interface BudgetEstimateLine {
+  id: string;
+  title: string;
+  unit?: string;
+  quantity?: number;
+  unitPrice?: number;
+  amount: number;
+  note?: string;
+}
+
+export interface ProposalImageItem {
+  id: string;
+  dataUrl: string;
+  caption: string;
+  sizeBytes: number;
+  addedAt: string;
+}
+
 export interface BudgetProposal {
   id: string;
   fiscalYear: string;
+  projectCode?: string;
   title: string;
+  projectType?: ProjectType;
+  location?: string;
+  responsiblePerson?: string;
+  startDate?: string;
+  endDate?: string;
+  fundingSource?: string;
+  proposalStatus?: ProposalStatus;
+  estimateBasis?: ProposalEstimateBasis;
+  estimateSummary?: string;
+  estimateItems?: BudgetEstimateLine[];
+  images?: ProposalImageItem[];
   description: string;
   priority: ProposalPriority;
   estimatedAmount: number;

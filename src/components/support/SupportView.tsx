@@ -3,8 +3,8 @@ import {
   Archive,
   Download,
   FileJson,
+  HelpCircle,
   History,
-  Image as ImageIcon,
   Info,
   Palette,
   RotateCcw,
@@ -22,13 +22,17 @@ import { ConfirmDialog } from '../layout/ConfirmDialog';
 import { PeopleManager } from './PeopleManager';
 import { MediaManagerView } from './MediaManagerView';
 import { JsonExportWindow, JsonImportWindow } from './JsonTransferWindows';
+import { HelpCenterView } from '../help/HelpCenterView';
+import { HelpSectionId } from '../help/helpContent';
 
 export type SupportTab = 'settings' | 'media' | 'transfer' | 'backup' | 'people' | 'guide';
 
 interface SupportViewProps {
   store: AppStore;
   initialTab?: SupportTab;
+  initialHelpSection?: HelpSectionId | null;
   onTabChange?: (tab: SupportTab) => void;
+  onHelpSectionChange?: (section: HelpSectionId | null) => void;
 }
 
 // Controlled formal Navy palette presets (Section 9)
@@ -53,7 +57,9 @@ const RADIUS_PRESETS: Array<{ label: string; value: number }> = [
 export const SupportView: React.FC<SupportViewProps> = ({
   store,
   initialTab = 'settings',
+  initialHelpSection = null,
   onTabChange,
+  onHelpSectionChange,
 }) => {
   const [tab, setTab] = useState<SupportTab>(initialTab);
   const [deviceName, setDeviceName] = useState(store.settings.deviceName);
@@ -161,37 +167,38 @@ export const SupportView: React.FC<SupportViewProps> = ({
 
   return (
     <div className="animate-page-in mx-auto max-w-[1280px] space-y-5 px-4 py-5 sm:px-6">
-      {/* Support Tabs */}
-      <div className="grid grid-cols-2 gap-2 rounded-2xl border border-[#E2DDD2] bg-[#FFFFFF] p-3 shadow-[0_2px_8px_rgba(29,50,80,0.04)] sm:grid-cols-3 lg:grid-cols-6">
-        {(
-          [
-            { key: 'settings', label: 'تنظیمات ظاهری و سازمانی' },
-            { key: 'media', label: 'مدیریت تصاویر و آرم رسمی' },
-            { key: 'transfer', label: 'ورودی و خروجی JSON' },
-            { key: 'backup', label: 'پشتیبان‌گیری و بازیابی (ZIP)' },
-            { key: 'people', label: `اشخاص و امضاها (${toPersianDigits(store.people.length)})` },
-            { key: 'guide', label: 'راهنما و نسخه نرم‌افزار' },
-          ] as Array<{ key: SupportTab; label: string }>
-        ).map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => {
-              setTab(t.key);
-              setNotice('');
-              setError('');
-              onTabChange?.(t.key);
-            }}
-            className={`inline-flex min-h-[40px] items-center justify-center rounded-xl px-2.5 py-2 text-center text-xs font-medium leading-4 transition-colors cursor-pointer ${
-              tab === t.key
-                ? 'border border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'
-                : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#263448] hover:bg-[#F2EEE6]'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      {/* Settings Tabs — hidden on Help page so no duplicate top navigation appears */}
+      {tab !== 'guide' && (
+        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-[#E2DDD2] bg-[#FFFFFF] p-3 sm:grid-cols-3 lg:grid-cols-5">
+          {(
+            [
+              { key: 'settings', label: 'تنظیمات ظاهری و سازمانی' },
+              { key: 'media', label: 'مدیریت تصاویر و آرم رسمی' },
+              { key: 'transfer', label: 'ورودی و خروجی JSON' },
+              { key: 'backup', label: 'پشتیبان‌گیری و بازیابی (ZIP)' },
+              { key: 'people', label: `اشخاص و امضاها (${toPersianDigits(store.people.length)})` },
+            ] as Array<{ key: SupportTab; label: string }>
+          ).map((t) => (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => {
+                setTab(t.key);
+                setNotice('');
+                setError('');
+                onTabChange?.(t.key);
+              }}
+              className={`inline-flex min-h-[40px] items-center justify-center rounded-xl px-2.5 py-2 text-center text-xs font-medium leading-4 transition-colors cursor-pointer ${
+                tab === t.key
+                  ? 'border border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'
+                  : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#263448] hover:bg-[#F2EEE6]'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {notice && (
         <div className="rounded-lg border border-[#C6D5C4] bg-[#E7ECE6] px-4 py-3 text-xs text-[#263448]">
@@ -504,14 +511,26 @@ export const SupportView: React.FC<SupportViewProps> = ({
       {tab === 'transfer' && (
         <div className="space-y-5">
           <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#243B5A]">
-              <FileJson className="h-4 w-4 text-[#B99A62]" />
-              <span>انتقال اطلاعات بین گوشی و رایانه (صرفاً از طریق فایل JSON)</span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[#243B5A]">
+                <FileJson className="h-4 w-4 text-[#B99A62]" />
+                <span>انتقال اطلاعات بین دستگاه‌ها (فایل JSON)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTab('guide');
+                  onTabChange?.('guide');
+                }}
+                aria-label="راهنمای انتقال اطلاعات"
+                title="راهنمای انتقال اطلاعات"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#E2DDD2] bg-[#FAF8F3] text-[#243B5A] hover:border-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </button>
             </div>
-            <p className="text-xs leading-7 text-[#5B6573]">
-              تمامی اطلاعات نرم‌افزار به‌صورت کاملاً محلی در این دستگاه نگهداری می‌شوند. برای انتقال
-              اطلاعات میان گوشی و رایانه از فایل استاندارد <strong>JSON</strong> استفاده کنید و فایل
-              تولیدشده را از طریق ایتا (به‌عنوان وسیله انتقال) یا کابل USB به دستگاه مقابل برسانید.
+            <p className="text-xs leading-6 text-[#5B6573]">
+              خروجی JSON از دستگاه مبدأ، انتقال فایل (ایتا یا USB) و ورود تأییدشده در دستگاه مقصد.
             </p>
             <div className="text-xs text-[#788290]">
               آخرین همگام‌سازی JSON ثبت‌شده:{' '}
@@ -524,15 +543,13 @@ export const SupportView: React.FC<SupportViewProps> = ({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {/* Export JSON Card */}
             <div className="flex flex-col justify-between rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-4">
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[#243B5A]">
                   <Download className="h-4 w-4 text-[#243B5A]" />
                   <span>خروجی JSON</span>
                 </div>
                 <p className="text-xs leading-6 text-[#5B6573]">
-                  نمایش خلاصه داده‌ها و حجم تقریبی فایل، تأیید صریح کاربر، تولید فایل JSON شامل
-                  پرونده‌ها، بودجه، اقدامات، اسناد و تصاویر، و امکان اشتراک‌گذاری مستقیم (ایتا یا
-                  ذخیره محلی).
+                  تولید فایل JSON شامل داده‌ها، تصاویر و پیوست‌ها پس از مشاهده خلاصه و تأیید کاربر.
                 </p>
               </div>
               <button
@@ -547,15 +564,13 @@ export const SupportView: React.FC<SupportViewProps> = ({
 
             {/* Import JSON Card */}
             <div className="flex flex-col justify-between rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-4">
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <div className="flex items-center gap-2 text-sm font-semibold text-[#243B5A]">
                   <Upload className="h-4 w-4 text-[#243B5A]" />
                   <span>ورودی JSON</span>
                 </div>
                 <p className="text-xs leading-6 text-[#5B6573]">
-                  انتخاب فایل JSON از دستگاه، پیش‌بررسی سلامت و سازگاری ساختار، نمایش رکوردهای جدید
-                  و تعارض‌های احتمالی، تصمیم‌گیری دستی کاربر و ثبت امن در IndexedDB پس از تأیید
-                  صریح.
+                  پیش‌بررسی ساختار فایل، مدیریت تعارض‌ها و ثبت امن در حافظه محلی صرفاً پس از تأیید.
                 </p>
               </div>
               <button
@@ -575,14 +590,27 @@ export const SupportView: React.FC<SupportViewProps> = ({
       {tab === 'backup' && (
         <div className="space-y-5">
           <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#243B5A]">
-              <Archive className="h-4 w-4 text-[#B99A62]" />
-              <span>پشتیبان‌گیری و بازیابی کامل (ZIP شامل داده‌ها، تصاویر و پیوست‌ها)</span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[#243B5A]">
+                <Archive className="h-4 w-4 text-[#B99A62]" />
+                <span>پشتیبان‌گیری و بازیابی کامل (ZIP)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTab('guide');
+                  onTabChange?.('guide');
+                }}
+                aria-label="راهنمای پشتیبان‌گیری"
+                title="راهنمای پشتیبان‌گیری"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#E2DDD2] bg-[#FAF8F3] text-[#243B5A] hover:border-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+              >
+                <HelpCircle className="h-4 w-4" />
+              </button>
             </div>
             <p className="text-xs leading-6 text-[#5B6573]">
-              نسخه پشتیبان کامل به‌صورت فایل فشرده <code>.zip</code> شامل داده‌های JSON، تصاویر
-              گلزار شهدا، تصاویر اختصاصی پروژه‌ها، آرم رسمی و تمام پیوست‌ها تولید می‌شود. پیش از هر
-              بازیابی، وضعیت فعلی به‌صورت خودکار در نقاط بازگشت ذخیره می‌گردد.
+              فایل پشتیبان کامل (<code>.zip</code>) شامل تمام اطلاعات، تصاویر و پیوست‌هاست؛ پیش از هر
+              بازیابی نقطه بازگشت خودکار ذخیره می‌شود.
             </p>
 
             <div className="text-xs text-[#788290]">
@@ -655,98 +683,73 @@ export const SupportView: React.FC<SupportViewProps> = ({
       {/* Tab 5: People & Signatures */}
       {tab === 'people' && <PeopleManager store={store} />}
 
-      {/* Tab 6: Guide, PWA Install, Software Version & Sample Data Controls */}
+      {/* Tab 6: Unified Help Center + Software Version, PWA Install & Sample Data Controls */}
       {tab === 'guide' && (
         <div className="space-y-5">
-          {/* Software Version & Architecture Info */}
-          <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-[#243B5A]">
-              <Info className="h-4 w-4 text-[#B99A62]" />
-              <span>مشخصات نسخه نرم‌افزار و نصب آفلاین (PWA)</span>
-            </div>
-            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 text-xs">
-              <div className="rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-3">
-                <div className="text-[#788290]">نسخه نرم‌افزار</div>
-                <div className="mt-1 font-semibold tabular-nums text-[#243B5A]">
-                  نسخه {toPersianDigits(store.settings.appVersion || '1.2.0')}
+          <HelpCenterView
+            initialSection={initialHelpSection}
+            onSectionChange={onHelpSectionChange}
+          />
+
+          {/* Software Version, PWA Install & Sample Data Controls (Preserved intact) */}
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[#243B5A]">
+                <Info className="h-4 w-4 text-[#B99A62]" />
+                <span>مشخصات نسخه و نصب آفلاین (PWA)</span>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 text-xs">
+                <div className="rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-2.5">
+                  <div className="text-[11px] text-[#788290]">نسخه</div>
+                  <div className="mt-0.5 font-semibold tabular-nums text-[#243B5A]">
+                    {toPersianDigits(store.settings.appVersion || '1.2.0')}
+                  </div>
+                </div>
+                <div className="rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-2.5">
+                  <div className="text-[11px] text-[#788290]">ذخیره‌سازی</div>
+                  <div className="mt-0.5 font-semibold text-[#243B5A]">IndexedDB محلی</div>
+                </div>
+                <div className="rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-2.5">
+                  <div className="text-[11px] text-[#788290]">انتقال</div>
+                  <div className="mt-0.5 font-semibold text-[#243B5A]">فایل JSON</div>
                 </div>
               </div>
-              <div className="rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-3">
-                <div className="text-[#788290]">معماری ذخیره‌سازی</div>
-                <div className="mt-1 font-semibold text-[#243B5A]">
-                  Local-First PWA (IndexedDB)
-                </div>
-              </div>
-              <div className="rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-3">
-                <div className="text-[#788290]">روش انتقال میان دستگاه‌ها</div>
-                <div className="mt-1 font-semibold text-[#243B5A]">فایل JSON (ایتا یا USB)</div>
+              <div className="pt-1">
+                <PWAInstallButton />
               </div>
             </div>
-            <div className="pt-1">
-              <PWAInstallButton />
-            </div>
-          </div>
 
-          {/* Sample Data Controls */}
-          <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-3">
-            <h3 className="text-sm font-semibold text-[#243B5A]">مدیریت داده‌های نمونه آزمایشی</h3>
-            <p className="text-xs leading-6 text-[#5B6573]">
-              داده‌های نمونه صرفاً برای بررسی اولیه قابلیت‌ها هستند. با حذف داده‌های نمونه، تمامی
-              پرونده‌ها و اطلاعات واقعی ثبت‌شده توسط شما کاملاً محفوظ می‌مانند.
-            </p>
-            <div className="flex flex-wrap items-center gap-2.5 pt-1">
-              {store.hasSampleData ? (
-                <button
-                  type="button"
-                  onClick={() => setConfirmClearSamples(true)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[#9E3B3B] bg-[#FFFFFF] px-4 py-2 text-xs font-medium text-[#9E3B3B] hover:bg-[#FBF1F1] cursor-pointer"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  <span>حذف تمام داده‌های نمونه آزمایشی</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    await store.loadSampleDataNow();
-                    setNotice('داده‌های نمونه آزمایشی بارگذاری شدند.');
-                  }}
-                  className="rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-4 py-2 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer"
-                >
-                  بارگذاری مجدد داده‌های نمونه آزمایشی
-                </button>
-              )}
+            <div className="flex flex-col justify-between rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-3">
+              <div className="space-y-1.5">
+                <h3 className="text-sm font-semibold text-[#243B5A]">مدیریت داده‌های نمونه آزمایشی</h3>
+                <p className="text-xs leading-6 text-[#5B6573]">
+                  حذف داده‌های نمونه هیچ تأثیری بر پرونده‌ها و اطلاعات واقعی ثبت‌شده توسط شما ندارد.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                {store.hasSampleData ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmClearSamples(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#9E3B3B] bg-[#FFFFFF] px-4 py-2 text-xs font-medium text-[#9E3B3B] hover:bg-[#FBF1F1] cursor-pointer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>حذف تمام داده‌های نمونه آزمایشی</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await store.loadSampleDataNow();
+                      setNotice('داده‌های نمونه آزمایشی بارگذاری شدند.');
+                    }}
+                    className="rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-4 py-2 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer"
+                  >
+                    بارگذاری مجدد داده‌های نمونه آزمایشی
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-
-          {/* Quick User Guide */}
-          <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-2.5">
-            <h3 className="flex items-center gap-2 text-sm font-semibold text-[#243B5A]">
-              <ImageIcon className="h-4 w-4 text-[#354F73]" />
-              <span>راهنمای سریع استفاده و افزودن تصاویر</span>
-            </h3>
-            <ol className="list-decimal list-inside space-y-2 text-xs leading-6 text-[#5B6573]">
-              <li>
-                <strong>افزودن تصاویر گلزار شهدا:</strong> به بخش «پشتیبانی ← مدیریت تصاویر و آرم
-                رسمی» بروید و تصاویر واقعی گلزار شهدا را انتخاب کنید تا در باکس چرخشی صفحه اصلی نمایش
-                داده شوند.
-              </li>
-              <li>
-                <strong>افزودن تصویر اختصاصی پروژه:</strong> در پرونده هر پروژه (تب «تصویر پروژه») یا
-                از بخش «مدیریت تصاویر و آرم رسمی» می‌توانید تصویر همان پروژه را از حافظه دستگاه یا
-                دوربین گوشی ثبت، تعویض یا حذف کنید.
-              </li>
-              <li>
-                <strong>انتقال اطلاعات بین گوشی و رایانه:</strong> از تب «ورودی و خروجی JSON»،
-                ابتدا خروجی JSON بگیرید، آن را از طریق ایتا یا کابل USB منتقل کنید و در دستگاه مقابل
-                از پنجره «ورودی JSON» پس از پیش‌بررسی و تأیید، اطلاعات را ثبت نمایید.
-              </li>
-              <li>
-                <strong>گزارش‌ها و خروجی رسمی:</strong> در بخش «گزارش‌ها» می‌توانید ۶ نوع گزارش را
-                در حالت متنی، جدولی یا نموداری مشاهده و با فرمت Word/Excel (راست‌چین با فونت Zar
-                ۱۴)، PDF یا JSON ذخیره کنید.
-              </li>
-            </ol>
           </div>
         </div>
       )}

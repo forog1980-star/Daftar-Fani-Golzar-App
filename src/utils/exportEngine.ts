@@ -535,8 +535,8 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
   triggerBlobDownload(blob, fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`);
 }
 
-// Print-to-PDF via hidden iframe (safe inside AI Studio iframe; avoids window.open)
-export function exportToPdfPrint(payload: ExportTablePayload): void {
+// Build clean RTL A4 printable HTML document
+export function buildPrintableReportHtml(payload: ExportTablePayload): string {
   const esc = sanitizeCsvOrXml;
   const summaryHtml =
     payload.summaryRows && payload.summaryRows.length > 0
@@ -599,7 +599,7 @@ export function exportToPdfPrint(payload: ExportTablePayload): void {
         </div>`
       : '';
 
-  const html = `<!doctype html>
+  return `<!doctype html>
 <html lang="fa" dir="rtl">
 <head>
   <meta charset="utf-8" />
@@ -607,12 +607,14 @@ export function exportToPdfPrint(payload: ExportTablePayload): void {
   <style>
     @page { size: A4; margin: 16mm; }
     body {
-      font-family: 'Zar', 'B Zar', Tahoma, serif;
-      font-size: 14pt;
+      font-family: 'Zar', 'B Zar', Tahoma, Arial, sans-serif;
+      font-size: 13pt;
       line-height: 1.75;
       color: #2B3033;
       direction: rtl;
       margin: 0;
+      padding: 16px;
+      background: #FFFFFF;
     }
     .letterhead {
       text-align: center;
@@ -620,22 +622,22 @@ export function exportToPdfPrint(payload: ExportTablePayload): void {
       padding-bottom: 10px;
       margin-bottom: 14px;
     }
-    .letterhead h1 { margin: 0; font-size: 16pt; }
-    .letterhead h2 { margin: 2px 0; font-size: 14pt; font-weight: normal; }
-    .letterhead p { margin: 2px 0; font-size: 12pt; color: #5B6268; }
+    .letterhead h1 { margin: 0; font-size: 15pt; color: #1D3250; }
+    .letterhead h2 { margin: 2px 0; font-size: 13pt; font-weight: normal; color: #354F73; }
+    .letterhead p { margin: 2px 0; font-size: 11pt; color: #5B6268; }
     .doc-meta {
       display: flex;
       justify-content: space-between;
-      font-size: 12pt;
+      font-size: 11pt;
       color: #5B6268;
       margin-bottom: 12px;
     }
-    .doc-title { font-size: 15pt; font-weight: bold; color: #243B5A; margin: 8px 0 12px; }
+    .doc-title { font-size: 14pt; font-weight: bold; color: #243B5A; margin: 8px 0 12px; }
     table {
       width: 100%;
       border-collapse: collapse;
       margin-bottom: 14px;
-      font-size: 14pt;
+      font-size: 11.5pt;
     }
     th, td {
       border: 1px solid #BDB7A7;
@@ -643,10 +645,13 @@ export function exportToPdfPrint(payload: ExportTablePayload): void {
       text-align: right;
       vertical-align: top;
     }
-    th { background: #F3EFE6; font-weight: bold; }
+    th { background: #F3EFE6; font-weight: bold; color: #243B5A; }
     .meta-table th { width: 32%; }
-    .notes { margin-top: 10px; padding: 8px 10px; border: 1px solid #D4CEBF; }
-    .sig-block h3 { font-size: 14pt; margin: 16px 0 6px; }
+    .notes { margin-top: 10px; padding: 8px 10px; border: 1px solid #D4CEBF; font-size: 11.5pt; }
+    .sig-block h3 { font-size: 13pt; margin: 16px 0 6px; color: #243B5A; }
+    @media print {
+      body { padding: 0; }
+    }
   </style>
 </head>
 <body>
@@ -671,6 +676,16 @@ export function exportToPdfPrint(payload: ExportTablePayload): void {
   ${signaturesHtml}
 </body>
 </html>`;
+}
+
+export function downloadPrintableReportHtml(payload: ExportTablePayload, fileName: string): void {
+  const html = buildPrintableReportHtml(payload);
+  const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+  triggerBlobDownload(blob, fileName.endsWith('.html') ? fileName : `${fileName}.html`);
+}
+
+export function exportToPdfPrint(payload: ExportTablePayload): void {
+  const html = buildPrintableReportHtml(payload);
 
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';

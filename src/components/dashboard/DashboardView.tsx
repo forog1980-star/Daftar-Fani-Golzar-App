@@ -36,6 +36,8 @@ import { STATUS_COLORS } from './StatusDonutChart';
 import { StatusChartPanel } from './StatusChartPanel';
 import { GolzarGalleryWidget } from './GolzarGalleryWidget';
 import { getNeutralProjectImage } from '../../utils/officialAssets';
+import { HelpSectionId } from '../help/helpContent';
+import { SectionHelpLink } from '../help/SectionHelpLink';
 
 interface DashboardViewProps {
   store: AppStore;
@@ -43,6 +45,7 @@ interface DashboardViewProps {
   onOpenProject: (project: Project) => void;
   onOpenGolzarManager: () => void;
   onOpenReport: (reportType: ReportType) => void;
+  onOpenHelp?: (sectionId: HelpSectionId) => void;
 }
 
 const ORDERED_STATUSES: ProjectStatus[] = [
@@ -72,6 +75,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenProject,
   onOpenGolzarManager,
   onOpenReport,
+  onOpenHelp,
 }) => {
   const isOnline = useOnlineStatus();
   const { projects, budgets, actions, activities, golzarImages, projectImages, settings } = store;
@@ -249,15 +253,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <BarChart3 className="h-4 w-4 text-[#243B5A]" />
             <h2 className="text-sm font-bold text-[#1D3250] sm:text-base">وضعیت پروژه‌ها</h2>
           </div>
-          {statusFilter !== 'همه' && (
-            <button
-              type="button"
-              onClick={() => setStatusFilter('همه')}
-              className="rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-2.5 py-1 text-[11px] font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
-            >
-              حذف فیلتر وضعیت ({statusFilter})
-            </button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {statusFilter !== 'همه' && (
+              <button
+                type="button"
+                onClick={() => setStatusFilter('همه')}
+                className="rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-2.5 py-1 text-[11px] font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+              >
+                حذف فیلتر وضعیت ({statusFilter})
+              </button>
+            )}
+            {onOpenHelp && <SectionHelpLink sectionId="dashboard" onOpenHelp={onOpenHelp} />}
+          </div>
         </div>
 
         {/* 6 Quick Report Navigation Buttons — evenly aligned proportional grid */}

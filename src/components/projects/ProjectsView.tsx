@@ -1,15 +1,29 @@
 import React, { useMemo, useState } from 'react';
-import { Edit2, FolderOpen, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react';
+import {
+  Edit2,
+  FolderOpen,
+  Mic,
+  MicOff,
+  Plus,
+  RotateCcw,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { Project, ProjectStatus } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
+import { useVoiceSearch } from '../../hooks/useVoiceSearch';
 import { formatJalaliDate, formatRial, toPersianDigits } from '../../utils/format';
 import { getNeutralProjectImage } from '../../utils/officialAssets';
 import { ProjectFormModal } from './ProjectFormModal';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
+import { HelpSectionId } from '../help/helpContent';
+import { SectionHelpLink } from '../help/SectionHelpLink';
 
 interface ProjectsViewProps {
   store: AppStore;
   onOpenProject: (project: Project) => void;
+  onOpenHelp?: (sectionId: HelpSectionId) => void;
 }
 
 const PERSIAN_DIGITS = '۰۱۲۳۴۵۶۷۸۹';
@@ -30,12 +44,23 @@ function normalizeSearchText(input: string): string {
   return out;
 }
 
-export const ProjectsView: React.FC<ProjectsViewProps> = ({ store, onOpenProject }) => {
+export const ProjectsView: React.FC<ProjectsViewProps> = ({
+  store,
+  onOpenProject,
+  onOpenHelp,
+}) => {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('همه');
   const [statusFilter, setStatusFilter] = useState<string>('همه');
   const [editing, setEditing] = useState<Project | null | undefined>(undefined);
   const [deleting, setDeleting] = useState<Project | null>(null);
+
+  const voice = useVoiceSearch({
+    lang: 'fa-IR',
+    onTranscript: (spokenText) => {
+      setSearch(spokenText);
+    },
+  });
 
   const projectImageMap = useMemo(
     () => new Map(store.projectImages.map((img) => [img.projectId, img])),
@@ -76,6 +101,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ store, onOpenProject
   const hasActiveFilters = Boolean(normalizedQuery) || typeFilter !== 'همه' || statusFilter !== 'همه';
 
   const resetFilters = () => {
+    voice.stopListening();
+    voice.clearError();
     setSearch('');
     setTypeFilter('همه');
     setStatusFilter('همه');
@@ -92,27 +119,80 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ store, onOpenProject
               <input
                 type="search"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  if (voice.error) voice.clearError();
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Escape' && search) {
                     setSearch('');
                   }
                 }}
-                placeholder="جست‌وجوی آنی با عنوان یا کد پروژه (پیمانکار، محل اجرا یا شماره قرارداد)..."
-                aria-label="جست‌وجوی آنی پروژه‌ها با عنوان یا کد پروژه"
-                className="h-10 w-full rounded-xl border border-[#CEC8BA] bg-[#FAF8F3] pr-9 pl-9 text-sm text-[#263448] focus:border-[#243B5A] focus:bg-[#FFFFFF] focus:outline-none transition-colors"
+                placeholder={
+                  voice.isListening
+                    ? 'در حال شنیدن... نام یا کد پروژه را بیان کنید'
+                    : 'جست‌وجوی آنی با عنوان یا کد پروژه (یا گفتن نام پروژه با میکروفون)...'
+                }
+                aria-label="جست‌وجوی آنی پروژه‌ها با عنوان، کد یا ورودی صوتی"
+                className={`h-10 w-full rounded-xl border pr-9 text-sm text-[#263448] focus:bg-[#FFFFFF] focus:outline-none transition-colors ${
+                  search ? 'pl-20' : 'pl-11'
+                } ${
+                  voice.isListening
+                    ? 'border-[#9E3B3B] bg-[#FFFFFF]'
+                    : 'border-[#CEC8BA] bg-[#FAF8F3] focus:border-[#243B5A]'
+                }`}
               />
-              {search && (
+
+              <div className="absolute left-1.5 top-1.5 flex items-center gap-1">
+                {search && (
+                  <button
+                    type="button"
+                    onClick={() => setSearch('')}
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-[#788290] hover:bg-[#E8E5DE] hover:text-[#243B5A] cursor-pointer"
+                    aria-label="پاک کردن جست‌وجو"
+                    title="پاک کردن جست‌وجو"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+
                 <button
                   type="button"
-                  onClick={() => setSearch('')}
-                  className="absolute left-2.5 top-2 inline-flex h-6 w-6 items-center justify-center rounded-lg text-[#788290] hover:bg-[#E8E5DE] hover:text-[#243B5A] cursor-pointer"
-                  aria-label="پاک کردن جست‌وجو"
-                  title="پاک کردن جست‌وجو"
+                  onClick={voice.toggleListening}
+                  aria-pressed={voice.isListening}
+                  aria-label={
+                    voice.isListening
+                      ? 'توقف جست‌وجوی صوتی'
+                      : 'فعالسازی جست‌وجوی صوتی با میکروفون'
+                  }
+                  title={
+                    !voice.isSupported
+                      ? 'مرورگر از ورودی صوتی پشتیبانی نمی‌کند'
+                      : voice.isListening
+                        ? 'توقف ورودی صوتی'
+                        : 'جست‌وجوی صوتی (نام پروژه را بگویید)'
+                  }
+                  className={`relative inline-flex h-7 w-7 items-center justify-center rounded-lg border transition-colors cursor-pointer ${
+                    voice.isListening
+                      ? 'border-[#9E3B3B] bg-[#FBF1F1] text-[#9E3B3B]'
+                      : voice.isSupported
+                        ? 'border-[#D7D2C6] bg-[#FFFFFF] text-[#243B5A] hover:border-[#243B5A] hover:bg-[#E5EBF2]'
+                        : 'border-[#E2DDD2] bg-[#F2EEE6] text-[#9AA2AE]'
+                  }`}
                 >
-                  <X className="h-3.5 w-3.5" />
+                  {voice.isListening ? (
+                    <>
+                      <span
+                        className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[#9E3B3B] animate-ping"
+                        aria-hidden="true"
+                      />
+                      <MicOff className="h-3.5 w-3.5" />
+                    </>
+                  ) : (
+                    <Mic className="h-3.5 w-3.5" />
+                  )}
                 </button>
-              )}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
@@ -144,15 +224,56 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({ store, onOpenProject
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setEditing(null)}
-            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] whitespace-nowrap shrink-0 cursor-pointer lg:w-auto"
-          >
-            <Plus className="h-4 w-4" />
-            <span>ثبت پروژه جدید</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setEditing(null)}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] whitespace-nowrap cursor-pointer lg:flex-none"
+            >
+              <Plus className="h-4 w-4" />
+              <span>ثبت پروژه جدید</span>
+            </button>
+            {onOpenHelp && <SectionHelpLink sectionId="projects" onOpenHelp={onOpenHelp} />}
+          </div>
         </div>
+
+        {/* Voice Input Active / Error Feedback */}
+        {voice.isListening && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#D8B4B4] bg-[#FBF1F1] px-3 py-2 text-xs text-[#9E3B3B]"
+          >
+            <span className="flex items-center gap-2 font-medium">
+              <span className="h-2 w-2 rounded-full bg-[#9E3B3B] animate-pulse" aria-hidden="true" />
+              <span>میکروفون فعال است؛ نام یا کد پروژه را بیان کنید...</span>
+            </span>
+            <button
+              type="button"
+              onClick={voice.stopListening}
+              className="rounded-lg border border-[#D8B4B4] bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-medium text-[#9E3B3B] hover:bg-[#F7E3E3] cursor-pointer"
+            >
+              توقف
+            </button>
+          </div>
+        )}
+
+        {voice.error && !voice.isListening && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-2 rounded-xl border border-[#E7D8BA] bg-[#FBF6EB] px-3 py-2 text-xs text-[#7D5B1C]"
+          >
+            <span>{voice.error}</span>
+            <button
+              type="button"
+              onClick={voice.clearError}
+              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[#7D5B1C] hover:bg-[#EFE4CC] cursor-pointer"
+              aria-label="بستن پیام"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Live Search Result Summary */}
         {hasActiveFilters && (

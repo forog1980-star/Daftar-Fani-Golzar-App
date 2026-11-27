@@ -1,6 +1,7 @@
 import { AppRoute } from '../types';
 import { ReportDisplayMode, ReportType } from '../components/reports/ReportsView';
 import { SupportTab } from '../components/support/SupportView';
+import { HelpSectionId } from '../components/help/helpContent';
 
 export interface HistoryEntry {
   route: AppRoute;
@@ -8,6 +9,7 @@ export interface HistoryEntry {
   parentRoute: AppRoute | null;
   projectId?: string;
   supportTab?: SupportTab;
+  helpSection?: HelpSectionId | null;
   reportType?: ReportType;
   reportDisplayMode?: ReportDisplayMode;
   subTab?: string;
@@ -20,6 +22,7 @@ export type NavigationMode = 'drill' | 'sidebar' | 'replace';
 export interface NavigateOptions {
   projectId?: string;
   supportTab?: SupportTab;
+  helpSection?: HelpSectionId | null;
   reportType?: ReportType;
   reportDisplayMode?: ReportDisplayMode;
   subTab?: string;
@@ -90,6 +93,7 @@ function buildEntry(
     parentRoute: normalized === 'dashboard' ? null : parentRoute,
     projectId: normalized === 'project-detail' ? options?.projectId : undefined,
     supportTab: normalized === 'support' ? (options?.supportTab ?? 'settings') : undefined,
+    helpSection: normalized === 'support' ? (options?.helpSection ?? null) : undefined,
     reportType: normalized === 'reports' ? (options?.reportType ?? 'projects') : undefined,
     reportDisplayMode:
       normalized === 'reports' ? (options?.reportDisplayMode ?? 'table') : undefined,

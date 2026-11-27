@@ -1,14 +1,23 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlignRight,
   BarChart3,
+  CheckCircle2,
+  CheckSquare,
   Download,
   FileJson,
   FileSpreadsheet,
   FileText,
+  FolderKanban,
   Image as ImageIcon,
+  Lightbulb,
   Printer,
+  Settings2,
+  SlidersHorizontal,
+  Star,
   Table as TableIcon,
+  Wallet,
+  X,
 } from 'lucide-react';
 import { LetterheadConfig, ProjectStatus, SignatureSnapshot } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
@@ -20,16 +29,20 @@ import {
   toPersianDigits,
 } from '../../utils/format';
 import {
+  buildPrintableReportHtml,
+  downloadPrintableReportHtml,
   exportToExcelXlsx,
   exportToJson,
-  exportToPdfPrint,
   exportToWordDocx,
   ExportTablePayload,
 } from '../../utils/exportEngine';
+import { FloatingWindow } from '../layout/FloatingWindow';
 import { SignatureBlockEditor } from '../documents/SignatureBlockEditor';
 import { STATUS_COLORS } from '../dashboard/StatusDonutChart';
 import { StatusChartPanel } from '../dashboard/StatusChartPanel';
 import { getNeutralProjectImage, OFFICIAL_GOLZAR_LOGO } from '../../utils/officialAssets';
+import { HelpSectionId } from '../help/helpContent';
+import { SectionHelpLink } from '../help/SectionHelpLink';
 
 export type ReportType = 'projects' | 'budget' | 'proposals' | 'actions' | 'documents' | 'single-project';
 export type ReportDisplayMode = 'table' | 'narrative' | 'chart';
@@ -40,6 +53,7 @@ interface ReportsViewProps {
   initialDisplayMode?: ReportDisplayMode;
   onReportTypeChange?: (reportType: ReportType) => void;
   onDisplayModeChange?: (mode: ReportDisplayMode) => void;
+  onOpenHelp?: (sectionId: HelpSectionId) => void;
 }
 
 interface SingleProjectReportSections {
@@ -60,38 +74,14 @@ interface SingleProjectReportSections {
 const REPORT_CARDS: Array<{
   key: ReportType;
   title: string;
-  description: string;
+  icon: React.ComponentType<{ className?: string }>;
 }> = [
-  {
-    key: 'projects',
-    title: 'گزارش جامع پروژه‌ها',
-    description: 'فهرست کامل پروژه‌ها، وضعیت، پیمانکار، مبلغ قرارداد و پیشرفت فیزیکی',
-  },
-  {
-    key: 'budget',
-    title: 'گزارش بودجه و اعتبارات',
-    description: 'مقایسه اعتبار مصوب، تخصیصی، تأمین‌شده، پرداخت‌ها و مانده اعتبار',
-  },
-  {
-    key: 'proposals',
-    title: 'گزارش پیشنهاد بودجه سالانه',
-    description: 'پیشنهادهای اعتباری سال آینده بر حسب حوزه، اولویت و برآورد مالی',
-  },
-  {
-    key: 'actions',
-    title: 'گزارش اقدامات و پیگیری‌ها',
-    description: 'وضعیت پیگیری‌ها، مهلت‌های اجرایی، موارد فوری و عقب‌افتاده',
-  },
-  {
-    key: 'documents',
-    title: 'گزارش اسناد و مکاتبات',
-    description: 'نامه‌های وارده و صادره، صورتجلسات، دستورهای ابلاغ و پیوست‌ها',
-  },
-  {
-    key: 'single-project',
-    title: 'گزارش تکمیلی و تفصیلی پروژه',
-    description: 'پرونده کامل یک پروژه با انتخاب دلخواه بخش‌ها، تصویر، بودجه و امضاها',
-  },
+  { key: 'projects', title: 'گزارش جامع پروژه‌ها', icon: FolderKanban },
+  { key: 'budget', title: 'گزارش بودجه و اعتبارات', icon: Wallet },
+  { key: 'proposals', title: 'گزارش پیشنهاد بودجه سالانه', icon: Lightbulb },
+  { key: 'actions', title: 'گزارش اقدامات و پیگیری‌ها', icon: CheckSquare },
+  { key: 'documents', title: 'گزارش اسناد و مکاتبات', icon: FileText },
+  { key: 'single-project', title: 'گزارش تفصیلی پروژه', icon: Star },
 ];
 
 const ORDERED_STATUSES: ProjectStatus[] = [
@@ -108,9 +98,15 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   initialDisplayMode = 'table',
   onReportTypeChange,
   onDisplayModeChange,
+  onOpenHelp,
 }) => {
   const [reportType, setReportType] = useState<ReportType>(initialReportType);
   const [displayMode, setDisplayMode] = useState<ReportDisplayMode>(initialDisplayMode);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
+
+  const reportWorkspaceRef = useRef<HTMLDivElement | null>(null);
+  const printIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
     setReportType(initialReportType);
@@ -120,10 +116,17 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     setDisplayMode(initialDisplayMode);
   }, [initialDisplayMode]);
 
-  const handleSelectReportType = (next: ReportType) => {
+  const handleSelectReportType = (next: ReportType, openSettings = false) => {
     setReportType(next);
-    setExportMessage('');
     onReportTypeChange?.(next);
+    if (openSettings) {
+      setSettingsModalOpen(true);
+      return;
+    }
+    // Smoothly scroll straight to the active report workspace so the user immediately sees the result
+    setTimeout(() => {
+      reportWorkspaceRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
   const handleSelectDisplayMode = (next: ReportDisplayMode) => {
@@ -134,7 +137,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [reportNumber, setReportNumber] = useState(`گ-${Math.floor(100 + Math.random() * 899)}`);
   const [letterhead, setLetterhead] = useState<LetterheadConfig>(store.settings.letterhead);
   const [signatures, setSignatures] = useState<SignatureSnapshot[]>([]);
-  const [exportMessage, setExportMessage] = useState('');
+  const [exportNotice, setExportNotice] = useState<{
+    title: string;
+    detail: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!exportNotice) return;
+    const timer = window.setTimeout(() => setExportNotice(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [exportNotice]);
 
   const [singleSections, setSingleSections] = useState<SingleProjectReportSections>({
     includeLetterhead: true,
@@ -286,24 +298,41 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     }
 
     if (reportType === 'proposals') {
+      const totalEstimated = store.proposals.reduce((s, p) => s + (p.estimatedAmount || 0), 0);
+      const itemizedCount = store.proposals.filter((p) => (p.estimateItems?.length ?? 0) > 0).length;
+      const imageCount = store.proposals.reduce((s, p) => s + (p.images?.length ?? 0), 0);
       return {
         ...base,
-        title: 'گزارش پیشنهاد بودجه سالانه',
+        title: 'گزارش جامع پیشنهاد بودجه سال آینده',
         summaryRows: [
-          { label: 'تعداد پیشنهادها', value: toPersianDigits(store.proposals.length) },
-          {
-            label: 'جمع برآورد اعتبار پیشنهادی',
-            value: formatRial(store.proposals.reduce((s, p) => s + (p.estimatedAmount || 0), 0)),
-          },
+          { label: 'تعداد پرونده‌های پیشنهادی', value: toPersianDigits(store.proposals.length) },
+          { label: 'جمع برآورد اعتبار پیشنهادی', value: formatRial(totalEstimated) },
+          { label: 'دارای جزئیات برآورد', value: `${toPersianDigits(itemizedCount)} مورد` },
+          { label: 'مستندات تصویری پیوست', value: `${toPersianDigits(imageCount)} تصویر` },
         ],
-        headers: ['سال', 'عنوان پیشنهاد', 'حوزه', 'اولویت', 'برآورد مبلغ', 'شرح'],
+        headers: [
+          'کد پروژه',
+          'سال',
+          'عنوان پیشنهاد',
+          'محل / حوزه',
+          'شروع تا پایان',
+          'مبنای برآورد',
+          'اولویت / وضعیت',
+          'برآورد مبلغ',
+        ],
         rows: store.proposals.map((pr) => [
+          pr.projectCode || '—',
           pr.fiscalYear,
           pr.title,
-          pr.department,
-          pr.priority,
+          [pr.location, pr.department].filter(Boolean).join(' · ') || '—',
+          pr.startDate || pr.endDate
+            ? `${pr.startDate ? formatJalaliDate(pr.startDate) : '؟'} تا ${pr.endDate ? formatJalaliDate(pr.endDate) : '؟'}`
+            : '—',
+          pr.estimateBasis
+            ? `${pr.estimateBasis}${pr.estimateItems?.length ? ` (${toPersianDigits(pr.estimateItems.length)} ردیف)` : ''}`
+            : 'برآورد کارشناسی',
+          `${pr.priority} · ${pr.proposalStatus ?? 'پیش‌نویس'}`,
           formatRial(pr.estimatedAmount),
-          pr.description || '—',
         ]),
       };
     }
@@ -530,8 +559,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     }
     if (reportType === 'proposals') {
       const sum = store.proposals.reduce((s, p) => s + (p.estimatedAmount || 0), 0);
+      const itemizedCount = store.proposals.filter((p) => (p.estimateItems?.length ?? 0) > 0).length;
+      const imgCount = store.proposals.reduce((s, p) => s + (p.images?.length ?? 0), 0);
       return [
-        `تعداد ${toPersianDigits(store.proposals.length)} پیشنهاد بودجه برای سال مالی آتی با جمع برآورد مالی ${formatRial(sum)} در دفتر فنی ثبت و اولویت‌بندی شده است.`,
+        `تعداد ${toPersianDigits(store.proposals.length)} پرونده پیشنهاد بودجه برای سال مالی آتی با جمع برآورد مالی ${formatRial(sum)} در دفتر فنی ثبت و اولویت‌بندی شده است.`,
+        `از این میان ${toPersianDigits(itemizedCount)} پیشنهاد دارای ریز ردیف‌های برآورد مالی بوده و در مجموع ${toPersianDigits(imgCount)} مستند تصویری جهت بررسی و تصویب پیوست گردیده است.`,
       ];
     }
     if (reportType === 'actions') {
@@ -705,236 +737,228 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     const slug = `report-${reportType}-${todayIsoDate()}`;
     if (format === 'word') {
       await exportToWordDocx(reportPayload, slug);
-      setExportMessage('خروجی Word راست‌چین با فونت Zar اندازه ۱۴ پوینت تولید و بارگیری شد.');
+      setExportNotice({
+        title: 'خروجی Word آماده شد',
+        detail: 'فایل Word گزارش با سربرگ انتخابی تولید و روی دستگاه بارگیری شد.',
+      });
     } else if (format === 'excel') {
       await exportToExcelXlsx(reportPayload, slug);
-      setExportMessage('خروجی Excel راست‌چین با فونت Zar اندازه ۱۴ پوینت تولید و بارگیری شد.');
+      setExportNotice({
+        title: 'خروجی Excel آماده شد',
+        detail: 'فایل Excel گزارش با موفقیت تولید و روی دستگاه ذخیره شد.',
+      });
     } else if (format === 'pdf') {
-      exportToPdfPrint(reportPayload);
-      setExportMessage('نمای چاپ و ذخیره PDF (فونت Zar ۱۴) آماده شد.');
+      setSettingsModalOpen(false);
+      setPrintPreviewOpen(true);
     } else {
       exportToJson(reportPayload, slug);
-      setExportMessage('فایل ساخت‌یافته JSON تولید و بارگیری شد.');
+      setExportNotice({
+        title: 'فایل JSON آماده شد',
+        detail: 'خروجی ساخت‌یافته داده‌های گزارش آماده و بارگیری شد.',
+      });
     }
   };
+
+  const handleTriggerVisiblePrint = () => {
+    const win = printIframeRef.current?.contentWindow;
+    if (win) {
+      win.focus();
+      win.print();
+    } else {
+      window.print();
+    }
+  };
+
+  const printableHtml = useMemo(
+    () => (printPreviewOpen ? buildPrintableReportHtml(reportPayload) : ''),
+    [printPreviewOpen, reportPayload]
+  );
 
   const toggleSingleSection = (key: keyof SingleProjectReportSections) => {
     setSingleSections((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
+  const activeCard = REPORT_CARDS.find((c) => c.key === reportType) ?? REPORT_CARDS[0];
+
+  const cardCounts: Record<ReportType, string> = {
+    projects: `${toPersianDigits(store.projects.length)} پروژه`,
+    budget: `${toPersianDigits(store.budgets.length)} ردیف`,
+    proposals: `${toPersianDigits(store.proposals.length)} پیشنهاد`,
+    actions: `${toPersianDigits(store.actions.length)} اقدام`,
+    documents: `${toPersianDigits(store.documents.length)} سند`,
+    'single-project': selectedProject ? selectedProject.code : 'تک‌پروژه',
+  };
+
   return (
     <div className="animate-page-in mx-auto max-w-[1280px] space-y-5 px-4 py-5 sm:px-6">
-      {/* 1. Six Structured Report Cards (Section 6) */}
-      <section aria-label="انواع گزارش‌ها">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {/* 1. Six Clean Interactive Report Cards (Click card -> scroll to report | Click gear -> open Settings & Export window) */}
+      <section aria-label="انتخاب نوع گزارش" className="space-y-2.5">
+        <div className="flex items-center justify-between gap-2 px-0.5">
+          <span className="text-xs font-semibold text-[#243B5A]">
+            انتخاب گزارش مورد نظر
+          </span>
+          {onOpenHelp && <SectionHelpLink sectionId="reports" onOpenHelp={onOpenHelp} />}
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
           {REPORT_CARDS.map((card) => {
             const active = reportType === card.key;
+            const Icon = card.icon;
             return (
-              <button
+              <div
                 key={card.key}
-                type="button"
-                onClick={() => handleSelectReportType(card.key)}
-                className={`rounded-[var(--app-radius)] border p-4 text-right transition-colors cursor-pointer ${
+                className={`relative flex flex-col rounded-2xl border transition-all ${
                   active
-                    ? 'border-[#243B5A] bg-[#E5EBF2]/75'
-                    : 'border-[#E2DDD2] bg-[#FFFFFF] hover:border-[#354F73] hover:bg-[#F2EEE6]/50'
+                    ? 'border-[#243B5A] bg-[#243B5A] text-[#FAF8F3] shadow-[0_6px_16px_rgba(29,50,80,0.16)]'
+                    : 'border-[#E2DDD2] bg-[#FFFFFF] text-[#243B5A] hover:border-[#243B5A] hover:bg-[#F5F7FB]'
                 }`}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-semibold text-[#243B5A]">{card.title}</span>
-                  <FileText
-                    className={`h-4 w-4 shrink-0 ${
-                      active ? 'text-[#243B5A]' : 'text-[#8C96A4]'
+                <button
+                  type="button"
+                  onClick={() => handleSelectReportType(card.key, false)}
+                  className="flex min-h-[82px] w-full flex-col items-center justify-center gap-1.5 px-3 pt-3.5 pb-2.5 text-center cursor-pointer"
+                >
+                  <Icon
+                    className={`h-5 w-5 shrink-0 ${
+                      active ? 'text-[#FAF8F3]' : 'text-[#354F73]'
                     }`}
                   />
-                </div>
-                <p className="mt-1.5 text-xs leading-5 text-[#5B6573]">{card.description}</p>
-              </button>
+                  <span className="text-xs font-semibold leading-5">{card.title}</span>
+                  <span
+                    className={`text-[10px] tabular-nums ${
+                      active ? 'text-[#D6E0EC]' : 'text-[#788290]'
+                    }`}
+                  >
+                    {cardCounts[card.key]}
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleSelectReportType(card.key, true)}
+                  aria-label={`تنظیمات و خروجی ${card.title}`}
+                  title="تنظیمات و خروجی PDF / Excel / Word"
+                  className={`absolute top-2 left-2 inline-flex h-6 w-6 items-center justify-center rounded-lg border transition-colors cursor-pointer ${
+                    active
+                      ? 'border-[#FAF8F3]/25 bg-[#FAF8F3]/12 text-[#FAF8F3] hover:bg-[#FAF8F3]/25'
+                      : 'border-[#E6E2D8] bg-[#FAF8F3] text-[#5B6573] hover:border-[#243B5A] hover:text-[#243B5A]'
+                  }`}
+                >
+                  <SlidersHorizontal className="h-3 w-3" />
+                </button>
+              </div>
             );
           })}
         </div>
       </section>
 
-      {/* 2. Report Controls: Display Mode, Project Selector, Optional Sections, Letterhead & Export Buttons */}
-      <section className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          {/* 3 Display Modes: Narrative / Table / Chart */}
-          <div className="grid w-full grid-cols-3 gap-1.5 sm:w-auto sm:flex sm:items-center">
-            {(
-              [
-                { key: 'narrative', label: 'گزارش متنی', icon: AlignRight },
-                { key: 'table', label: 'گزارش جدولی', icon: TableIcon },
-                { key: 'chart', label: 'گزارش نموداری', icon: BarChart3 },
-              ] as Array<{
-                key: ReportDisplayMode;
-                label: string;
-                icon: React.ComponentType<{ className?: string }>;
-              }>
-            ).map((mode) => {
-              const Icon = mode.icon;
-              return (
-                <button
-                  key={mode.key}
-                  type="button"
-                  onClick={() => handleSelectDisplayMode(mode.key)}
-                  className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                    displayMode === mode.key
-                      ? 'border border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'
-                      : 'border border-[#E2DDD2] bg-[#FAF8F3] text-[#263448] hover:bg-[#E5EBF2]'
-                  }`}
+      {/* 2. Active Report Workspace (Auto-scroll target when clicking any report card) */}
+      <div ref={reportWorkspaceRef} className="scroll-mt-20 space-y-4">
+        {/* Clean Controls Bar */}
+        <section className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-4 sm:p-5 space-y-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="text-sm font-bold text-[#1D3250]">{activeCard.title}</h2>
+              {reportType === 'single-project' && (
+                <select
+                  value={selectedProject?.id ?? ''}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  aria-label="انتخاب پروژه"
+                  className="h-9 max-w-[260px] rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
                 >
-                  <Icon className="h-3.5 w-3.5 shrink-0" />
-                  <span>{mode.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {reportType === 'single-project' && (
-            <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-              <label className="text-xs text-[#5B6573] shrink-0">انتخاب پروژه:</label>
-              <select
-                value={selectedProject?.id ?? ''}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="h-9 w-full rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none sm:max-w-[280px]"
-              >
-                {store.projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.code} — {p.title}
-                  </option>
-                ))}
-              </select>
+                  {store.projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.code} — {p.title}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Section Checkboxes for Single-Project Comprehensive Report */}
-        {reportType === 'single-project' && (
-          <div className="rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-4 space-y-2.5">
-            <div className="text-xs font-semibold text-[#243B5A]">
-              انتخاب بخش‌های موردنظر در گزارش تفصیلی پروژه
-            </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 text-xs text-[#263448]">
+            {/* 3 Display Modes: Table / Narrative / Chart */}
+            <div className="grid w-full grid-cols-3 gap-1.5 sm:w-auto sm:flex sm:items-center">
               {(
                 [
-                  ['includeLetterhead', 'سربرگ انتخابی سازمان'],
-                  ['includeTechnicalOfficeTitle', 'عنوان دفتر فنی'],
-                  ['includeDateAndNumber', 'شماره و تاریخ گزارش'],
-                  ['includeBasicIdentity', 'کد، عنوان و محل اجرا'],
-                  ['includeContractInfo', 'اطلاعات قرارداد و مبلغ'],
-                  ['includeStages', 'وضعیت و مراحل اجرایی'],
-                  ['includeActions', 'اقدامات و پیگیری‌ها'],
-                  ['includeBudget', 'بودجه و اعتبارات'],
-                  ['includePayments', 'صورت‌وضعیت‌ها و پرداخت‌ها'],
-                  ['includeDocuments', 'اسناد و مکاتبات'],
-                  ['includeImagesAndAttachments', 'تصویر پروژه و پیوست‌ها'],
-                  ['includeSignatures', 'اشخاص و امضاکنندگان'],
-                ] as Array<[keyof SingleProjectReportSections, string]>
-              ).map(([key, label]) => (
-                <label key={key} className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={singleSections[key]}
-                    onChange={() => toggleSingleSection(key)}
-                    className="h-4 w-4 accent-[#243B5A]"
-                  />
-                  <span>{label}</span>
-                </label>
-              ))}
+                  { key: 'table', label: 'جدولی', icon: TableIcon },
+                  { key: 'narrative', label: 'متنی', icon: AlignRight },
+                  { key: 'chart', label: 'نموداری', icon: BarChart3 },
+                ] as Array<{
+                  key: ReportDisplayMode;
+                  label: string;
+                  icon: React.ComponentType<{ className?: string }>;
+                }>
+              ).map((mode) => {
+                const Icon = mode.icon;
+                return (
+                  <button
+                    key={mode.key}
+                    type="button"
+                    onClick={() => handleSelectDisplayMode(mode.key)}
+                    className={`inline-flex h-9 items-center justify-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+                      displayMode === mode.key
+                        ? 'border border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'
+                        : 'border border-[#E2DDD2] bg-[#FAF8F3] text-[#263448] hover:bg-[#E5EBF2]'
+                    }`}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" />
+                    <span>{mode.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
-        )}
 
-        {/* Selectable Letterhead Controls */}
-        <div className="grid grid-cols-1 gap-3 border-t border-[#E8E5DE] pt-4 sm:grid-cols-4">
-          <div>
-            <label className="mb-1 block text-[11px] text-[#5B6573]">عنوان سازمانی سربرگ</label>
-            <input
-              type="text"
-              value={letterhead.organizationName}
-              onChange={(e) =>
-                setLetterhead((l) => ({ ...l, organizationName: e.target.value }))
-              }
-              className="w-full rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-2.5 py-1.5 text-xs text-[#263448]"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] text-[#5B6573]">واحد / اداره</label>
-            <input
-              type="text"
-              value={letterhead.unitName}
-              onChange={(e) => setLetterhead((l) => ({ ...l, unitName: e.target.value }))}
-              className="w-full rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-2.5 py-1.5 text-xs text-[#263448]"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] text-[#5B6573]">زیرعنوان سربرگ</label>
-            <input
-              type="text"
-              value={letterhead.subtitle}
-              onChange={(e) => setLetterhead((l) => ({ ...l, subtitle: e.target.value }))}
-              className="w-full rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-2.5 py-1.5 text-xs text-[#263448]"
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-[11px] text-[#5B6573]">شماره گزارش</label>
-            <input
-              type="text"
-              value={reportNumber}
-              onChange={(e) => setReportNumber(e.target.value)}
-              className="w-full rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-2.5 py-1.5 text-xs text-[#263448]"
-            />
-          </div>
-        </div>
+          {/* Export Buttons + Settings Modal Trigger */}
+          <div className="flex flex-col gap-2.5 border-t border-[#EFECE4] pt-3.5 lg:flex-row lg:items-center lg:justify-between">
+            <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap sm:items-center">
+              <button
+                type="button"
+                onClick={() => handleExport('word')}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-3.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap"
+              >
+                <Download className="h-3.5 w-3.5 shrink-0" />
+                <span>خروجی Word</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport('excel')}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#3D6B59] bg-[#FFFFFF] px-3.5 text-xs font-medium text-[#3D6B59] hover:bg-[#E7ECE6] cursor-pointer whitespace-nowrap"
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
+                <span>خروجی Excel</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport('pdf')}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3.5 text-xs font-medium text-[#263448] hover:border-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer whitespace-nowrap"
+              >
+                <Printer className="h-3.5 w-3.5 shrink-0" />
+                <span>چاپ / PDF</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport('json')}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3.5 text-xs font-medium text-[#263448] hover:border-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer whitespace-nowrap"
+              >
+                <FileJson className="h-3.5 w-3.5 shrink-0" />
+                <span>JSON</span>
+              </button>
+            </div>
 
-        {/* Export Action Buttons */}
-        <div className="flex flex-col gap-3 border-t border-[#E8E5DE] pt-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="text-xs text-[#5B6573]">
-            خروجی Word و Excel کاملاً راست‌چین با فونت Zar اندازه ۱۴ پوینت و جدول‌بندی استاندارد
-            اداری تولید می‌شوند.
-          </div>
-          <div className="grid w-full grid-cols-2 gap-2 sm:w-auto sm:flex sm:flex-wrap sm:items-center shrink-0">
             <button
               type="button"
-              onClick={() => handleExport('word')}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-3.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap"
+              onClick={() => setSettingsModalOpen(true)}
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#E2DDD2] bg-[#FAF8F3] px-3.5 text-xs font-medium text-[#243B5A] hover:border-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer whitespace-nowrap"
             >
-              <Download className="h-3.5 w-3.5 shrink-0" />
-              <span>خروجی Word</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleExport('excel')}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#3D6B59] bg-[#FFFFFF] px-3.5 text-xs font-medium text-[#3D6B59] hover:bg-[#E7ECE6] cursor-pointer whitespace-nowrap"
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5 shrink-0" />
-              <span>خروجی Excel</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleExport('pdf')}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3.5 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer whitespace-nowrap"
-            >
-              <Printer className="h-3.5 w-3.5 shrink-0" />
-              <span>چاپ / PDF</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleExport('json')}
-              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3.5 text-xs font-medium text-[#263448] hover:bg-[#E5EBF2] cursor-pointer whitespace-nowrap"
-            >
-              <FileJson className="h-3.5 w-3.5 shrink-0" />
-              <span>JSON</span>
+              <Settings2 className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                {reportType === 'single-project'
+                  ? 'تنظیمات سربرگ، بخش‌ها و خروجی'
+                  : 'تنظیمات سربرگ و خروجی'}
+              </span>
             </button>
           </div>
-        </div>
-
-        {exportMessage && (
-          <div className="rounded-lg border border-[#C6D5C4] bg-[#E7ECE6] px-3.5 py-2.5 text-xs text-[#263448]">
-            {exportMessage}
-          </div>
-        )}
-      </section>
+        </section>
 
       {/* 3. Live Report Preview Sheet (Real Data Only) */}
       <section className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-6 space-y-5">
@@ -1157,6 +1181,251 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           />
         )}
       </section>
+      </div>
+
+      {/* Report Settings & Export Floating Window */}
+      {settingsModalOpen && (
+        <FloatingWindow
+          title={`تنظیمات و خروجی — ${activeCard.title}`}
+          onClose={() => setSettingsModalOpen(false)}
+          width={680}
+        >
+          <div className="space-y-4">
+            {reportType === 'single-project' && (
+              <div className="space-y-3 rounded-xl border border-[#E2DDD0] bg-[#FAF8F3] p-4">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-[#243B5A]">
+                    پروژه مورد نظر برای گزارش تفصیلی
+                  </label>
+                  <select
+                    value={selectedProject?.id ?? ''}
+                    onChange={(e) => setSelectedProjectId(e.target.value)}
+                    className="w-full rounded-lg border border-[#CEC7B6] bg-[#FFFFFF] px-3 py-2 text-xs text-[#263448]"
+                  >
+                    {store.projects.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.code} — {p.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="text-xs font-semibold text-[#243B5A] pt-1">
+                  بخش‌های قابل نمایش در گزارش
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 text-xs text-[#263448]">
+                  {(
+                    [
+                      ['includeLetterhead', 'سربرگ انتخابی سازمان'],
+                      ['includeTechnicalOfficeTitle', 'عنوان دفتر فنی'],
+                      ['includeDateAndNumber', 'شماره و تاریخ گزارش'],
+                      ['includeBasicIdentity', 'کد، عنوان و محل اجرا'],
+                      ['includeContractInfo', 'اطلاعات قرارداد و مبلغ'],
+                      ['includeStages', 'وضعیت و مراحل اجرایی'],
+                      ['includeActions', 'اقدامات و پیگیری‌ها'],
+                      ['includeBudget', 'بودجه و اعتبارات'],
+                      ['includePayments', 'صورت‌وضعیت‌ها و پرداخت‌ها'],
+                      ['includeDocuments', 'اسناد و مکاتبات'],
+                      ['includeImagesAndAttachments', 'تصویر پروژه و پیوست‌ها'],
+                      ['includeSignatures', 'اشخاص و امضاکنندگان'],
+                    ] as Array<[keyof SingleProjectReportSections, string]>
+                  ).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={singleSections[key]}
+                        onChange={() => toggleSingleSection(key)}
+                        className="h-4 w-4 accent-[#243B5A]"
+                      />
+                      <span>{label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-xl border border-[#E2DDD0] bg-[#FAF8F3] p-4 space-y-3">
+              <div className="text-xs font-semibold text-[#243B5A]">سربرگ و مشخصات گزارش</div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-[11px] text-[#5B6573]">عنوان سازمانی سربرگ</label>
+                  <input
+                    type="text"
+                    value={letterhead.organizationName}
+                    onChange={(e) =>
+                      setLetterhead((l) => ({ ...l, organizationName: e.target.value }))
+                    }
+                    className="w-full rounded-lg border border-[#D7D2C6] bg-[#FFFFFF] px-2.5 py-2 text-xs text-[#263448]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] text-[#5B6573]">واحد / اداره</label>
+                  <input
+                    type="text"
+                    value={letterhead.unitName}
+                    onChange={(e) => setLetterhead((l) => ({ ...l, unitName: e.target.value }))}
+                    className="w-full rounded-lg border border-[#D7D2C6] bg-[#FFFFFF] px-2.5 py-2 text-xs text-[#263448]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] text-[#5B6573]">زیرعنوان سربرگ</label>
+                  <input
+                    type="text"
+                    value={letterhead.subtitle}
+                    onChange={(e) => setLetterhead((l) => ({ ...l, subtitle: e.target.value }))}
+                    className="w-full rounded-lg border border-[#D7D2C6] bg-[#FFFFFF] px-2.5 py-2 text-xs text-[#263448]"
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] text-[#5B6573]">شماره گزارش</label>
+                  <input
+                    type="text"
+                    value={reportNumber}
+                    onChange={(e) => setReportNumber(e.target.value)}
+                    className="w-full rounded-lg border border-[#D7D2C6] bg-[#FFFFFF] px-2.5 py-2 text-xs text-[#263448]"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 space-y-2.5">
+              <div className="text-xs font-semibold text-[#243B5A]">دریافت خروجی فوری</div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <button
+                  type="button"
+                  onClick={() => handleExport('pdf')}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-3 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>چاپ / PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport('word')}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#FFFFFF] px-3 text-xs font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>Word</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport('excel')}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-[#3D6B59] bg-[#FFFFFF] px-3 text-xs font-medium text-[#3D6B59] hover:bg-[#E7ECE6] cursor-pointer"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                  <span>Excel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport('json')}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3 text-xs font-medium text-[#263448] hover:border-[#243B5A] cursor-pointer"
+                >
+                  <FileJson className="h-3.5 w-3.5" />
+                  <span>JSON</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsModalOpen(false);
+                  setTimeout(() => {
+                    reportWorkspaceRef.current?.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'start',
+                    });
+                  }, 60);
+                }}
+                className="rounded-xl border border-[#CEC7B6] bg-[#FAF8F3] px-4 py-2 text-xs font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+              >
+                اعمال و مشاهده پیش‌نمایش گزارش
+              </button>
+            </div>
+          </div>
+        </FloatingWindow>
+      )}
+
+      {/* Real Visible Print / PDF Preview Modal (works reliably even inside iframes & mobile browsers) */}
+      {printPreviewOpen && (
+        <FloatingWindow
+          title={`پیش‌نمایش چاپ و ذخیره PDF — ${activeCard.title}`}
+          onClose={() => setPrintPreviewOpen(false)}
+          width={860}
+        >
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#E2DDD2] bg-[#FAF8F3] p-3">
+              <span className="text-xs text-[#5B6573]">
+                نسخه آماده چاپ A4 گزارش در زیر نمایش داده شده است.
+              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleTriggerVisiblePrint}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-3.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>چاپ / ذخیره PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    downloadPrintableReportHtml(
+                      reportPayload,
+                      `report-${reportType}-${todayIsoDate()}`
+                    );
+                    setExportNotice({
+                      title: 'نسخه قابل چاپ آماده شد',
+                      detail: 'فایل نسخه قابل چاپ گزارش با موفقیت روی دستگاه بارگیری شد.',
+                    });
+                  }}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#D7D2C6] bg-[#FFFFFF] px-3.5 text-xs font-medium text-[#243B5A] hover:border-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span>دانلود نسخه قابل چاپ</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-[#D7D2C6] bg-[#FFFFFF]">
+              <iframe
+                ref={printIframeRef}
+                title="پیش‌نمایش چاپ گزارش"
+                srcDoc={printableHtml}
+                className="h-[62vh] w-full bg-[#FFFFFF]"
+              />
+            </div>
+          </div>
+        </FloatingWindow>
+      )}
+
+      {/* Standard Themed Export Notification Window */}
+      {exportNotice && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 left-1/2 z-50 w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl border border-[#C6D5C4] bg-[#FFFFFF] p-4 shadow-[0_14px_34px_rgba(29,50,80,0.18)]"
+        >
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E7ECE6] text-[#2D6A4F]">
+              <CheckCircle2 className="h-5 w-5" />
+            </div>
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="text-xs font-bold text-[#1D3250]">{exportNotice.title}</div>
+              <p className="text-xs leading-5 text-[#5B6573]">{exportNotice.detail}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setExportNotice(null)}
+              aria-label="بستن اعلان"
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#E2DDD0] bg-[#FAF8F3] text-[#5B6573] hover:border-[#243B5A] hover:text-[#243B5A] cursor-pointer"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

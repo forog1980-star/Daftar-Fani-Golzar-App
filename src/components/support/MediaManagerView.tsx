@@ -150,10 +150,8 @@ export const MediaManagerView: React.FC<MediaManagerViewProps> = ({ store }) => 
               <ImageIcon className="h-4 w-4 text-[#B99A62]" />
               <span>مدیریت تصاویر گلزار شهدا (نمایش چرخشی صفحه اصلی)</span>
             </h3>
-            <p className="mt-1 text-xs leading-6 text-[#5B6573]">
-              تصاویر واقعی گلزار شهدا را از حافظه دستگاه انتخاب کنید. این تصاویر صرفاً در حافظه
-              محلی (IndexedDB) ذخیره شده، در داشبورد هر ۱۰ ثانیه به‌صورت چرخشی نمایش داده می‌شوند
-              و در خروجی JSON و پشتیبان ZIP منتقل می‌گردند.
+            <p className="mt-1 text-xs text-[#5B6573]">
+              تصاویر نمایش چرخشی صفحه اصلی (ذخیره‌سازی محلی در دستگاه).
             </p>
           </div>
           <span className="rounded-lg border border-[#E2DDD2] bg-[#FAF8F3] px-3 py-1 text-xs tabular-nums text-[#243B5A]">
@@ -298,10 +296,8 @@ export const MediaManagerView: React.FC<MediaManagerViewProps> = ({ store }) => 
           <h3 className="text-sm font-semibold text-[#243B5A]">
             مدیریت تصاویر اختصاصی پروژه‌ها
           </h3>
-          <p className="mt-1 text-xs leading-6 text-[#5B6573]">
-            هر پروژه می‌تواند یک تصویر اختصاصی ثبت‌شده در پرونده خود داشته باشد. تصویر هر پروژه
-            به‌طور دقیق به همان پروژه متصل می‌ماند و برای پروژه‌های بدون تصویر، تصویر پروژه دیگر
-            نمایش داده نمی‌شود.
+          <p className="mt-1 text-xs text-[#5B6573]">
+            ثبت یا تغییر تصویر اختصاصی هر پروژه به‌صورت جداگانه.
           </p>
         </div>
 
@@ -350,9 +346,8 @@ export const MediaManagerView: React.FC<MediaManagerViewProps> = ({ store }) => 
             <Shield className="h-4 w-4 text-[#B99A62]" />
             <span>آرم رسمی دفتر فنی اداره گلزار شهدا</span>
           </h3>
-          <p className="mt-1 text-xs leading-6 text-[#5B6573]">
-            آرم رسمی افقی گلزار شهدای تهران (سبز و طلایی) به‌صورت پیش‌فرض در سربرگ، گزارش‌ها و صفحه
-            خروج فعال است. در صورت نیاز می‌توانید نسخه دیگری بارگذاری یا به آرم رسمی پیش‌فرض بازگردید.
+          <p className="mt-1 text-xs text-[#5B6573]">
+            آرم رسمی نمایش‌داده‌شده در سربرگ برنامه، گزارش‌ها و صفحه خروج.
           </p>
         </div>
 

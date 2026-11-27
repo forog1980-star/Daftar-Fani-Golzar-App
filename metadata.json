@@ -1,6 +1,6 @@
 {
   "name": "دفتر فنی اداره گلزار شهدا",
   "description": "نرم‌افزار مدیریت امور دفتر فنی اداره گلزار شهدا — مدیریت پرونده پروژه‌ها، بودجه و اعتبارات، اقدامات و پیگیری‌ها، اسناد و مکاتبات، فرم‌ساز سازمانی و گزارش‌گیری با معماری Local-First و قابلیت آفلاین.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["microphone"],
   "majorCapabilities": []
 }

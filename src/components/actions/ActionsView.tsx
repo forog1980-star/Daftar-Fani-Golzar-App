@@ -12,14 +12,17 @@ import {
 } from '../../utils/format';
 import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
+import { HelpSectionId } from '../help/helpContent';
+import { SectionHelpLink } from '../help/SectionHelpLink';
 
 interface ActionsViewProps {
   store: AppStore;
+  onOpenHelp?: (sectionId: HelpSectionId) => void;
 }
 
 type ActionFilterMode = 'همه' | 'فوری' | 'عقب‌افتاده' | 'مهلت نزدیک' | 'تکمیل‌شده';
 
-export const ActionsView: React.FC<ActionsViewProps> = ({ store }) => {
+export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) => {
   const [filterMode, setFilterMode] = useState<ActionFilterMode>('همه');
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState<ActionItem | null | undefined>(undefined);
@@ -97,14 +100,17 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store }) => {
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setEditing(null)}
-            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:w-auto shrink-0"
-          >
-            <Plus className="h-3.5 w-3.5 shrink-0" />
-            <span>ثبت اقدام جدید</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setEditing(null)}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:flex-none"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              <span>ثبت اقدام جدید</span>
+            </button>
+            {onOpenHelp && <SectionHelpLink sectionId="actions" onOpenHelp={onOpenHelp} />}
+          </div>
         </div>
 
         <div className="relative">

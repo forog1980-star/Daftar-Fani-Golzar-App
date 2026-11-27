@@ -21,6 +21,8 @@ import {
 import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
 import { FormBuilderView } from './FormBuilderView';
+import { HelpSectionId } from '../help/helpContent';
+import { SectionHelpLink } from '../help/SectionHelpLink';
 
 export type DocumentsSectionTab = 'archive' | 'forms';
 
@@ -28,6 +30,7 @@ interface DocumentsViewProps {
   store: AppStore;
   activeTab?: DocumentsSectionTab;
   onTabChange?: (tab: DocumentsSectionTab) => void;
+  onOpenHelp?: (sectionId: HelpSectionId) => void;
 }
 
 const DOC_CATEGORIES: DocumentCategory[] = [
@@ -45,6 +48,7 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
   store,
   activeTab,
   onTabChange,
+  onOpenHelp,
 }) => {
   const [sectionTab, setSectionTab] = useState<DocumentsSectionTab>(activeTab ?? 'archive');
 
@@ -125,16 +129,19 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
           </button>
         </div>
 
-        {sectionTab === 'archive' && (
-          <button
-            type="button"
-            onClick={() => setEditingDoc(null)}
-            className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:w-auto shrink-0"
-          >
-            <Plus className="h-3.5 w-3.5 shrink-0" />
-            <span>ثبت سند یا مکاتبه جدید</span>
-          </button>
-        )}
+        <div className="flex items-center justify-end gap-2 shrink-0">
+          {sectionTab === 'archive' && (
+            <button
+              type="button"
+              onClick={() => setEditingDoc(null)}
+              className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:flex-none"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              <span>ثبت سند یا مکاتبه جدید</span>
+            </button>
+          )}
+          {onOpenHelp && <SectionHelpLink sectionId="documents" onOpenHelp={onOpenHelp} />}
+        </div>
       </div>
 
       {sectionTab === 'forms' ? (

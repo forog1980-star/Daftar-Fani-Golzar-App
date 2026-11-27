@@ -52,7 +52,7 @@ export const ProjectImageUploader: React.FC<ProjectImageUploaderProps> = ({
         <div>
           <h4 className="text-sm font-semibold text-[#243B5A]">تصویر پروژه</h4>
           <p className="mt-0.5 text-[11px] text-[#5B6573]">
-            متصل به شناسه اختصاصی همین پروژه؛ در داشبورد، فهرست پروژه‌ها، پرونده و پیش‌نمایش گزارش نمایش داده می‌شود.
+            تصویر اختصاصی متصل به همین پرونده پروژه
           </p>
         </div>
 

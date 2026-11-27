@@ -1,11 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Edit2, FolderOpen, Plus, Trash2 } from 'lucide-react';
+import {
+  Calculator,
+  Calendar,
+  ChevronDown,
+  ChevronUp,
+  Edit2,
+  FolderOpen,
+  Image as ImageIcon,
+  MapPin,
+  Plus,
+  Search,
+  Trash2,
+} from 'lucide-react';
 import {
   BudgetProposal,
   PaymentRecord,
   Project,
   ProjectBudget,
-  ProposalPriority,
+  ProposalImageItem,
 } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
 import {
@@ -17,6 +29,9 @@ import {
 } from '../../utils/format';
 import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
+import { HelpSectionId } from '../help/helpContent';
+import { SectionHelpLink } from '../help/SectionHelpLink';
+import { BudgetProposalEditor } from './BudgetProposalEditor';
 
 export type BudgetSubTab = 'credits' | 'payments' | 'proposals';
 
@@ -25,6 +40,7 @@ interface BudgetViewProps {
   activeTab?: BudgetSubTab;
   onTabChange?: (tab: BudgetSubTab) => void;
   onOpenProject: (project: Project) => void;
+  onOpenHelp?: (sectionId: HelpSectionId) => void;
 }
 
 export const BudgetView: React.FC<BudgetViewProps> = ({
@@ -32,6 +48,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
   activeTab,
   onTabChange,
   onOpenProject,
+  onOpenHelp,
 }) => {
   const [subTab, setSubTab] = useState<BudgetSubTab>(activeTab ?? 'credits');
 
@@ -58,13 +75,11 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
   const [payStatementRef, setPayStatementRef] = useState('');
   const [payDesc, setPayDesc] = useState('');
 
-  // Proposal form state
-  const [propYear, setPropYear] = useState('۱۴۰۶');
-  const [propTitle, setPropTitle] = useState('');
-  const [propDesc, setPropDesc] = useState('');
-  const [propPriority, setPropPriority] = useState<ProposalPriority>('بالا');
-  const [propAmount, setPropAmount] = useState('');
-  const [propDept, setPropDept] = useState('دفتر فنی اداره گلزار شهدا');
+  // Proposal tab UI state
+  const [proposalSearch, setProposalSearch] = useState('');
+  const [proposalStatusFilter, setProposalStatusFilter] = useState<string>('همه');
+  const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<ProposalImageItem | null>(null);
 
   const projectFinancialRows = useMemo(() => {
     return store.projects.map((project) => {
@@ -124,12 +139,6 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
 
   const openProposalEditor = (prop: BudgetProposal | null) => {
     setProposalEditing(prop);
-    setPropYear(prop?.fiscalYear ?? '۱۴۰۶');
-    setPropTitle(prop?.title ?? '');
-    setPropDesc(prop?.description ?? '');
-    setPropPriority(prop?.priority ?? 'بالا');
-    setPropAmount(String(prop?.estimatedAmount ?? ''));
-    setPropDept(prop?.department ?? 'دفتر فنی اداره گلزار شهدا');
   };
 
   const handleSavePayment = async (e: React.FormEvent) => {
@@ -160,28 +169,41 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
     setPayDesc('');
   };
 
-  const handleSaveProposal = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!propTitle.trim()) return;
-    const now = new Date().toISOString();
-    const isNew = !proposalEditing;
-    await store.saveProposal(
-      {
-        id: proposalEditing?.id ?? generateId('prop'),
-        fiscalYear: propYear.trim() || '۱۴۰۶',
-        title: propTitle.trim(),
-        description: propDesc.trim(),
-        priority: propPriority,
-        estimatedAmount: Number(propAmount) || 0,
-        department: propDept.trim(),
-        createdAt: proposalEditing?.createdAt ?? now,
-        updatedAt: now,
-        updatedByDevice: store.settings.deviceId,
-      },
-      isNew
-    );
-    setProposalEditing(undefined);
-  };
+  const filteredProposals = useMemo(() => {
+    const q = proposalSearch.trim().toLowerCase();
+    return store.proposals.filter((pr) => {
+      const statusVal = pr.proposalStatus ?? 'پیش‌نویس';
+      if (proposalStatusFilter !== 'همه' && statusVal !== proposalStatusFilter) {
+        return false;
+      }
+      if (!q) return true;
+      const haystack = [
+        pr.projectCode,
+        pr.title,
+        pr.fiscalYear,
+        pr.location,
+        pr.department,
+        pr.projectType,
+        pr.description,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [store.proposals, proposalSearch, proposalStatusFilter]);
+
+  const proposalStats = useMemo(() => {
+    const totalEstimated = store.proposals.reduce((s, p) => s + (p.estimatedAmount || 0), 0);
+    const withImages = store.proposals.filter((p) => (p.images?.length ?? 0) > 0).length;
+    const withItems = store.proposals.filter((p) => (p.estimateItems?.length ?? 0) > 0).length;
+    return {
+      count: store.proposals.length,
+      totalEstimated,
+      withImages,
+      withItems,
+    };
+  }, [store.proposals]);
 
   const filteredPayments = store.payments.filter(
     (p) => selectedProjectId === 'همه' || p.projectId === selectedProjectId
@@ -246,33 +268,34 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
           ))}
         </div>
 
-        {(subTab === 'payments' || subTab === 'proposals') && (
-          <div className="flex items-center gap-2 shrink-0">
-            {subTab === 'payments' && (
-              <button
-                type="button"
-                onClick={() => {
-                  setPayProjectId(store.projects[0]?.id ?? '');
-                  setPaymentModalOpen(true);
-                }}
-                className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:w-auto"
-              >
-                <Plus className="h-3.5 w-3.5 shrink-0" />
-                <span>ثبت پرداخت جدید</span>
-              </button>
-            )}
-            {subTab === 'proposals' && (
-              <button
-                type="button"
-                onClick={() => openProposalEditor(null)}
-                className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:w-auto"
-              >
-                <Plus className="h-3.5 w-3.5 shrink-0" />
-                <span>ثبت پیشنهاد بودجه سال آینده</span>
-              </button>
-            )}
-          </div>
-        )}
+        <div className="flex items-center justify-end gap-2 shrink-0">
+          {subTab === 'payments' && (
+            <button
+              type="button"
+              onClick={() => {
+                setPayProjectId(store.projects[0]?.id ?? '');
+                setPaymentModalOpen(true);
+              }}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:flex-initial"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              <span>ثبت پرداخت جدید</span>
+            </button>
+          )}
+          {subTab === 'proposals' && (
+            <button
+              type="button"
+              onClick={() => openProposalEditor(null)}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:flex-initial"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              <span>ثبت پیشنهاد بودجه سال آینده</span>
+            </button>
+          )}
+          {onOpenHelp && (
+            <SectionHelpLink sectionId="budget" onOpenHelp={onOpenHelp} />
+          )}
+        </div>
       </div>
 
       {/* Tab 1: Per-Project Financial Matrix */}
@@ -462,74 +485,309 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         </div>
       )}
 
-      {/* Tab 3: Next-Year Budget Proposals */}
+      {/* Tab 3: Next-Year Budget Proposals (Detailed, Flexible & Visual) */}
       {subTab === 'proposals' && (
-        <div className="border border-[#E2DDD0] bg-[#FFFFFF] overflow-x-auto">
-          {store.proposals.length === 0 ? (
-            <div className="p-8 text-center text-sm text-[#7C8287]">
-              پیشنهاد بودجه‌ای برای سال آینده ثبت نشده است.
+        <div className="space-y-4">
+          {/* Proposals Overview + Filter Bar */}
+          <div className="flex flex-col gap-3 rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 shadow-[0_2px_8px_rgba(29,50,80,0.04)] lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-4 text-xs">
+              <div>
+                <span className="text-[#788290]">تعداد پرونده‌های پیشنهادی: </span>
+                <strong className="tabular-nums text-[#1D3250]">
+                  {toPersianDigits(proposalStats.count)} مورد
+                </strong>
+              </div>
+              <div className="h-4 w-px bg-[#E2DDD0]" />
+              <div>
+                <span className="text-[#788290]">جمع برآورد سال آینده: </span>
+                <strong className="tabular-nums text-[#2D6A4F]">
+                  {formatRial(proposalStats.totalEstimated)}
+                </strong>
+              </div>
+              <div className="hidden h-4 w-px bg-[#E2DDD0] sm:block" />
+              <div className="hidden sm:block text-[#5B6573]">
+                دارای جزئیات برآورد: {toPersianDigits(proposalStats.withItems)} · دارای تصویر:{' '}
+                {toPersianDigits(proposalStats.withImages)}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative flex-1 sm:w-56 sm:flex-initial">
+                <Search className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[#788290]" />
+                <input
+                  type="text"
+                  value={proposalSearch}
+                  onChange={(e) => setProposalSearch(e.target.value)}
+                  placeholder="جستجو با کد، عنوان یا محل..."
+                  className="h-9 w-full rounded-xl border border-[#D4CEBF] bg-[#FAF8F3] pr-8 pl-3 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
+                />
+              </div>
+              <select
+                value={proposalStatusFilter}
+                onChange={(e) => setProposalStatusFilter(e.target.value)}
+                aria-label="فیلتر وضعیت پیشنهاد"
+                className="h-9 rounded-xl border border-[#D4CEBF] bg-[#FAF8F3] px-3 text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
+              >
+                <option value="همه">همه وضعیت‌ها</option>
+                <option value="پیش‌نویس">پیش‌نویس</option>
+                <option value="در حال بررسی">در حال بررسی</option>
+                <option value="ارسال‌شده">ارسال‌شده</option>
+                <option value="مصوب">مصوب</option>
+                <option value="نیاز به اصلاح">نیاز به اصلاح</option>
+              </select>
+            </div>
+          </div>
+
+          {filteredProposals.length === 0 ? (
+            <div className="rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-10 text-center text-sm text-[#7C8287]">
+              {store.proposals.length === 0
+                ? 'پیشنهاد بودجه‌ای برای سال آینده ثبت نشده است. با دکمه «ثبت پیشنهاد بودجه سال آینده» اولین پرونده را با کد پروژه، زمان‌بندی، جزئیات برآورد و مستندات تصویری ثبت کنید.'
+                : 'موردی با فیلتر یا جستجوی فعلی یافت نشد.'}
             </div>
           ) : (
-            <table className="w-full text-right text-sm">
-              <thead>
-                <tr className="border-b border-[#E2DDD0] bg-[#F3EFE6] text-xs text-[#5B6268]">
-                  <th className="px-4 py-3 font-medium">سال</th>
-                  <th className="px-4 py-3 font-medium">عنوان و شرح پیشنهاد</th>
-                  <th className="px-4 py-3 font-medium">حوزه مرتبط</th>
-                  <th className="px-4 py-3 font-medium">اولویت</th>
-                  <th className="px-4 py-3 font-medium">برآورد مبلغ</th>
-                  <th className="px-4 py-3 font-medium">عملیات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#ECE7DA]">
-                {store.proposals.map((pr) => (
-                  <tr key={pr.id} className="hover:bg-[#FAF8F3]">
-                    <td className="px-4 py-3 text-xs tabular-nums text-[#5B6268] whitespace-nowrap">
-                      {pr.fiscalYear}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="text-sm font-medium text-[#2B3033]">{pr.title}</div>
-                      <div className="mt-0.5 text-xs text-[#5B6268]">{pr.description}</div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-[#5B6268]">{pr.department}</td>
-                    <td className="px-4 py-3 text-xs font-medium whitespace-nowrap">
-                      <span
-                        className={
-                          pr.priority === 'فوری'
-                            ? 'text-[#B43E3E]'
-                            : pr.priority === 'بالا'
-                              ? 'text-[#A66B1C]'
-                              : 'text-[#243B5A]'
-                        }
-                      >
-                        {pr.priority}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs font-semibold tabular-nums text-[#2B3033] whitespace-nowrap">
-                      {formatRial(pr.estimatedAmount)}
-                    </td>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
+            <div className="space-y-3.5">
+              {filteredProposals.map((pr) => {
+                const isExpanded = expandedProposalId === pr.id;
+                const linkedProj = pr.relatedProjectId ? projectMap.get(pr.relatedProjectId) : undefined;
+                const itemCount = pr.estimateItems?.length ?? 0;
+                const imageCount = pr.images?.length ?? 0;
+                const statusText = pr.proposalStatus ?? 'پیش‌نویس';
+
+                return (
+                  <article
+                    key={pr.id}
+                    className="overflow-hidden rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] shadow-[0_2px_8px_rgba(29,50,80,0.04)] transition-colors hover:border-[#CFC8B8]"
+                  >
+                    <div className="p-4 sm:p-5 space-y-3.5">
+                      {/* Top Header Row */}
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 space-y-1.5">
+                          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                            <span className="rounded-md border border-[#D4CEBF] bg-[#FAF8F3] px-2 py-0.5 font-semibold tabular-nums text-[#243B5A]">
+                              سال {pr.fiscalYear}
+                            </span>
+                            {pr.projectCode && (
+                              <span className="rounded-md border border-[#CAD6E6] bg-[#EEF3F9] px-2 py-0.5 font-semibold tabular-nums text-[#1D3250]">
+                                کد پروژه: {pr.projectCode}
+                              </span>
+                            )}
+                            {pr.projectType && (
+                              <span className="rounded-md bg-[#F3EFE6] px-2 py-0.5 text-[#5B6268]">
+                                {pr.projectType}
+                              </span>
+                            )}
+                            <span
+                              className={`rounded-md px-2 py-0.5 font-medium ${
+                                pr.priority === 'فوری'
+                                  ? 'bg-[#FBF1F1] text-[#B43E3E]'
+                                  : pr.priority === 'بالا'
+                                    ? 'bg-[#FDF6E8] text-[#A66B1C]'
+                                    : 'bg-[#EEF3F9] text-[#243B5A]'
+                              }`}
+                            >
+                              اولویت: {pr.priority}
+                            </span>
+                            <span
+                              className={`rounded-md border px-2 py-0.5 font-medium ${
+                                statusText === 'مصوب'
+                                  ? 'border-[#C6D5C4] bg-[#E7ECE6] text-[#2D6A4F]'
+                                  : statusText === 'نیاز به اصلاح'
+                                    ? 'border-[#E6C5C5] bg-[#FBF1F1] text-[#B43E3E]'
+                                    : 'border-[#E2DDD0] bg-[#FAF8F3] text-[#5B6573]'
+                              }`}
+                            >
+                              {statusText}
+                            </span>
+                          </div>
+
+                          <h3 className="text-sm font-bold text-[#1D3250] leading-6">{pr.title}</h3>
+                        </div>
+
+                        {/* Amount + Action Buttons */}
+                        <div className="flex flex-wrap items-center justify-between gap-2.5 sm:flex-col sm:items-end shrink-0">
+                          <div className="text-right sm:text-left">
+                            <div className="text-[11px] text-[#788290]">برآورد کل پیشنهادی</div>
+                            <div className="text-sm font-bold tabular-nums text-[#2D6A4F]">
+                              {formatRial(pr.estimatedAmount)}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            {linkedProj && (
+                              <button
+                                type="button"
+                                onClick={() => onOpenProject(linkedProj)}
+                                className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#D4CEBF] bg-[#FAF8F3] px-2.5 text-[11px] font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+                                title="ورود به پرونده پروژه مرتبط"
+                              >
+                                <FolderOpen className="h-3.5 w-3.5" />
+                                <span className="hidden sm:inline">پرونده پروژه</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => openProposalEditor(pr)}
+                              className="inline-flex h-8 items-center gap-1 rounded-lg border border-[#D4CEBF] bg-[#FFFFFF] px-2.5 text-[11px] font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+                              title="ویرایش پیشنهاد"
+                            >
+                              <Edit2 className="h-3.5 w-3.5" />
+                              <span>ویرایش</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeletingProposal(pr)}
+                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#D4CEBF] bg-[#FFFFFF] text-[#5B6268] hover:border-[#B43E3E] hover:text-[#B43E3E] cursor-pointer"
+                              title="حذف پیشنهاد"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Metadata Strip: Location, Department, Dates, Estimate Basis */}
+                      <div className="grid grid-cols-1 gap-2 rounded-xl border border-[#EFECE4] bg-[#FAF8F3] px-3.5 py-2.5 text-xs text-[#5B6573] sm:grid-cols-2 lg:grid-cols-4">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <MapPin className="h-3.5 w-3.5 shrink-0 text-[#354F73]" />
+                          <span className="truncate">
+                            <strong className="font-medium text-[#263448]">محل / حوزه:</strong>{' '}
+                            {pr.location || pr.department || '—'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Calendar className="h-3.5 w-3.5 shrink-0 text-[#354F73]" />
+                          <span className="truncate tabular-nums">
+                            <strong className="font-medium text-[#263448]">زمان‌بندی:</strong>{' '}
+                            {pr.startDate || pr.endDate
+                              ? `${pr.startDate ? formatJalaliDate(pr.startDate) : '؟'} تا ${pr.endDate ? formatJalaliDate(pr.endDate) : '؟'}`
+                              : 'ثبت‌نشده'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Calculator className="h-3.5 w-3.5 shrink-0 text-[#354F73]" />
+                          <span className="truncate">
+                            <strong className="font-medium text-[#263448]">برآورد:</strong>{' '}
+                            {pr.estimateBasis || 'برآورد کارشناسی'}
+                            {itemCount > 0 ? ` (${toPersianDigits(itemCount)} ردیف)` : ''}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <ImageIcon className="h-3.5 w-3.5 shrink-0 text-[#354F73]" />
+                          <span className="truncate">
+                            <strong className="font-medium text-[#263448]">تصاویر پیوست:</strong>{' '}
+                            {imageCount > 0 ? `${toPersianDigits(imageCount)} تصویر` : 'بدون تصویر'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Short Description */}
+                      {pr.description && (
+                        <p className="text-xs leading-6 text-[#5B6268]">{pr.description}</p>
+                      )}
+
+                      {/* Inline Image Thumbnails Preview */}
+                      {pr.images && pr.images.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                          {pr.images.map((img, idx) => (
+                            <button
+                              key={img.id}
+                              type="button"
+                              onClick={() => setPreviewImage(img)}
+                              className="group relative h-16 w-24 overflow-hidden rounded-lg border border-[#E2DDD0] bg-[#FAF8F3] cursor-pointer"
+                              title={img.caption || `نمایش تصویر ${toPersianDigits(idx + 1)}`}
+                            >
+                              <img
+                                src={img.dataUrl}
+                                alt={img.caption || `تصویر ${toPersianDigits(idx + 1)}`}
+                                className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                              />
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Toggle Full Details (Itemized Estimate & Additional Metadata) */}
+                      <div className="flex items-center justify-between border-t border-[#EFECE4] pt-2.5">
+                        <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#788290]">
+                          <span>حوزه: {pr.department}</span>
+                          {pr.responsiblePerson && <span>مسئول: {pr.responsiblePerson}</span>}
+                          {pr.fundingSource && <span>منبع اعتبار: {pr.fundingSource}</span>}
+                        </div>
+
                         <button
                           type="button"
-                          onClick={() => openProposalEditor(pr)}
-                          className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] text-[#5B6268] hover:text-[#243B5A] cursor-pointer"
+                          onClick={() =>
+                            setExpandedProposalId((cur) => (cur === pr.id ? null : pr.id))
+                          }
+                          className="inline-flex items-center gap-1 rounded-lg border border-[#E2DDD0] bg-[#FAF8F3] px-2.5 py-1 text-[11px] font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
                         >
-                          <Edit2 className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setDeletingProposal(pr)}
-                          className="inline-flex h-7 w-7 items-center justify-center border border-[#D4CEBF] text-[#5B6268] hover:border-[#B43E3E] hover:text-[#B43E3E] cursor-pointer"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
+                          <span>{isExpanded ? 'بستن جزئیات برآورد' : 'جزئیات برآورد و اطلاعات'}</span>
+                          {isExpanded ? (
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          )}
                         </button>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+
+                    {/* Expanded Details Drawer */}
+                    {isExpanded && (
+                      <div className="border-t border-[#E2DDD0] bg-[#FAF8F3] p-4 sm:p-5 space-y-4">
+                        {pr.estimateSummary && (
+                          <div className="rounded-xl border border-[#E2DDD0] bg-[#FFFFFF] p-3 text-xs leading-6 text-[#263448]">
+                            <strong className="text-[#1D3250]">شرح و مبنای برآورد: </strong>
+                            {pr.estimateSummary}
+                          </div>
+                        )}
+
+                        {pr.estimateItems && pr.estimateItems.length > 0 ? (
+                          <div className="overflow-x-auto rounded-xl border border-[#E2DDD0] bg-[#FFFFFF]">
+                            <table className="w-full text-right text-xs">
+                              <thead>
+                                <tr className="border-b border-[#E2DDD0] bg-[#F3EFE6] text-[11px] text-[#5B6268]">
+                                  <th className="px-3 py-2 font-medium">ردیف</th>
+                                  <th className="px-3 py-2 font-medium">شرح ردیف برآورد</th>
+                                  <th className="px-3 py-2 font-medium">واحد</th>
+                                  <th className="px-3 py-2 font-medium">مقدار</th>
+                                  <th className="px-3 py-2 font-medium">بهای واحد</th>
+                                  <th className="px-3 py-2 font-medium">جمع ردیف</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-[#EFECE4]">
+                                {pr.estimateItems.map((line, idx) => (
+                                  <tr key={line.id}>
+                                    <td className="px-3 py-2 tabular-nums text-[#788290]">
+                                      {toPersianDigits(idx + 1)}
+                                    </td>
+                                    <td className="px-3 py-2 font-medium text-[#263448]">
+                                      {line.title}
+                                    </td>
+                                    <td className="px-3 py-2 text-[#5B6573]">{line.unit || '—'}</td>
+                                    <td className="px-3 py-2 tabular-nums text-[#5B6573]">
+                                      {line.quantity ? toPersianDigits(line.quantity) : '—'}
+                                    </td>
+                                    <td className="px-3 py-2 tabular-nums text-[#5B6573]">
+                                      {line.unitPrice ? formatRial(line.unitPrice) : '—'}
+                                    </td>
+                                    <td className="px-3 py-2 font-semibold tabular-nums text-[#1D3250]">
+                                      {formatRial(line.amount)}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-[#D4CEBF] bg-[#FFFFFF] p-3 text-center text-xs text-[#788290]">
+                            ردیف‌های تفکیکی برآورد برای این پیشنهاد ثبت نشده است؛ از دکمه «ویرایش» می‌توانید جزئیات ردیف‌ها را اضافه کنید.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
           )}
         </div>
       )}
@@ -641,94 +899,39 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         </FloatingWindow>
       )}
 
-      {/* Proposal Floating Window */}
+      {/* Proposal Floating Window (Comprehensive & Flexible) */}
       {proposalEditing !== undefined && (
-        <FloatingWindow
-          title={proposalEditing ? 'ویرایش پیشنهاد بودجه' : 'ثبت پیشنهاد بودجه سال آینده'}
+        <BudgetProposalEditor
+          initial={proposalEditing}
+          projects={store.projects}
+          deviceId={store.settings.deviceId}
           onClose={() => setProposalEditing(undefined)}
-          width={560}
+          onSave={async (record, isNew) => {
+            await store.saveProposal(record, isNew);
+            setProposalEditing(undefined);
+          }}
+        />
+      )}
+
+      {/* Proposal Image Lightbox */}
+      {previewImage && (
+        <FloatingWindow
+          title={previewImage.caption || 'نمایش مستند تصویری پیشنهاد بودجه'}
+          onClose={() => setPreviewImage(null)}
+          width={680}
         >
-          <form onSubmit={handleSaveProposal} className="space-y-3.5">
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="mb-1 block text-xs text-[#5B6268]">سال مالی</label>
-                <input
-                  type="text"
-                  value={propYear}
-                  onChange={(e) => setPropYear(e.target.value)}
-                  className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className="mb-1 block text-xs text-[#5B6268]">عنوان پیشنهاد *</label>
-                <input
-                  type="text"
-                  required
-                  value={propTitle}
-                  onChange={(e) => setPropTitle(e.target.value)}
-                  className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="mb-1 block text-xs text-[#5B6268]">اولویت</label>
-                <select
-                  value={propPriority}
-                  onChange={(e) => setPropPriority(e.target.value as ProposalPriority)}
-                  className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
-                >
-                  <option value="فوری">فوری</option>
-                  <option value="بالا">بالا</option>
-                  <option value="متوسط">متوسط</option>
-                  <option value="عادی">عادی</option>
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-[#5B6268]">برآورد مبلغ (ریال)</label>
-                <input
-                  type="number"
-                  min={0}
-                  value={propAmount}
-                  onChange={(e) => setPropAmount(e.target.value)}
-                  className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-[#5B6268]">حوزه یا معاونت پیشنهاددهنده</label>
-              <input
-                type="text"
-                value={propDept}
-                onChange={(e) => setPropDept(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
+          <div className="space-y-3">
+            <div className="overflow-hidden rounded-xl border border-[#E2DDD0] bg-[#FAF8F3] p-2">
+              <img
+                src={previewImage.dataUrl}
+                alt={previewImage.caption || 'مستند تصویری پیشنهاد بودجه'}
+                className="mx-auto max-h-[65vh] w-auto max-w-full rounded-lg object-contain"
               />
             </div>
-            <div>
-              <label className="mb-1 block text-xs text-[#5B6268]">شرح و توجیه فنی</label>
-              <textarea
-                rows={3}
-                value={propDesc}
-                onChange={(e) => setPropDesc(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setProposalEditing(undefined)}
-                className="border border-[#CEC7B6] px-4 py-2 text-xs"
-              >
-                انصراف
-              </button>
-              <button
-                type="submit"
-                className="border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3]"
-              >
-                ذخیره پیشنهاد
-              </button>
-            </div>
-          </form>
+            {previewImage.caption && (
+              <p className="text-center text-xs text-[#263448]">{previewImage.caption}</p>
+            )}
+          </div>
         </FloatingWindow>
       )}
 

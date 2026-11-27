@@ -533,9 +533,6 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                   <h3 className="text-sm font-semibold text-[#243B5A]">
                     جدول مراحل اجرایی پروژه ({project.type})
                   </h3>
-                  <p className="mt-0.5 text-[11px] text-[#5B6573]">
-                    نوار انتخاب و فیلتر مراحل در بالای جدول قرار دارد و ستون «مرحله اجرایی» هنگام اسکرول افقی ثابت می‌ماند.
-                  </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -747,10 +744,10 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-[#243B5A]">
-                  تصاویر و فایل‌های پیوست پرونده (ذخیره‌سازی محلی IndexedDB)
+                  تصاویر و فایل‌های پیوست پرونده
                 </h3>
                 <p className="mt-0.5 text-xs text-[#5B6573]">
-                  پشتیبانی از PDF، Word، Excel و تصاویر بدون ارسال به سرور ابری
+                  فرمت‌های مجاز: PDF، Word، Excel و تصاویر (ذخیره‌سازی محلی)
                 </p>
               </div>
               <label className="inline-flex items-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer">

@@ -5,6 +5,7 @@ import { useAppStore } from './hooks/useAppStore';
 import { SplashIntro } from './components/layout/SplashIntro';
 import { AppHeader } from './components/layout/AppHeader';
 import { SidebarNav } from './components/layout/SidebarNav';
+import { ScrollToTopButton } from './components/layout/ScrollToTopButton';
 import { OfflineBanner } from './components/layout/PWAInstallButton';
 import { ConfirmDialog } from './components/layout/ConfirmDialog';
 import { DashboardView } from './components/dashboard/DashboardView';
@@ -18,9 +19,9 @@ import { SupportTab, SupportView } from './components/support/SupportView';
 import { ExitAuthOverlay } from './components/support/ExitAuthOverlay';
 import { formatJalaliDateTime } from './utils/format';
 import {
-  createInitialHistory,
+  createInitialHistoryStack,
   getParentLabel,
-  HistoryEntry,
+  HistoryStack,
   NavigateOptions,
   pushNavigationHistory,
   resolveLogicalBackHistory,
@@ -38,25 +39,25 @@ const REPORT_TITLES: Record<ReportType, string> = {
 export default function App() {
   const store = useAppStore();
   const [showSplash, setShowSplash] = useState(true);
-  const [history, setHistory] = useState<HistoryEntry[]>(createInitialHistory);
+  const [historyStack, setHistoryStack] = useState<HistoryStack>(createInitialHistoryStack);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sessionState, setSessionState] = useState<'active' | 'exited'>('active');
   const [authUnlocked, setAuthUnlocked] = useState(false);
   const [confirmExitOpen, setConfirmExitOpen] = useState(false);
 
-  const current = history[history.length - 1];
+  const current = historyStack[historyStack.length - 1];
 
   const navigate = useCallback((route: AppRoute, options?: NavigateOptions) => {
-    setHistory((prev) => pushNavigationHistory(prev, route, options));
+    setHistoryStack((prev) => pushNavigationHistory(prev, route, options));
 
     if (options?.scrollToTop !== false) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, []);
 
-  // Always restores the logical parent page based on the page hierarchy & History Stack
+  // Always restores the logical parent page based on each screen's parentRoute in HistoryStack
   const handleBack = useCallback(() => {
-    setHistory((prev) => resolveLogicalBackHistory(prev));
+    setHistoryStack((prev) => resolveLogicalBackHistory(prev));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
@@ -80,7 +81,7 @@ export default function App() {
     setMobileMenuOpen(false);
     store.setHasUnsavedChanges(false);
     setAuthUnlocked(false);
-    setHistory(createInitialHistory());
+    setHistoryStack(createInitialHistoryStack());
     setSessionState('exited');
   }, [store]);
 
@@ -122,7 +123,7 @@ export default function App() {
     }
   }, [current, store.projects]);
 
-  const backTooltip = useMemo(() => `بازگشت به ${getParentLabel(history)}`, [history]);
+  const backTooltip = useMemo(() => `بازگشت به ${getParentLabel(historyStack)}`, [historyStack]);
 
   if (showSplash) {
     return (
@@ -166,7 +167,7 @@ export default function App() {
         settings={store.settings}
         onEnterApp={() => {
           setSessionState('active');
-          setHistory(createInitialHistory());
+          setHistoryStack(createInitialHistoryStack());
         }}
       />
     );
@@ -322,6 +323,9 @@ export default function App() {
           )}
         </main>
       </div>
+
+      {/* Centered Bottom Scroll-to-Top Button (activates after 420px scroll) */}
+      <ScrollToTopButton threshold={420} />
 
       {/* Verified Local IndexedDB Save Feedback Toast */}
       {store.toast && (

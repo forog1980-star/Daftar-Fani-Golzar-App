@@ -49,13 +49,13 @@
 @keyframes splashLogoFadeOut {
   0% {
     opacity: 0;
-    transform: scale(0.98);
+    transform: scale(0.97);
   }
   10% {
     opacity: 1;
     transform: scale(1);
   }
-  52% {
+  45% {
     opacity: 1;
     transform: scale(1);
   }
@@ -77,7 +77,7 @@
 }
 
 .animate-splash-logo {
-  animation: splashLogoFadeOut 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: splashLogoFadeOut 6.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .animate-page-in {

@@ -27,7 +27,8 @@ import {
   ExportTablePayload,
 } from '../../utils/exportEngine';
 import { SignatureBlockEditor } from '../documents/SignatureBlockEditor';
-import { STATUS_COLORS, StatusDonutChart } from '../dashboard/StatusDonutChart';
+import { STATUS_COLORS } from '../dashboard/StatusDonutChart';
+import { StatusChartPanel } from '../dashboard/StatusChartPanel';
 import { getNeutralProjectImage, OFFICIAL_GOLZAR_LOGO } from '../../utils/officialAssets';
 
 export type ReportType = 'projects' | 'budget' | 'proposals' | 'actions' | 'documents' | 'single-project';
@@ -457,7 +458,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       if (selectedProjectImage) {
         rows.push([
           'تصویر اختصاصی پروژه',
-          selectedProjectImage.fileName,
+          'تصویر ثبت‌شده در پرونده پروژه',
           'ثبت‌شده در پرونده',
           formatJalaliDate(selectedProjectImage.updatedAt),
           'متصل به همین پروژه',
@@ -585,13 +586,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     [store.projects]
   );
 
-  const barChartItems = useMemo<Array<{ label: string; value: number; display: string; pct: number }>>(() => {
+  const barChartItems = useMemo<
+    Array<{ label: string; value: number; display: string; pct: number; color?: string }>
+  >(() => {
     if (reportType === 'projects') {
       return store.projects.map((p) => ({
         label: `${p.code} — ${p.title}`,
         value: p.physicalProgress,
         display: `${toPersianDigits(p.physicalProgress)}٪`,
         pct: Math.max(0, Math.min(100, p.physicalProgress)),
+        color: STATUS_COLORS[p.status],
       }));
     }
     if (reportType === 'budget') {
@@ -1008,7 +1012,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 <div>
                   تصویر اختصاصی:{' '}
                   {selectedProjectImage
-                    ? selectedProjectImage.fileName
+                    ? 'ثبت شده در پرونده پروژه'
                     : 'ثبت نشده (تصویر پیش‌فرض گلزار نمایش داده می‌شود)'}
                 </div>
                 <div>
@@ -1089,19 +1093,18 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           </div>
         )}
 
-        {/* Display Mode 3: Chart Report (Real SVG Charts from IndexedDB) */}
+        {/* Display Mode 3: Chart Report (Real SVG/Bar Charts from IndexedDB) */}
         {displayMode === 'chart' && (
           <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
             {reportType === 'projects' && (
               <div className="rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-5 lg:col-span-5">
-                <div className="mb-3 text-xs font-semibold text-[#243B5A]">
-                  توزیع وضعیت پروژه‌ها
-                </div>
-                <StatusDonutChart
+                <StatusChartPanel
+                  title="توزیع وضعیت پروژه‌ها"
                   segments={donutSegments}
                   total={store.projects.length}
                   selectedStatus="همه"
                   onSelectStatus={() => {}}
+                  interactive={false}
                 />
               </div>
             )}
@@ -1112,7 +1115,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               }`}
             >
               <div className="text-xs font-semibold text-[#243B5A]">
-                نمودار مقایسه‌ای بر مبنای داده‌های واقعی دستگاه
+                {reportType === 'projects'
+                  ? 'پیشرفت فیزیکی هر پروژه (نمودار میله‌ای)'
+                  : 'نمودار مقایسه‌ای بر مبنای داده‌های واقعی دستگاه'}
               </div>
               {barChartItems.length === 0 ? (
                 <div className="py-8 text-center text-xs text-[#788290]">
@@ -1128,8 +1133,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                       </div>
                       <div className="h-3 w-full overflow-hidden rounded-md bg-[#E8E5DE]">
                         <div
-                          className="h-full rounded-md bg-[#243B5A] transition-all duration-300"
-                          style={{ width: `${Math.max(item.pct > 0 ? 3 : 0, Math.min(100, item.pct))}%` }}
+                          className="h-full rounded-md transition-all duration-300"
+                          style={{
+                            width: `${Math.max(item.pct > 0 ? 3 : 0, Math.min(100, item.pct))}%`,
+                            backgroundColor: item.color ?? '#243B5A',
+                          }}
                         />
                       </div>
                     </div>

@@ -136,7 +136,7 @@ export const ProjectImageUploader: React.FC<ProjectImageUploaderProps> = ({
           ) : (
             currentImage && (
               <div className="text-[11px] text-[#788290]">
-                فایل ثبت‌شده: {currentImage.fileName} · حجم ذخیره‌شده: {formatFileSize(currentImage.sizeBytes)}
+                تصویر اختصاصی پروژه ثبت شده است · حجم ذخیره‌شده: {formatFileSize(currentImage.sizeBytes)}
               </div>
             )
           )}

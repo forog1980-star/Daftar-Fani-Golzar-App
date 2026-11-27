@@ -158,7 +158,13 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     <>
       {/* Desktop Persistent Right Sidebar Card */}
       <aside className="hidden w-56 shrink-0 py-4 pr-4 xl:w-60 xl:pr-6 lg:block">
-        <div className="sticky top-[74px] flex max-h-[calc(100vh-90px)] flex-col overflow-y-auto rounded-2xl border border-[#E5E0D5] bg-[#FFFFFF] p-3">
+        <div
+          className={`sticky flex flex-col overflow-y-auto rounded-2xl border border-[#E5E0D5] bg-[#FFFFFF] p-3 ${
+            currentRoute === 'dashboard' || currentRoute === 'home'
+              ? 'top-4 max-h-[calc(100vh-32px)]'
+              : 'top-[74px] max-h-[calc(100vh-90px)]'
+          }`}
+        >
           {renderMenuContent(true)}
         </div>
       </aside>

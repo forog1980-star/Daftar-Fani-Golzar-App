@@ -46,7 +46,7 @@ export const MediaManagerView: React.FC<MediaManagerViewProps> = ({ store }) => 
           fileName: compressed.fileName,
           mimeType: compressed.mimeType,
           dataUrl: compressed.dataUrl,
-          caption: caption.trim() || compressed.fileName,
+          caption: caption.trim(),
           order: nextOrder++,
           sizeBytes: compressed.sizeBytes,
           createdAt: now,
@@ -216,7 +216,14 @@ export const MediaManagerView: React.FC<MediaManagerViewProps> = ({ store }) => 
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {store.golzarImages.map((img, index) => (
+            {store.golzarImages.map((img, index) => {
+              const rawCaption = (img.caption || '').trim();
+              const isRawFileName = /\.(jpe?g|png|webp|gif|bmp|heic)$/i.test(rawCaption);
+              const displayLabel =
+                rawCaption && !isRawFileName
+                  ? rawCaption
+                  : `تصویر گلزار شهدا (${toPersianDigits(index + 1)})`;
+              return (
               <div
                 key={img.id}
                 className="overflow-hidden rounded-lg border border-[#E2DDD2] bg-[#FAF8F3]"
@@ -224,13 +231,13 @@ export const MediaManagerView: React.FC<MediaManagerViewProps> = ({ store }) => 
                 <div className="aspect-[16/10] w-full bg-[#ECE8DF]">
                   <img
                     src={img.dataUrl}
-                    alt={img.caption || img.fileName}
+                    alt={displayLabel}
                     className="h-full w-full object-cover"
                   />
                 </div>
                 <div className="p-3 space-y-2">
                   <div className="truncate text-xs font-medium text-[#263448]">
-                    {img.caption || img.fileName}
+                    {displayLabel}
                   </div>
                   <div className="text-[11px] tabular-nums text-[#788290]">
                     ترتیب نمایش: {toPersianDigits(index + 1)} · {formatFileSize(img.sizeBytes)}
@@ -279,7 +286,8 @@ export const MediaManagerView: React.FC<MediaManagerViewProps> = ({ store }) => 
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>

@@ -32,7 +32,8 @@ import {
   toPersianDigits,
 } from '../../utils/format';
 import { ReportType } from '../reports/ReportsView';
-import { STATUS_COLORS, StatusDonutChart } from './StatusDonutChart';
+import { STATUS_COLORS } from './StatusDonutChart';
+import { StatusChartPanel } from './StatusChartPanel';
 import { GolzarGalleryWidget } from './GolzarGalleryWidget';
 import { getNeutralProjectImage } from '../../utils/officialAssets';
 
@@ -292,8 +293,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </div>
             ) : (
               <div className="flex flex-col gap-4 md:flex-row md:items-stretch">
-                {/* Dedicated Project Image (Desktop/Tablet only — hidden on mobile to avoid duplicate Golzar photo clutter) */}
-                <div className="relative hidden md:block md:w-40 lg:w-44 shrink-0 overflow-hidden rounded-xl border border-[#E2DDD2] bg-[#FAF8F3]">
+                {/* Dedicated Project Image (Default Golzar fallback hidden on mobile/tablet; shown only on desktop) */}
+                <div
+                  className={`relative shrink-0 overflow-hidden rounded-xl border border-[#E2DDD2] bg-[#FAF8F3] md:w-40 lg:w-44 ${
+                    selectedProjectImage ? 'hidden md:block' : 'hidden lg:block'
+                  }`}
+                >
                   {selectedProjectImage ? (
                     <img
                       src={selectedProjectImage.dataUrl}
@@ -411,15 +416,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             )}
           </div>
 
-          {/* Left Panel: Donut Chart with Overall Progress % + Legend */}
-          <div className="flex items-center justify-center rounded-xl border border-[#ECE8DF] bg-[#FCFBF8] p-4 lg:col-span-5">
-            <StatusDonutChart
+          {/* Left Panel: Statistical Chart (Default Donut + Toggleable Bar Chart with Project Progress) */}
+          <div className="flex items-stretch justify-center rounded-xl border border-[#ECE8DF] bg-[#FCFBF8] p-4 lg:col-span-5">
+            <StatusChartPanel
+              title="گزارش آماری پروژه‌ها"
               segments={donutSegments}
               total={projects.length}
               selectedStatus={statusFilter}
               onSelectStatus={(st) => setStatusFilter(st)}
               centerValue={`${toPersianDigits(overallProgressPct)}٪`}
               centerLabel="پیشرفت کلی"
+              projects={filteredProjects}
+              selectedProjectId={selectedProject?.id}
+              onSelectProject={(id) => setSelectedProjectId(id)}
             />
           </div>
         </div>

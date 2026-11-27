@@ -28,7 +28,13 @@ export const AppHeader: React.FC<AppHeaderProps> = ({
   const isDashboard = route === 'dashboard' || route === 'home';
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[#D5C39E]/75 bg-[#FAF8F3]/95 backdrop-blur-sm">
+    <header
+      className={
+        isDashboard
+          ? 'relative z-20 border-b border-[#D5C39E]/75 bg-[#FAF8F3]'
+          : 'sticky top-0 z-30 border-b border-[#D5C39E]/75 bg-[#FAF8F3]/95 backdrop-blur-sm'
+      }
+    >
       <div className="mx-auto max-w-[1440px] px-3 py-2.5 sm:px-6">
         {isDashboard ? (
           <>

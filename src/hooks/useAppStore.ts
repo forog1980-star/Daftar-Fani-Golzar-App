@@ -302,11 +302,15 @@ export function useAppStore() {
         notifySave('ذخیره تصویر گلزار شهدا ناموفق بود.', false);
         return false;
       }
+      const cleanCaption =
+        record.caption && !/\.(jpe?g|png|webp|gif|bmp|heic)$/i.test(record.caption.trim())
+          ? record.caption.trim()
+          : 'تصویر گلزار شهدا';
       await addActivity({
         entityType: 'document',
         entityId: record.id,
         action: isNew ? 'ثبت' : 'ویرایش',
-        summary: `${isNew ? 'افزودن تصویر جدید گلزار شهدا' : 'جایگزینی تصویر گلزار شهدا'}: ${record.caption || record.fileName}`,
+        summary: `${isNew ? 'افزودن تصویر جدید گلزار شهدا' : 'جایگزینی تصویر گلزار شهدا'}: ${cleanCaption}`,
         deviceId,
       });
       await touchLastSaved(now);
@@ -325,11 +329,15 @@ export function useAppStore() {
         return;
       }
       const now = new Date().toISOString();
+      const cleanCaption =
+        img.caption && !/\.(jpe?g|png|webp|gif|bmp|heic)$/i.test(img.caption.trim())
+          ? img.caption.trim()
+          : 'تصویر گلزار شهدا';
       await addActivity({
         entityType: 'document',
         entityId: img.id,
         action: 'حذف',
-        summary: `حذف تصویر گلزار شهدا: ${img.caption || img.fileName}`,
+        summary: `حذف تصویر گلزار شهدا: ${cleanCaption}`,
         deviceId,
       });
       await touchLastSaved(now);

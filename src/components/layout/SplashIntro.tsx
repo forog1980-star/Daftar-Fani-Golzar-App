@@ -10,7 +10,7 @@ export const SplashIntro: React.FC<SplashIntroProps> = ({ logoUrl, onComplete })
   useEffect(() => {
     const timer = setTimeout(() => {
       onComplete();
-    }, 2450);
+    }, 6450);
     return () => clearTimeout(timer);
   }, [onComplete]);
 

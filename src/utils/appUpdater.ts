@@ -15,6 +15,9 @@ export interface AppUpdateState {
   currentBuildId: string;
   remoteVersion: string | null;
   remoteBuildId: string | null;
+  remoteBuiltAt: string | null;
+  remoteNotes: string[];
+  versionSourceUrl: string;
   needRefresh: boolean;
   offlineReady: boolean;
   swRegistered: boolean;
@@ -24,6 +27,7 @@ export interface AppUpdateState {
 }
 
 const LAST_CHECK_KEY = 'daftar-fani-last-update-check';
+const CUSTOM_VERSION_URL_KEY = 'daftar-fani-github-version-url';
 
 export const LOCAL_APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.3.0';
@@ -34,11 +38,19 @@ let swRegistration: ServiceWorkerRegistration | null = null;
 let triggerSwReload: ((reloadPage?: boolean) => Promise<void>) | null = null;
 let initialized = false;
 
+function loadSavedVersionUrl(): string {
+  if (typeof window === 'undefined') return '';
+  return window.localStorage.getItem(CUSTOM_VERSION_URL_KEY) || '';
+}
+
 let currentState: AppUpdateState = {
   currentVersion: LOCAL_APP_VERSION,
   currentBuildId: LOCAL_BUILD_ID,
   remoteVersion: null,
   remoteBuildId: null,
+  remoteBuiltAt: null,
+  remoteNotes: [],
+  versionSourceUrl: loadSavedVersionUrl(),
   needRefresh: false,
   offlineReady: false,
   swRegistered: false,
@@ -53,6 +65,70 @@ const listeners = new Set<() => void>();
 function emit(patch: Partial<AppUpdateState>) {
   currentState = { ...currentState, ...patch };
   listeners.forEach((fn) => fn());
+}
+
+/**
+ * Normalizes a user-supplied GitHub URL into a direct fetchable version.json endpoint.
+ * Accepts:
+ *  - empty string -> uses deployed `./version.json` (GitHub Pages default)
+ *  - `https://github.com/user/repo` -> `https://raw.githubusercontent.com/user/repo/main/public/version.json`
+ *  - direct `https://.../version.json` URL
+ */
+export function resolveVersionManifestUrl(customUrl: string): string {
+  const trimmed = customUrl.trim();
+  if (!trimmed) {
+    return new URL('./version.json', window.location.href).toString();
+  }
+
+  const ghRepoMatch = trimmed.match(
+    /^https?:\/\/github\.com\/([^/\s]+)\/([^/\s#?]+?)(?:\.git)?\/?$/i
+  );
+  if (ghRepoMatch) {
+    const [, owner, repo] = ghRepoMatch;
+    return `https://raw.githubusercontent.com/${owner}/${repo}/main/public/version.json`;
+  }
+
+  const ghBlobMatch = trimmed.match(
+    /^https?:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/blob\/([^/\s]+)\/(.+)$/i
+  );
+  if (ghBlobMatch) {
+    const [, owner, repo, branch, filePath] = ghBlobMatch;
+    return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
+  }
+
+  return trimmed;
+}
+
+/** Compares two dot-separated semantic versions (e.g., "1.4.0" > "1.3.0"). Returns 1, 0, or -1. */
+export function compareSemver(a: string, b: string): number {
+  const pa = a
+    .replace(/^v/i, '')
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
+  const pb = b
+    .replace(/^v/i, '')
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const va = pa[i] ?? 0;
+    const vb = pb[i] ?? 0;
+    if (va > vb) return 1;
+    if (va < vb) return -1;
+  }
+  return 0;
+}
+
+export function setCustomVersionSourceUrl(url: string): void {
+  const cleaned = url.trim();
+  if (typeof window !== 'undefined') {
+    if (cleaned) {
+      window.localStorage.setItem(CUSTOM_VERSION_URL_KEY, cleaned);
+    } else {
+      window.localStorage.removeItem(CUSTOM_VERSION_URL_KEY);
+    }
+  }
+  emit({ versionSourceUrl: cleaned });
 }
 
 export function initAppUpdater(): void {
@@ -76,7 +152,7 @@ export function initAppUpdater(): void {
           needRefresh: true,
           status: 'update-available',
           statusMessage:
-            'نسخه جدید نرم‌افزار دریافت شد و آماده اعمال است. برای فعال‌سازی دکمه «اعمال به‌روزرسانی» را بزنید.',
+            'نسخه جدید نرم‌افزار دریافت شد و آماده اعمال است. برای به‌روزرسانی محلی دکمه «اعمال نسخه جدید» را بزنید.',
         });
       },
       onRegisterError() {
@@ -92,21 +168,23 @@ interface RemoteVersionManifest {
   version?: string;
   buildId?: string;
   builtAt?: string;
+  notes?: string[];
+  changelog?: string[];
 }
 
-export async function checkForAppUpdate(): Promise<AppUpdateState> {
+export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdateState> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     emit({
       status: 'offline',
       statusMessage:
-        'دستگاه در حالت آفلاین است. برای بررسی و دریافت تغییرات جدید از گیت‌هاب، یک‌بار به اینترنت متصل شوید و مجدداً تلاش کنید.',
+        'دستگاه در حالت آفلاین است. برای بررسی فایل version.json در مخزن گیت‌هاب، ابتدا به اینترنت متصل شوید و مجدداً دکمه «بررسی به‌روزرسانی» را بزنید.',
     });
     return currentState;
   }
 
   emit({
     status: 'checking',
-    statusMessage: 'در حال اتصال به سرور / گیت‌هاب و بررسی نسخه جدید...',
+    statusMessage: 'در حال اتصال به گیت‌هاب و بررسی فایل version.json...',
   });
 
   const nowIso = new Date().toISOString();
@@ -117,9 +195,11 @@ export async function checkForAppUpdate(): Promise<AppUpdateState> {
   let foundUpdate = false;
   let remoteVersion: string | null = null;
   let remoteBuildId: string | null = null;
+  let remoteBuiltAt: string | null = null;
+  let remoteNotes: string[] = [];
 
   try {
-    // 1. Trigger browser Service Worker check against GitHub Pages / hosting server
+    // 1. Trigger browser Service Worker check against the hosted GitHub Pages deployment
     if ('serviceWorker' in navigator) {
       const reg = swRegistration ?? (await navigator.serviceWorker.getRegistration());
       if (reg) {
@@ -131,31 +211,41 @@ export async function checkForAppUpdate(): Promise<AppUpdateState> {
       }
     }
 
-    // 2. Fetch fresh non-cached version.json from the live deployment URL (e.g. GitHub Pages)
-    const manifestUrl = new URL(`./version.json?t=${Date.now()}`, window.location.href).toString();
-    const res = await fetch(manifestUrl, {
+    // 2. Fetch fresh non-cached version.json from GitHub / GitHub Pages
+    const baseManifestUrl = resolveVersionManifestUrl(
+      overrideUrl !== undefined ? overrideUrl : currentState.versionSourceUrl
+    );
+    const fetchUrl = new URL(baseManifestUrl);
+    fetchUrl.searchParams.set('t', String(Date.now()));
+
+    const res = await fetch(fetchUrl.toString(), {
       cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' },
     });
 
-    if (res.ok) {
-      const contentType = res.headers.get('content-type') || '';
-      if (contentType.includes('application/json') || contentType.includes('text/plain')) {
-        const data = (await res.json()) as RemoteVersionManifest;
-        remoteVersion = data.version || null;
-        remoteBuildId = data.buildId || null;
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
 
-        if (
-          remoteBuildId &&
-          remoteBuildId !== 'dev-local' &&
-          LOCAL_BUILD_ID !== 'dev-local' &&
-          remoteBuildId !== LOCAL_BUILD_ID
-        ) {
-          foundUpdate = true;
-        } else if (remoteVersion && remoteVersion !== LOCAL_APP_VERSION) {
-          foundUpdate = true;
-        }
-      }
+    const data = (await res.json()) as RemoteVersionManifest;
+    remoteVersion = typeof data.version === 'string' ? data.version.trim() : null;
+    remoteBuildId = typeof data.buildId === 'string' ? data.buildId.trim() : null;
+    remoteBuiltAt = typeof data.builtAt === 'string' ? data.builtAt.trim() : null;
+    const rawNotes = Array.isArray(data.notes)
+      ? data.notes
+      : Array.isArray(data.changelog)
+        ? data.changelog
+        : [];
+    remoteNotes = rawNotes.filter((n): n is string => typeof n === 'string' && n.trim().length > 0);
+
+    if (remoteVersion && compareSemver(remoteVersion, LOCAL_APP_VERSION) > 0) {
+      foundUpdate = true;
+    } else if (
+      remoteBuildId &&
+      remoteBuildId !== 'dev-local' &&
+      LOCAL_BUILD_ID !== 'dev-local' &&
+      remoteBuildId !== LOCAL_BUILD_ID
+    ) {
+      foundUpdate = true;
     }
 
     if (foundUpdate || currentState.needRefresh) {
@@ -163,21 +253,24 @@ export async function checkForAppUpdate(): Promise<AppUpdateState> {
         needRefresh: true,
         remoteVersion,
         remoteBuildId,
+        remoteBuiltAt,
+        remoteNotes,
         lastCheckedAt: nowIso,
         status: 'update-available',
         statusMessage: remoteVersion
-          ? `به‌روزرسانی جدید (نسخه ${remoteVersion}) شناسایی شد. اطلاعات محلی شما کاملاً حفظ می‌شود؛ برای اعمال کلیک کنید.`
-          : 'نسخه جدید نرم‌افزار در سرور شناسایی شد و آماده اعمال است.',
+          ? `نسخه جدید (${remoteVersion}) در مخزن گیت‌هاب منتشر شده است. برای دریافت آخرین تغییرات و به‌روزرسانی محلی اقدام کنید.`
+          : 'نسخه جدید نرم‌افزار در مخزن گیت‌هاب شناسایی شد و آماده اعمال است.',
       });
     } else {
       emit({
         needRefresh: false,
         remoteVersion: remoteVersion ?? LOCAL_APP_VERSION,
         remoteBuildId,
+        remoteBuiltAt,
+        remoteNotes,
         lastCheckedAt: nowIso,
         status: 'up-to-date',
-        statusMessage:
-          'بررسی با موفقیت انجام شد. نرم‌افزار هم‌اکنون روی آخرین نسخه منتشرشده قرار دارد.',
+        statusMessage: `فایل version.json بررسی شد؛ نرم‌افزار هم‌اکنون روی آخرین نسخه (${remoteVersion ?? LOCAL_APP_VERSION}) قرار دارد.`,
       });
     }
   } catch {
@@ -185,7 +278,7 @@ export async function checkForAppUpdate(): Promise<AppUpdateState> {
       lastCheckedAt: nowIso,
       status: 'error',
       statusMessage:
-        'برقراری ارتباط با سرور گیت‌هاب انجام نشد. لطفاً وضعیت اینترنت را بررسی کرده و دوباره امتحان کنید.',
+        'دریافت فایل version.json از گیت‌هاب ناموفق بود. لطفاً اتصال اینترنت یا نشانی مخزن را بررسی کرده و دوباره تلاش کنید.',
     });
   }
 
@@ -202,15 +295,14 @@ export async function applyAppUpdate(forceHardRefresh = false): Promise<void> {
   if (typeof navigator !== 'undefined' && !navigator.onLine && forceHardRefresh) {
     emit({
       status: 'offline',
-      statusMessage:
-        'برای دریافت اجباری فایل‌های جدید از سرور باید به اینترنت متصل باشید.',
+      statusMessage: 'برای دریافت فایل‌های نسخه جدید از سرور باید به اینترنت متصل باشید.',
     });
     return;
   }
 
   emit({
     status: 'updating',
-    statusMessage: 'در حال اعمال نسخه جدید نرم‌افزار (بدون تغییر در اطلاعات محلی شما)...',
+    statusMessage: 'در حال دریافت آخرین تغییرات و به‌روزرسانی محلی (بدون تغییر در اطلاعات شما)...',
   });
 
   try {
@@ -230,7 +322,6 @@ export async function applyAppUpdate(forceHardRefresh = false): Promise<void> {
       await Promise.all(regs.map((r) => r.unregister()));
     }
 
-    // Reload cleanly with cache-busting query removed after load
     const nextUrl = new URL(window.location.href);
     nextUrl.searchParams.set('updated', String(Date.now()));
     window.location.replace(nextUrl.toString());
@@ -245,7 +336,6 @@ export function useAppUpdater() {
   useEffect(() => {
     const onChange = () => setState(currentState);
     listeners.add(onChange);
-    // Clean up ?updated= query param after a completed hard refresh
     if (typeof window !== 'undefined' && window.location.search.includes('updated=')) {
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete('updated');
@@ -260,5 +350,6 @@ export function useAppUpdater() {
     ...state,
     checkForUpdate: checkForAppUpdate,
     applyUpdate: applyAppUpdate,
+    setCustomSourceUrl: setCustomVersionSourceUrl,
   };
 }

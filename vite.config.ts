@@ -83,9 +83,23 @@ export default defineConfig(() => {
           if (error) return;
           const distDir = path.resolve(__dirname, 'dist');
           if (fs.existsSync(distDir)) {
+            let notes: string[] = [];
+            try {
+              const pubVersionPath = path.resolve(__dirname, 'public/version.json');
+              if (fs.existsSync(pubVersionPath)) {
+                const parsed = JSON.parse(fs.readFileSync(pubVersionPath, 'utf-8'));
+                if (Array.isArray(parsed.notes)) notes = parsed.notes;
+              }
+            } catch {
+              notes = [];
+            }
             fs.writeFileSync(
               path.resolve(distDir, 'version.json'),
-              JSON.stringify({ version: appVersion, buildId, builtAt: buildTimestamp }, null, 2),
+              JSON.stringify(
+                { version: appVersion, buildId, builtAt: buildTimestamp, notes },
+                null,
+                2
+              ),
               'utf-8'
             );
           }

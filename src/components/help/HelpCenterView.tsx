@@ -55,7 +55,9 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
   initialSection = null,
   onSectionChange,
 }) => {
-  const [openSectionId, setOpenSectionId] = useState<HelpSectionId | null>(initialSection);
+  const [openSectionIds, setOpenSectionIds] = useState<HelpSectionId[]>(
+    initialSection ? [initialSection] : []
+  );
   const [searchQuery, setSearchQuery] = useState('');
   const [openPrincipleIds, setOpenPrincipleIds] = useState<string[]>([]);
 
@@ -63,8 +65,8 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
 
   // Auto-open and smoothly focus on the requested section when navigated via a page's "?" icon
   useEffect(() => {
-    setOpenSectionId(initialSection ?? null);
     if (initialSection) {
+      setOpenSectionIds([initialSection]);
       const timer = setTimeout(() => {
         const el = sectionRefs.current[initialSection];
         if (el) {
@@ -73,16 +75,20 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
       }, 120);
       return () => clearTimeout(timer);
     }
+    setOpenSectionIds([]);
   }, [initialSection]);
 
   const handleToggleSection = (id: HelpSectionId) => {
-    const next = openSectionId === id ? null : id;
-    setOpenSectionId(next);
-    onSectionChange?.(next);
+    const isCurrentlyOpen = openSectionIds.includes(id);
+    const nextIds = isCurrentlyOpen
+      ? openSectionIds.filter((item) => item !== id)
+      : [id];
+    setOpenSectionIds(nextIds);
+    onSectionChange?.(nextIds[0] ?? null);
 
-    if (next) {
+    if (!isCurrentlyOpen) {
       setTimeout(() => {
-        const el = sectionRefs.current[next];
+        const el = sectionRefs.current[id];
         if (el) {
           el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
@@ -106,7 +112,13 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
           sec.title,
           sec.shortSummary,
           sec.purpose,
+          sec.whatItDoes,
+          ...sec.recordedInfo,
           ...sec.subsections.map((sub) => `${sub.title} ${sub.detail}`),
+          ...sec.outputs,
+          ...sec.connections,
+          ...sec.howToUse,
+          ...sec.notesAndLimitations,
         ].join(' ')
       );
       return haystack.includes(normalizedQuery);
@@ -120,6 +132,19 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
       return haystack.includes(normalizedQuery);
     });
   }, [normalizedQuery]);
+
+  const allSectionsOpen =
+    filteredSections.length > 0 &&
+    filteredSections.every((sec) => openSectionIds.includes(sec.id));
+
+  const toggleAllSections = () => {
+    if (allSectionsOpen) {
+      setOpenSectionIds([]);
+      onSectionChange?.(null);
+    } else {
+      setOpenSectionIds(filteredSections.map((sec) => sec.id));
+    }
+  };
 
   const allPrinciplesOpen =
     filteredPrinciples.length > 0 &&
@@ -137,16 +162,28 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
     <div className="space-y-5">
       {/* Header + Standalone Topic Search */}
       <section className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-4 sm:p-5 space-y-3.5">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <BookOpen className="h-4.5 w-4.5 text-[#B99A62]" />
-            <h2 className="text-base font-bold text-[#1D3250]">
-              راهنمای نرم‌افزار و شرح بخش‌ها
-            </h2>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-4.5 w-4.5 text-[#B99A62]" />
+              <h2 className="text-base font-bold text-[#1D3250]">
+                مرکز راهنمای یکپارچه نرم‌افزار
+              </h2>
+            </div>
+            <p className="text-xs leading-6 text-[#5B6573]">
+              تمامی توضیحات، زیربخش‌ها، روش صحیح استفاده و نکات مهم شش بخش اصلی برنامه به‌صورت متمرکز در کارت‌های زیر قرار دارد.
+            </p>
           </div>
-          <p className="text-xs leading-6 text-[#5B6573]">
-            روی هر بخش کلیک کنید تا شرح کامل، زیربخش‌ها، روش صحیح استفاده و نکات مهم آن باز شود.
-          </p>
+
+          {filteredSections.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleAllSections}
+              className="rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-3 py-1.5 text-[11px] font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+            >
+              {allSectionsOpen ? 'بستن همه کارت‌ها' : 'باز کردن همه کارت‌ها'}
+            </button>
+          )}
         </div>
 
         <div className="relative">
@@ -158,7 +195,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
             onKeyDown={(e) => {
               if (e.key === 'Escape' && searchQuery) setSearchQuery('');
             }}
-            placeholder="جست‌وجو در عنوان بخش‌ها، زیربخش‌ها و اصول کار با نرم‌افزار..."
+            placeholder="جست‌وجو در تمام بخش‌ها، زیربخش‌ها، نکات و اصول کار با نرم‌افزار..."
             aria-label="جست‌وجو در موضوعات راهنما"
             className="h-9 w-full rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] pr-9 pl-9 text-xs text-[#263448] focus:border-[#243B5A] focus:bg-[#FFFFFF] focus:outline-none transition-colors"
           />
@@ -185,7 +222,7 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
           <div className="space-y-3">
             {filteredSections.map((sec) => {
               const Icon = SECTION_ICONS[sec.id];
-              const isOpen = openSectionId === sec.id;
+              const isOpen = openSectionIds.includes(sec.id);
               return (
                 <div
                   key={sec.id}
@@ -193,7 +230,9 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
                     sectionRefs.current[sec.id] = el;
                   }}
                   className={`scroll-mt-20 overflow-hidden rounded-[var(--app-radius)] border bg-[#FFFFFF] transition-colors ${
-                    isOpen ? 'border-[#243B5A]' : 'border-[#E2DDD2] hover:border-[#B9B2A3]'
+                    isOpen
+                      ? 'border-[#243B5A] shadow-[0_6px_18px_rgba(29,50,80,0.08)]'
+                      : 'border-[#E2DDD2] hover:border-[#B9B2A3]'
                   }`}
                 >
                   {/* Interactive Accordion Card Header */}
@@ -221,6 +260,9 @@ export const HelpCenterView: React.FC<HelpCenterViewProps> = ({
                             بخش {toPersianDigits(sec.order)}
                           </span>
                           <h3 className="text-sm font-bold text-[#1D3250]">{sec.title}</h3>
+                          <span className="rounded-md border border-[#E2DDD0] bg-[#FAF8F3] px-2 py-0.5 text-[10px] text-[#5B6573]">
+                            {toPersianDigits(sec.subsections.length)} زیربخش
+                          </span>
                         </div>
                         <p className="mt-1 text-xs leading-5 text-[#5B6573]">
                           {sec.shortSummary}

@@ -3,9 +3,11 @@ import {
   Calculator,
   Calendar,
   Camera,
+  FileSpreadsheet,
   FileText,
   FolderKanban,
   Image as ImageIcon,
+  Paperclip,
   Plus,
   Trash2,
   Upload,
@@ -14,6 +16,7 @@ import {
   BudgetEstimateLine,
   BudgetProposal,
   Project,
+  ProposalDocumentItem,
   ProposalEstimateBasis,
   ProposalImageItem,
   ProposalPriority,
@@ -107,10 +110,14 @@ export const BudgetProposalEditor: React.FC<BudgetProposalEditorProps> = ({
   // Description & Technical Justification
   const [description, setDescription] = useState(initial?.description ?? '');
 
-  // Visual Documentation (Compressed local images stored in IndexedDB)
+  // Visual & Estimate Document Attachments (stored locally in IndexedDB)
   const [images, setImages] = useState<ProposalImageItem[]>(initial?.images ?? []);
+  const [estimateDocuments, setEstimateDocuments] = useState<ProposalDocumentItem[]>(
+    initial?.estimateDocuments ?? []
+  );
   const [imageProcessing, setImageProcessing] = useState(false);
   const [imageError, setImageError] = useState('');
+  const [docError, setDocError] = useState('');
 
   const itemsTotal = useMemo(
     () => estimateItems.reduce((sum, item) => sum + (Number(item.amount) || 0), 0),
@@ -223,6 +230,53 @@ export const BudgetProposalEditor: React.FC<BudgetProposalEditorProps> = ({
     setImages((prev) => prev.filter((img) => img.id !== id));
   };
 
+  const handleUploadEstimateDocs = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length === 0) return;
+    setDocError('');
+    try {
+      const nextDocs: ProposalDocumentItem[] = [];
+      for (const file of files.slice(0, 5)) {
+        if (file.size > 4 * 1024 * 1024) {
+          setDocError('حداکثر حجم مجاز هر سند پیوست ۴ مگابایت است.');
+          continue;
+        }
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ''));
+          reader.onerror = () => reject(new Error('خطا در خواندن فایل مستند'));
+          reader.readAsDataURL(file);
+        });
+        const cleanTitle = file.name.replace(/\.[^.]+$/, '') || 'سند برآورد';
+        nextDocs.push({
+          id: generateId('pdoc'),
+          title: cleanTitle,
+          mimeType: file.type || 'application/octet-stream',
+          sizeBytes: file.size,
+          dataUrl,
+          addedAt: new Date().toISOString(),
+        });
+      }
+      if (nextDocs.length > 0) {
+        setEstimateDocuments((prev) => [...prev, ...nextDocs]);
+      }
+    } catch (err) {
+      setDocError(err instanceof Error ? err.message : 'خطا در پیوست فایل برآورد');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const updateDocTitle = (id: string, nextTitle: string) => {
+    setEstimateDocuments((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, title: nextTitle } : d))
+    );
+  };
+
+  const removeEstimateDoc = (id: string) => {
+    setEstimateDocuments((prev) => prev.filter((d) => d.id !== id));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -258,6 +312,7 @@ export const BudgetProposalEditor: React.FC<BudgetProposalEditorProps> = ({
         estimateSummary: estimateSummary.trim() || undefined,
         estimateItems: cleanedItems.length > 0 ? cleanedItems : undefined,
         images: images.length > 0 ? images : undefined,
+        estimateDocuments: estimateDocuments.length > 0 ? estimateDocuments : undefined,
         description: description.trim(),
         priority,
         estimatedAmount: finalAmount,
@@ -773,6 +828,68 @@ export const BudgetProposalEditor: React.FC<BudgetProposalEditorProps> = ({
               هنوز تصویری به این پیشنهاد پیوست نشده است (می‌توانید چند تصویر از وضعیت فعلی یا کروکی اضافه کنید).
             </div>
           )}
+
+          {/* Estimate Documents (PDF / Word / Excel) */}
+          <div className="border-t border-[#E6E0D3] pt-3 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-[#1D3250]">
+                <Paperclip className="h-3.5 w-3.5 text-[#354F73]" />
+                <span>پیوست فایل مستندات برآورد (PDF، اکسل متره، ورد، استعلام قیمت)</span>
+              </div>
+              <label className="inline-flex items-center gap-1.5 rounded-lg border border-[#3D6B59] bg-[#FFFFFF] px-3 py-1.5 text-[11px] font-medium text-[#3D6B59] hover:bg-[#E7ECE6] cursor-pointer">
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                <span>افزودن فایل برآورد</span>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,image/*"
+                  multiple
+                  onChange={handleUploadEstimateDocs}
+                  className="hidden"
+                />
+              </label>
+            </div>
+
+            {docError && (
+              <div className="rounded-lg border border-[#D8B4B4] bg-[#FBF1F1] px-3 py-2 text-xs text-[#9E3B3B]">
+                {docError}
+              </div>
+            )}
+
+            {estimateDocuments.length > 0 ? (
+              <div className="space-y-2">
+                {estimateDocuments.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex items-center gap-2 rounded-xl border border-[#E2DDD0] bg-[#FFFFFF] p-2.5"
+                  >
+                    <FileText className="h-4 w-4 shrink-0 text-[#243B5A]" />
+                    <input
+                      type="text"
+                      value={doc.title}
+                      onChange={(e) => updateDocTitle(doc.id, e.target.value)}
+                      placeholder="عنوان مستند برآورد"
+                      className="flex-1 rounded-lg border border-[#E2DDD0] bg-[#FAF8F3] px-2.5 py-1.5 text-xs text-[#263448]"
+                    />
+                    <span className="shrink-0 text-[10px] text-[#788290]">
+                      {formatFileSize(doc.sizeBytes)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeEstimateDoc(doc.id)}
+                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#E2DDD0] text-[#788290] hover:border-[#B43E3E] hover:text-[#B43E3E] cursor-pointer"
+                      title="حذف فایل پیوست"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-dashed border-[#D4CEBF] bg-[#FFFFFF] px-3 py-2.5 text-center text-[11px] text-[#788290]">
+                فایل برآورد، متره یا استعلام قیمت را می‌توانید اینجا پیوست کنید (ذخیره محلی روی دستگاه).
+              </div>
+            )}
+          </div>
         </section>
 
         {/* Actions */}

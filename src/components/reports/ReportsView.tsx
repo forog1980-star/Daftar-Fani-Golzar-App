@@ -40,7 +40,7 @@ import { FloatingWindow } from '../layout/FloatingWindow';
 import { SignatureBlockEditor } from '../documents/SignatureBlockEditor';
 import { STATUS_COLORS } from '../dashboard/StatusDonutChart';
 import { StatusChartPanel } from '../dashboard/StatusChartPanel';
-import { getNeutralProjectImage, OFFICIAL_GOLZAR_LOGO } from '../../utils/officialAssets';
+import { getNeutralProjectImage } from '../../utils/officialAssets';
 import { HelpSectionId } from '../help/helpContent';
 import { SectionHelpLink } from '../help/SectionHelpLink';
 
@@ -256,8 +256,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
     if (reportType === 'budget') {
       const totalApproved = store.budgets.reduce((s, b) => s + (b.approvedCredit || 0), 0);
+      const totalAllocated = store.budgets.reduce((s, b) => s + (b.allocatedCredit || 0), 0);
       const totalFunded = store.budgets.reduce((s, b) => s + (b.fundedCredit || 0), 0);
       const totalPaid = store.payments.reduce((s, p) => s + (p.amount || 0), 0);
+      const effectiveAllocated = totalAllocated > 0 ? totalAllocated : totalFunded > 0 ? totalFunded : totalApproved;
+      const baseTotal = totalFunded > 0 ? totalFunded : totalApproved > 0 ? totalApproved : effectiveAllocated;
+      const totalRemaining = baseTotal - totalPaid;
+      const usagePct = baseTotal > 0 ? Math.round((totalPaid / baseTotal) * 100) : 0;
+      const allocPct = totalApproved > 0 ? Math.round((effectiveAllocated / totalApproved) * 100) : 0;
+      const remPct = baseTotal > 0 ? Math.max(0, Math.round((Math.max(0, totalRemaining) / baseTotal) * 100)) : 0;
+
       const rows = store.projects.map((p) => {
         const b = store.budgets.find((x) => x.projectId === p.id);
         const paid = store.payments
@@ -270,6 +278,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           p.code,
           p.title,
           formatRial(b?.approvedCredit),
+          formatRial(b?.allocatedCredit),
           formatRial(b?.fundedCredit),
           formatRial(paid),
           formatRial(remaining),
@@ -278,18 +287,53 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       });
       return {
         ...base,
-        title: 'گزارش بودجه، اعتبارات و پرداخت‌های پروژه‌ها',
+        title: 'گزارش بودجه، اعتبارات و وضعیت دوناتی پروژه‌ها',
+        narrativeParagraphs: [
+          `مجموع اعتبار مصوب پروژه‌های ثبت‌شده معادل ${formatRial(totalApproved)}، بودجه تخصیص‌یافته معادل ${formatRial(effectiveAllocated)} (${toPersianDigits(allocPct)} درصد مصوب) و مجموع تأمین اعتبار معادل ${formatRial(totalFunded)} است.`,
+          `تا تاریخ تهیه این گزارش، مجموع بودجه هزینه‌شده (پرداخت‌شده) معادل ${formatRial(totalPaid)} (${toPersianDigits(usagePct)} درصد اعتبار مبنا) و مانده اعتبار برابر با ${formatRial(totalRemaining)} محاسبه شده است.`,
+        ],
+        donutChartData: {
+          title: 'نمودار دوناتی وضعیت بودجه (تخصیص‌یافته، هزینه‌شده و مانده)',
+          centerLabel: 'درصد جذب بودجه',
+          centerValue: `${toPersianDigits(usagePct)}٪`,
+          segments: [
+            {
+              label: 'بودجه هزینه‌شده (پرداخت‌شده)',
+              value: totalPaid,
+              formattedValue: formatRial(totalPaid),
+              percentText: `${toPersianDigits(usagePct)}٪`,
+              color: '#2D6A4F',
+            },
+            {
+              label: 'بودجه مانده قابل مصرف',
+              value: Math.max(0, totalRemaining),
+              formattedValue: formatRial(totalRemaining),
+              percentText: `${toPersianDigits(remPct)}٪`,
+              color: '#243B5A',
+            },
+            {
+              label: 'بودجه تخصیص‌یافته',
+              value: effectiveAllocated,
+              formattedValue: formatRial(effectiveAllocated),
+              percentText: `${toPersianDigits(allocPct)}٪`,
+              color: '#B99A62',
+            },
+          ],
+        },
         summaryRows: [
           { label: 'جمع اعتبار مصوب', value: formatRial(totalApproved) },
+          { label: 'بودجه تخصیص‌یافته', value: formatRial(effectiveAllocated) },
           { label: 'جمع تأمین اعتبار', value: formatRial(totalFunded) },
-          { label: 'جمع پرداخت‌شده', value: formatRial(totalPaid) },
+          { label: 'بودجه هزینه‌شده (پرداخت‌شده)', value: formatRial(totalPaid) },
+          { label: 'جمع مانده اعتبار', value: formatRial(totalRemaining) },
         ],
         headers: [
           'کد',
           'پروژه',
           'اعتبار مصوب',
+          'تخصیص‌یافته',
           'تأمین اعتبار',
-          'پرداخت‌شده',
+          'هزینه‌شده',
           'مانده اعتبار',
           'درصد مصرف',
         ],
@@ -962,18 +1006,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
       {/* 3. Live Report Preview Sheet (Real Data Only) */}
       <section className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-6 space-y-5">
-        {/* Letterhead Preview */}
+        {/* Formal Text-Only Letterhead Preview (No Logo Emblem on Standard Reports) */}
         {(effectiveLetterhead.organizationName ||
           effectiveLetterhead.unitName ||
           effectiveLetterhead.showDateAndNumber) && (
           <div className="border-b border-[#E2DDD2] pb-4 text-center">
-            <div className="mb-2.5 flex justify-center">
-              <img
-                src={store.settings.officialLogoDataUrl || OFFICIAL_GOLZAR_LOGO}
-                alt="آرم رسمی گلزار شهدای تهران"
-                className="h-12 w-auto max-w-[220px] object-contain"
-              />
-            </div>
             {effectiveLetterhead.organizationName && (
               <div className="text-base font-semibold text-[#243B5A]">
                 {effectiveLetterhead.organizationName}

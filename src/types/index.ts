@@ -121,6 +121,15 @@ export interface ProposalImageItem {
   addedAt: string;
 }
 
+export interface ProposalDocumentItem {
+  id: string;
+  title: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataUrl: string;
+  addedAt: string;
+}
+
 export interface BudgetProposal {
   id: string;
   fiscalYear: string;
@@ -137,6 +146,7 @@ export interface BudgetProposal {
   estimateSummary?: string;
   estimateItems?: BudgetEstimateLine[];
   images?: ProposalImageItem[];
+  estimateDocuments?: ProposalDocumentItem[];
   description: string;
   priority: ProposalPriority;
   estimatedAmount: number;

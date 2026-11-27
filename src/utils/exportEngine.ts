@@ -511,6 +511,19 @@ async function enforceDocxStrictRtlXml(blob: Blob): Promise<Blob> {
         '<w:pPrDefault><w:pPr><w:bidi/></w:pPr></w:pPrDefault>'
       );
     }
+    // Also ensure the Normal default paragraph style carries <w:bidi/>
+    stylesXml = stylesXml.replace(
+      /<w:style\b[^>]*w:styleId="Normal"[^>]*>[\s\S]*?<\/w:style>/,
+      (styleBlock) => {
+        if (styleBlock.includes('<w:bidi/>') || styleBlock.includes('<w:bidi ')) {
+          return styleBlock;
+        }
+        if (styleBlock.includes('<w:pPr>')) {
+          return styleBlock.replace('<w:pPr>', '<w:pPr><w:bidi/>');
+        }
+        return styleBlock.replace('</w:style>', '<w:pPr><w:bidi/></w:pPr></w:style>');
+      }
+    );
     zip.file('word/styles.xml', stylesXml);
   }
 
@@ -901,6 +914,8 @@ interface ExcelRowSpec {
   styleIdx: number;
   height?: number;
   mergeFullWidth?: boolean;
+  /** Logical layout mode so 2-col summary / 3-col donut / 5-col signature rows span full A4 width cleanly */
+  spanLayout?: 'summary' | 'donut' | 'signatures';
 }
 
 // Generates a 100% spec-compliant A4 RTL Excel (.xlsx) workbook with:
@@ -908,6 +923,7 @@ interface ExcelRowSpec {
 // - Complete OOXML styles.xml (<cellStyleXfs> + <cellStyles> + xfId="0")
 // - <bookViews> + <sheetView rightToLeft="1" tabSelected="1"/> so Column A starts on the RIGHT
 // - readingOrder="2" & horizontal="right" on EVERY cell style
+// - Full-width aligned RTL tables (summary, donut, main data, signatures)
 // - Soft warm gold/cream & muted slate-navy palette readable in BOTH color and B&W printing
 // - Explicit A4 Portrait print setup (paperSize="9", fitToWidth="1")
 export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: string): Promise<void> {
@@ -977,7 +993,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
     allRows.push({ cells: [''], styleIdx: 0, height: 12 });
   }
 
-  // Donut Breakdown Table
+  // Donut Breakdown Table (spans full A4 width)
   const renderedChart = renderDonutChartPng(payload.donutChartData);
   if (payload.donutChartData && payload.donutChartData.segments.length > 0) {
     allRows.push({
@@ -990,26 +1006,34 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
       cells: ['بخش وضعیت بودجه', 'مبلغ (ریال)', 'سهم / درصد'],
       styleIdx: 1,
       height: 28,
+      spanLayout: 'donut',
     });
     payload.donutChartData.segments.forEach((seg, idx) => {
       allRows.push({
         cells: [seg.label, seg.formattedValue, seg.percentText],
         styleIdx: idx % 2 === 1 ? 4 : 3,
         height: 26,
+        spanLayout: 'donut',
       });
     });
     allRows.push({ cells: [''], styleIdx: 0, height: 12 });
   }
 
-  // Summary Table
+  // Summary Table (spans full A4 width)
   if (payload.summaryRows && payload.summaryRows.length > 0) {
-    allRows.push({ cells: ['شاخص خلاصه وضعیت', 'مقدار'], styleIdx: 1, height: 28 });
+    allRows.push({
+      cells: ['شاخص خلاصه وضعیت', 'مقدار'],
+      styleIdx: 1,
+      height: 28,
+      spanLayout: 'summary',
+    });
     payload.summaryRows.forEach((s, idx) => {
       allRows.push({
         cells: [s.label, s.value],
         cellStyles: [5, idx % 2 === 1 ? 4 : 3],
         styleIdx: 3,
         height: 26,
+        spanLayout: 'summary',
       });
     });
     allRows.push({ cells: [''], styleIdx: 0, height: 12 });
@@ -1049,6 +1073,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
       cells: ['نام و نام خانوادگی', 'سمت', 'تاریخ', 'وضعیت امضا', 'نظر'],
       styleIdx: 1,
       height: 28,
+      spanLayout: 'signatures',
     });
     payload.signatures.forEach((sig, idx) => {
       allRows.push({
@@ -1061,6 +1086,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
         ],
         styleIdx: idx % 2 === 1 ? 4 : 3,
         height: 26,
+        spanLayout: 'signatures',
       });
     });
   }
@@ -1071,7 +1097,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
     const maxLen = Math.max(
       14,
       ...allRows
-        .filter((r) => !r.mergeFullWidth)
+        .filter((r) => !r.mergeFullWidth && !r.spanLayout)
         .map((r) => (r.cells[ci] ? Math.min(34, String(r.cells[ci]).length) : 0))
     );
     return Math.min(36, Math.round(maxLen * 1.25 + 4));
@@ -1082,6 +1108,53 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
     .join('');
 
   const mergeRefs: string[] = [];
+
+  const getSpansForLayout = (layout: ExcelRowSpec['spanLayout']): Array<[number, number]> | null => {
+    if (!layout) return null;
+    if (layout === 'summary') {
+      if (maxCols >= 4) {
+        return [
+          [0, 1],
+          [2, maxCols - 1],
+        ];
+      }
+      return [
+        [0, 0],
+        [1, maxCols - 1],
+      ];
+    }
+    if (layout === 'donut') {
+      if (maxCols >= 5) {
+        return [
+          [0, 1],
+          [2, maxCols - 2],
+          [maxCols - 1, maxCols - 1],
+        ];
+      }
+      if (maxCols === 4) {
+        return [
+          [0, 0],
+          [1, 2],
+          [3, 3],
+        ];
+      }
+      return [
+        [0, 0],
+        [1, 1],
+        [2, 2],
+      ];
+    }
+    if (layout === 'signatures' && maxCols > 5) {
+      return [
+        [0, 0],
+        [1, 1],
+        [2, 2],
+        [3, 3],
+        [4, maxCols - 1],
+      ];
+    }
+    return null;
+  };
 
   const sheetDataXml = allRows
     .map((rowObj, rIdx) => {
@@ -1097,6 +1170,26 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
           return `<c r="${ref}" t="inlineStr" s="${rowObj.styleIdx}"><is><t>${sanitizeCsvOrXml(val)}</t></is></c>`;
         }).join('');
         return `<row r="${rNum}" ht="${rowHeight}" customHeight="1">${cellsXml}</row>`;
+      }
+
+      const spans = getSpansForLayout(rowObj.spanLayout);
+      if (spans) {
+        const cellsParts: string[] = [];
+        spans.forEach(([startCol, endCol], logicalIdx) => {
+          const st = rowObj.cellStyles?.[logicalIdx] ?? rowObj.styleIdx;
+          const cellValue = rowObj.cells[logicalIdx] ?? '';
+          if (endCol > startCol) {
+            mergeRefs.push(`${colLetter(startCol)}${rNum}:${colLetter(endCol)}${rNum}`);
+          }
+          for (let c = startCol; c <= endCol; c++) {
+            const ref = `${colLetter(c)}${rNum}`;
+            const val = c === startCol ? cellValue : '';
+            cellsParts.push(
+              `<c r="${ref}" t="inlineStr" s="${st}"><is><t>${sanitizeCsvOrXml(val)}</t></is></c>`
+            );
+          }
+        });
+        return `<row r="${rNum}" ht="${rowHeight}" customHeight="1">${cellsParts.join('')}</row>`;
       }
 
       const cellsXml = rowObj.cells
@@ -1237,8 +1330,8 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
 
   if (renderedChart) {
     const anchorRow = allRows.length + 1;
-    const widthEmu = Math.round(620 * 9525);
-    const heightEmu = Math.round(((renderedChart.height / renderedChart.width) * 620) * 9525);
+    const widthEmu = Math.round(580 * 9525);
+    const heightEmu = Math.round(((renderedChart.height / renderedChart.width) * 580) * 9525);
 
     zip.file('xl/media/image1.png', renderedChart.bytes);
 

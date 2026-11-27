@@ -351,7 +351,7 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
                               )
                             }
                             className="inline-flex items-center gap-1 border border-[#D4CEBF] bg-[#FFFFFF] px-2 py-1 text-xs text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
-                            title="خروجی Word (فونت Zar 14)"
+                            title="خروجی Word (راست‌چین B Zar)"
                           >
                             <Download className="h-3 w-3" />
                             <span>Word</span>
@@ -365,7 +365,7 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
                               )
                             }
                             className="inline-flex items-center gap-1 border border-[#D4CEBF] bg-[#FFFFFF] px-2 py-1 text-xs text-[#2D6A4F] hover:bg-[#F2F6EE] cursor-pointer"
-                            title="خروجی Excel (راست‌چین Zar 14)"
+                            title="خروجی Excel (راست‌چین B Zar)"
                           >
                             <FileSpreadsheet className="h-3 w-3" />
                             <span>Excel</span>

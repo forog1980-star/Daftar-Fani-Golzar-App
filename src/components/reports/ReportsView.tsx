@@ -37,6 +37,7 @@ import {
   ExportTablePayload,
 } from '../../utils/exportEngine';
 import { FloatingWindow } from '../layout/FloatingWindow';
+import { SectionReportExportBar } from '../layout/SectionReportExportBar';
 import { SignatureBlockEditor } from '../documents/SignatureBlockEditor';
 import { STATUS_COLORS } from '../dashboard/StatusDonutChart';
 import { StatusChartPanel } from '../dashboard/StatusChartPanel';
@@ -1219,6 +1220,20 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         )}
       </section>
       </div>
+
+      {/* Bottom Page Section: Standardized Word & Excel Report Export */}
+      <SectionReportExportBar
+        buildExport={() => ({
+          slug: `report-${reportType}-${todayIsoDate()}`,
+          payload: {
+            ...reportPayload,
+            narrativeParagraphs:
+              reportPayload.narrativeParagraphs && reportPayload.narrativeParagraphs.length > 0
+                ? reportPayload.narrativeParagraphs
+                : narrativeParagraphs,
+          },
+        })}
+      />
 
       {/* Report Settings & Export Floating Window */}
       {settingsModalOpen && (

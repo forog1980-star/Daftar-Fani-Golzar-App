@@ -9,6 +9,7 @@ import {
   ShadingType,
   Table,
   TableCell,
+  TableLayoutType,
   TableRow,
   TextRun,
   VerticalAlignTable,
@@ -55,23 +56,33 @@ interface RenderedChartPng {
   height: number;
 }
 
-// Unified Monochromatic Royal Navy Report Palette (سرمه‌ای رسمی هماهنگ)
+// Soft, refined, print-friendly palette (works clearly in both color and black-and-white print)
 const PALETTE = {
-  navyDeep: '1D3250',
-  navyMid: '2E4A73',
-  bannerBg: 'E4ECF6',
-  keyBg: 'EEF3FA',
-  zebraBg: 'F7FAFD',
-  borderOuter: '1D3250',
-  borderInner: 'C3D2E4',
-  textPrimary: '1E293B',
-  textMuted: '4F6076',
+  inkNavy: '263B54', // Primary headings & bold text (soft slate-navy, crisp in B&W)
+  inkMuted: '526377', // Secondary labels & dates
+  textBody: '222B35', // Crisp readable body text
+  headerFill: 'F2E7C9', // Soft warm sand-gold header fill (ink-friendly, sharp in B&W)
+  bannerFill: 'FAF7EE', // Ultra-light warm ivory letterhead banner
+  keyFill: 'EBF0F5', // Soft cool mist-slate for summary keys & section titles
+  zebraFill: 'F9F8F4', // Gentle paper-cream alternating zebra row
+  narrativeFill: 'FAF9F5', // Soft narrative box background
+  borderStrong: '7E92A8', // Soft slate-navy outer table border
+  borderGold: 'C2A866', // Muted warm gold accent border
+  borderInner: 'CFC9B8', // Subtle warm-gray grid lines
   white: 'FFFFFF',
 };
 
 // ISO A4 Portrait dimensions in twips (210mm x 297mm)
 const A4_WIDTH_TWIP = 11906;
 const A4_HEIGHT_TWIP = 16838;
+const A4_MARGIN_TWIP = 850; // ~15mm margins
+const A4_CONTENT_WIDTH_TWIP = A4_WIDTH_TWIP - A4_MARGIN_TWIP * 2; // 10206 twips
+
+// Standard Persian B Zar font name across Windows, Office, WPS, Android Office & LibreOffice
+const BZAR_FONT = 'B Zar';
+const BZAR_14PT = 28; // 14pt in OOXML half-points
+const BZAR_16PT = 32; // 16pt
+const BZAR_12PT = 24; // 12pt
 
 function base64ToUint8Array(base64: string): Uint8Array {
   const binary = atob(base64);
@@ -82,11 +93,55 @@ function base64ToUint8Array(base64: string): Uint8Array {
   return bytes;
 }
 
+// Create a soft colored canvas pattern that stays unmistakably distinct in BOTH color and B&W print
+function createPrintFriendlyPattern(
+  baseCtx: CanvasRenderingContext2D,
+  bgColor: string,
+  patternType: 'dots' | 'diagonal' | 'solid' | 'cross'
+): string | CanvasPattern {
+  if (patternType === 'solid') return bgColor;
+
+  const tile = document.createElement('canvas');
+  tile.width = 14;
+  tile.height = 14;
+  const tctx = tile.getContext('2d');
+  if (!tctx) return bgColor;
+
+  tctx.fillStyle = bgColor;
+  tctx.fillRect(0, 0, 14, 14);
+
+  if (patternType === 'dots') {
+    tctx.fillStyle = 'rgba(38, 59, 84, 0.22)';
+    tctx.beginPath();
+    tctx.arc(4, 4, 1.4, 0, Math.PI * 2);
+    tctx.arc(11, 11, 1.4, 0, Math.PI * 2);
+    tctx.fill();
+  } else if (patternType === 'diagonal') {
+    tctx.strokeStyle = 'rgba(255, 255, 255, 0.38)';
+    tctx.lineWidth = 1.6;
+    tctx.beginPath();
+    tctx.moveTo(-2, 14);
+    tctx.lineTo(14, -2);
+    tctx.moveTo(5, 16);
+    tctx.lineTo(16, 5);
+    tctx.stroke();
+  } else if (patternType === 'cross') {
+    tctx.strokeStyle = 'rgba(255, 255, 255, 0.28)';
+    tctx.lineWidth = 1.1;
+    tctx.beginPath();
+    tctx.moveTo(0, 7);
+    tctx.lineTo(14, 7);
+    tctx.stroke();
+  }
+
+  return baseCtx.createPattern(tile, 'repeat') ?? bgColor;
+}
+
 function renderDonutChartPng(donut?: ExportDonutChartData): RenderedChartPng | null {
   if (!donut || donut.segments.length === 0 || typeof document === 'undefined') return null;
 
   const logicalW = 760;
-  const logicalH = 340;
+  const logicalH = 344;
   const scale = 2;
   const canvas = document.createElement('canvas');
   canvas.width = logicalW * scale;
@@ -96,33 +151,38 @@ function renderDonutChartPng(donut?: ExportDonutChartData): RenderedChartPng | n
 
   ctx.scale(scale, scale);
 
-  // Clean card background matching cohesive Royal Navy palette
-  ctx.fillStyle = `#${PALETTE.white}`;
+  // Soft white card background
+  ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, logicalW, logicalH);
 
   ctx.strokeStyle = `#${PALETTE.borderInner}`;
   ctx.lineWidth = 1.5;
   ctx.strokeRect(8, 8, logicalW - 16, logicalH - 16);
 
-  // Top subtle navy accent strip
-  ctx.fillStyle = `#${PALETTE.navyDeep}`;
+  // Gentle warm-gold top accent line
+  ctx.fillStyle = `#${PALETTE.borderGold}`;
   ctx.fillRect(8, 8, logicalW - 16, 4);
 
-  // Title (RTL right-aligned, Zar font)
+  // Title (RTL right-aligned, B Zar font)
   ctx.direction = 'rtl';
   ctx.textAlign = 'right';
-  ctx.fillStyle = `#${PALETTE.navyDeep}`;
-  ctx.font = 'bold 18px "Zar", "B Zar", Tahoma, sans-serif';
+  ctx.fillStyle = `#${PALETTE.inkNavy}`;
+  ctx.font = 'bold 18px "B Zar", "BZar", "Zar", Tahoma, sans-serif';
   ctx.fillText(donut.title, logicalW - 28, 46);
 
-  // Cohesive monochromatic shades for donut slices
-  const monochromaticShades = ['#1D3250', '#386394', '#7FA4CC', '#B7CDE4'];
+  // Soft colors with wide luminance separation + distinct textures for both color & B&W print
+  const sliceThemes: Array<{ color: string; pattern: 'dots' | 'diagonal' | 'solid' | 'cross' }> = [
+    { color: '#E6CA80', pattern: 'dots' },
+    { color: '#6E9E89', pattern: 'diagonal' },
+    { color: '#3F5D7D', pattern: 'solid' },
+    { color: '#B4C3D4', pattern: 'cross' },
+  ];
 
-  // Donut on the left-center side so RTL legend sits cleanly on the right
+  // Donut on left-center so RTL legend sits naturally on the right
   const cx = 185;
-  const cy = 194;
+  const cy = 196;
   const outerR = 104;
-  const innerR = 62;
+  const innerR = 60;
   const totalVal = donut.segments.reduce((s, seg) => s + Math.max(0, seg.value), 0);
 
   if (totalVal > 0) {
@@ -131,65 +191,81 @@ function renderDonutChartPng(donut?: ExportDonutChartData): RenderedChartPng | n
       const val = Math.max(0, seg.value);
       if (val <= 0) return;
       const sliceAngle = (val / totalVal) * Math.PI * 2;
-      const fillColor = monochromaticShades[idx % monochromaticShades.length];
+      const theme = sliceThemes[idx % sliceThemes.length];
+      const fillStyle = createPrintFriendlyPattern(ctx, theme.color, theme.pattern);
+
       ctx.beginPath();
       ctx.arc(cx, cy, outerR, startAngle, startAngle + sliceAngle);
       ctx.arc(cx, cy, innerR, startAngle + sliceAngle, startAngle, true);
       ctx.closePath();
-      ctx.fillStyle = fillColor;
+      ctx.fillStyle = fillStyle;
       ctx.fill();
+
       ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = 2.5;
+      ctx.lineWidth = 3;
       ctx.stroke();
+
       startAngle += sliceAngle;
     });
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
+    ctx.strokeStyle = '#8A96A3';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, innerR, 0, Math.PI * 2);
+    ctx.strokeStyle = '#8A96A3';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
   } else {
     ctx.beginPath();
     ctx.arc(cx, cy, outerR, 0, Math.PI * 2);
     ctx.arc(cx, cy, innerR, Math.PI * 2, 0, true);
     ctx.closePath();
-    ctx.fillStyle = '#E4ECF6';
+    ctx.fillStyle = '#EFECE4';
     ctx.fill();
   }
 
   // Center text
   ctx.textAlign = 'center';
-  ctx.fillStyle = `#${PALETTE.navyDeep}`;
-  ctx.font = 'bold 18px "Zar", "B Zar", Tahoma, sans-serif';
+  ctx.fillStyle = `#${PALETTE.inkNavy}`;
+  ctx.font = 'bold 18px "B Zar", "BZar", "Zar", Tahoma, sans-serif';
   ctx.fillText(donut.centerValue, cx, cy - 2);
-  ctx.fillStyle = `#${PALETTE.textMuted}`;
-  ctx.font = '13px "Zar", "B Zar", Tahoma, sans-serif';
+  ctx.fillStyle = `#${PALETTE.inkMuted}`;
+  ctx.font = '13px "B Zar", "BZar", "Zar", Tahoma, sans-serif';
   ctx.fillText(donut.centerLabel, cx, cy + 20);
 
   // RTL Legend on the right side
   const legendRightX = logicalW - 30;
-  let rowY = 94;
+  let rowY = 96;
   const rowGap = 62;
 
   donut.segments.forEach((seg, idx) => {
-    const swatchColor = monochromaticShades[idx % monochromaticShades.length];
+    const theme = sliceThemes[idx % sliceThemes.length];
+    const swatchFill = createPrintFriendlyPattern(ctx, theme.color, theme.pattern);
 
-    // Soft row card
-    ctx.fillStyle = `#${PALETTE.zebraBg}`;
+    ctx.fillStyle = `#${PALETTE.zebraFill}`;
     ctx.fillRect(340, rowY - 22, legendRightX - 332, 48);
     ctx.strokeStyle = `#${PALETTE.borderInner}`;
     ctx.lineWidth = 1;
     ctx.strokeRect(340, rowY - 22, legendRightX - 332, 48);
 
-    // Color swatch on right
-    ctx.fillStyle = swatchColor;
-    ctx.fillRect(legendRightX - 20, rowY - 9, 14, 14);
+    ctx.fillStyle = swatchFill;
+    ctx.fillRect(legendRightX - 24, rowY - 10, 18, 18);
+    ctx.strokeStyle = '#526377';
+    ctx.lineWidth = 0.9;
+    ctx.strokeRect(legendRightX - 24, rowY - 10, 18, 18);
 
-    // Segment label
     ctx.textAlign = 'right';
-    ctx.fillStyle = `#${PALETTE.navyDeep}`;
-    ctx.font = 'bold 15px "Zar", "B Zar", Tahoma, sans-serif';
-    ctx.fillText(seg.label, legendRightX - 30, rowY - 1);
+    ctx.fillStyle = `#${PALETTE.inkNavy}`;
+    ctx.font = 'bold 15px "B Zar", "BZar", "Zar", Tahoma, sans-serif';
+    ctx.fillText(seg.label, legendRightX - 34, rowY - 1);
 
-    // Value & percent below label
-    ctx.fillStyle = `#${PALETTE.textMuted}`;
-    ctx.font = '14px "Zar", "B Zar", Tahoma, sans-serif';
-    ctx.fillText(`${seg.formattedValue}  (${seg.percentText})`, legendRightX - 30, rowY + 19);
+    ctx.fillStyle = `#${PALETTE.inkMuted}`;
+    ctx.font = '14px "B Zar", "BZar", "Zar", Tahoma, sans-serif';
+    ctx.fillText(`${seg.formattedValue}  (${seg.percentText})`, legendRightX - 34, rowY + 19);
 
     rowY += rowGap;
   });
@@ -219,22 +295,16 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   }, 300);
 }
 
-// Zar 14pt = 28 half-points in OOXML
-const ZAR_FONT = 'Zar';
-const ZAR_14PT = 28;
-const ZAR_16PT = 32;
-const ZAR_12PT = 24;
-
 const CELL_MARGINS = {
-  top: 90,
-  bottom: 90,
-  left: 120,
-  right: 120,
+  top: 85,
+  bottom: 85,
+  left: 100,
+  right: 100,
 };
 
-const COHESIVE_TABLE_BORDERS = {
-  top: { style: BorderStyle.SINGLE, size: 8, color: PALETTE.borderOuter },
-  bottom: { style: BorderStyle.SINGLE, size: 8, color: PALETTE.borderOuter },
+const SOFT_TABLE_BORDERS = {
+  top: { style: BorderStyle.SINGLE, size: 8, color: PALETTE.borderStrong },
+  bottom: { style: BorderStyle.SINGLE, size: 8, color: PALETTE.borderStrong },
   left: { style: BorderStyle.SINGLE, size: 4, color: PALETTE.borderInner },
   right: { style: BorderStyle.SINGLE, size: 4, color: PALETTE.borderInner },
   insideHorizontal: { style: BorderStyle.SINGLE, size: 4, color: PALETTE.borderInner },
@@ -245,15 +315,34 @@ function rtlTextRun(text: string, options?: { bold?: boolean; size?: number; col
   return new TextRun({
     text: text || '—',
     font: {
-      name: ZAR_FONT,
-      cs: ZAR_FONT,
-      ascii: ZAR_FONT,
-      hAnsi: ZAR_FONT,
+      name: BZAR_FONT,
+      cs: BZAR_FONT,
+      ascii: BZAR_FONT,
+      hAnsi: BZAR_FONT,
+      eastAsia: BZAR_FONT,
     },
-    size: options?.size ?? ZAR_14PT,
+    size: options?.size ?? BZAR_14PT,
     bold: options?.bold ?? false,
-    color: options?.color ?? PALETTE.textPrimary,
+    color: options?.color ?? PALETTE.textBody,
     rightToLeft: true,
+    language: {
+      bidirectional: 'fa-IR',
+    },
+  });
+}
+
+// Pure <w:bidi/> paragraph with NO conflicting <w:jc w:val="left"/> so every Word processor
+// (Microsoft Word, Honor Docs, WPS Office, LibreOffice, Google Docs, Apple Pages) aligns RIGHT.
+function makeRtlParagraph(
+  children: Array<TextRun | ImageRun>,
+  spacing?: { before?: number; after?: number },
+  keepNext?: boolean
+) {
+  return new Paragraph({
+    bidirectional: true,
+    spacing,
+    keepNext,
+    children,
   });
 }
 
@@ -264,120 +353,253 @@ function makeRtlTableCell(
     color?: string;
     fill?: string;
     size?: number;
-    widthPct?: number;
+    widthDxa?: number;
+    keepNext?: boolean;
   }
 ) {
   return new TableCell({
     verticalAlign: VerticalAlignTable.CENTER,
     margins: CELL_MARGINS,
     width:
-      options?.widthPct !== undefined
-        ? { size: options.widthPct, type: WidthType.PERCENTAGE }
+      options?.widthDxa !== undefined
+        ? { size: options.widthDxa, type: WidthType.DXA }
         : undefined,
     shading: options?.fill ? { type: ShadingType.SOLID, color: options.fill } : undefined,
     children: [
-      new Paragraph({
-        bidirectional: true,
-        alignment: AlignmentType.RIGHT,
-        spacing: { before: 20, after: 20 },
-        children: [
+      makeRtlParagraph(
+        [
           rtlTextRun(text, {
             bold: options?.bold,
             color: options?.color,
-            size: options?.size ?? ZAR_14PT,
+            size: options?.size ?? BZAR_14PT,
           }),
         ],
-      }),
+        { before: 20, after: 20 },
+        options?.keepNext
+      ),
     ],
+  });
+}
+
+// Compute smart proportional column widths in twips (sum === A4_CONTENT_WIDTH_TWIP)
+// so project codes never wrap awkwardly and title/description columns have comfortable space.
+function computeSmartColumnWidths(
+  headers: string[],
+  rows: string[][],
+  totalWidth = A4_CONTENT_WIDTH_TWIP
+): number[] {
+  const count = headers.length;
+  if (count <= 0) return [totalWidth];
+  if (count === 1) return [totalWidth];
+
+  const weights = headers.map((header, idx) => {
+    const h = header.trim();
+    if (h.includes('کد') || h === 'شماره') return 1.25;
+    if (h.includes('درصد') || h === 'سال' || h === 'اولویت') return 0.92;
+    if (h.includes('عنوان') || h.includes('نام پروژه') || h.includes('موضوع') || h.includes('شرح')) {
+      return 2.05;
+    }
+    if (h.includes('توضیحات') || h.includes('نتیجه')) return 1.75;
+    if (h.includes('تاریخ') || h.includes('مهلت') || h.includes('وضعیت') || h.includes('نوع')) {
+      return 1.05;
+    }
+    // Estimate from sample data
+    const sampleMax = Math.max(
+      h.length,
+      ...rows.slice(0, 12).map((r) => String(r[idx] ?? '').length)
+    );
+    return Math.max(1.0, Math.min(1.85, sampleMax / 12));
+  });
+
+  const sumWeight = weights.reduce((a, b) => a + b, 0);
+  const widths = weights.map((w) => Math.max(920, Math.round((w / sumWeight) * totalWidth)));
+  const diff = totalWidth - widths.reduce((a, b) => a + b, 0);
+  widths[0] += diff;
+  return widths;
+}
+
+// CRITICAL UNIVERSAL RTL TABLE BUILDER:
+// Mobile Office apps (Honor Docs, WPS Mobile, Polaris, QuickLook, Google Docs) ignore <w:bidiVisual/>.
+// By OMITTING visuallyRightToLeft (<w:bidiVisual/>) and placing columns in explicit visual Left-to-Right order
+// (reversing logical RTL columns so column 0 sits on the FAR RIGHT and last column sits on the FAR LEFT),
+// 100% of BOTH desktop (Microsoft Word, LibreOffice) AND mobile viewers (Honor Docs, WPS, Google Docs)
+// render every table cleanly Right-to-Left!
+function buildUniversalRtlWordTable(options: {
+  logicalHeaders?: string[];
+  logicalRows: Array<{
+    cells: Array<{ text: string; bold?: boolean; color?: string; fill?: string; size?: number }>;
+    keepNext?: boolean;
+  }>;
+  logicalColWidths: number[];
+  headerFontSize?: number;
+}): Table {
+  const visualColWidths = [...options.logicalColWidths].reverse();
+  const tableRows: TableRow[] = [];
+
+  if (options.logicalHeaders && options.logicalHeaders.length > 0) {
+    const visualHeaders = [...options.logicalHeaders].reverse();
+    tableRows.push(
+      new TableRow({
+        tableHeader: true,
+        cantSplit: true,
+        children: visualHeaders.map((h, i) =>
+          makeRtlTableCell(h, {
+            bold: true,
+            color: PALETTE.inkNavy,
+            fill: PALETTE.headerFill,
+            size: options.headerFontSize ?? BZAR_12PT,
+            widthDxa: visualColWidths[i],
+            keepNext: true,
+          })
+        ),
+      })
+    );
+  }
+
+  options.logicalRows.forEach((rowDef) => {
+    const visualCells = [...rowDef.cells].reverse();
+    tableRows.push(
+      new TableRow({
+        cantSplit: true,
+        children: visualCells.map((cell, i) =>
+          makeRtlTableCell(cell.text, {
+            bold: cell.bold,
+            color: cell.color,
+            fill: cell.fill,
+            size: cell.size ?? BZAR_12PT,
+            widthDxa: visualColWidths[i],
+            keepNext: rowDef.keepNext,
+          })
+        ),
+      })
+    );
+  });
+
+  return new Table({
+    // Intentionally omit visuallyRightToLeft (<w:bidiVisual/>) because columns are already
+    // placed in visual RTL order (Rightmost = first logical RTL column), guaranteeing
+    // identical RTL rendering across Microsoft Word, Honor Docs, WPS, Google Docs & LibreOffice!
+    layout: TableLayoutType.FIXED,
+    columnWidths: visualColWidths,
+    width: { size: A4_CONTENT_WIDTH_TWIP, type: WidthType.DXA },
+    borders: SOFT_TABLE_BORDERS,
+    rows: tableRows,
+  });
+}
+
+// Ensure Word OOXML section & default paragraph styles are strictly RTL (<w:bidi/> in sectPr & docDefaults)
+async function enforceDocxStrictRtlXml(blob: Blob): Promise<Blob> {
+  const zip = await JSZip.loadAsync(blob);
+
+  const docXmlFile = zip.file('word/document.xml');
+  if (docXmlFile) {
+    let docXml = await docXmlFile.async('string');
+    if (docXml.includes('<w:sectPr>') && !docXml.includes('<w:sectPr><w:bidi/>')) {
+      docXml = docXml.replace('<w:sectPr>', '<w:sectPr><w:bidi/>');
+    }
+    zip.file('word/document.xml', docXml);
+  }
+
+  const stylesXmlFile = zip.file('word/styles.xml');
+  if (stylesXmlFile) {
+    let stylesXml = await stylesXmlFile.async('string');
+    if (stylesXml.includes('<w:pPrDefault><w:pPr>') && !stylesXml.includes('<w:pPrDefault><w:pPr><w:bidi/>')) {
+      stylesXml = stylesXml.replace('<w:pPrDefault><w:pPr>', '<w:pPrDefault><w:pPr><w:bidi/>');
+    } else if (stylesXml.includes('<w:pPrDefault/>')) {
+      stylesXml = stylesXml.replace(
+        '<w:pPrDefault/>',
+        '<w:pPrDefault><w:pPr><w:bidi/></w:pPr></w:pPrDefault>'
+      );
+    }
+    zip.file('word/styles.xml', stylesXml);
+  }
+
+  return zip.generateAsync({
+    type: 'blob',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   });
 }
 
 export async function exportToWordDocx(payload: ExportTablePayload, fileName: string): Promise<void> {
   const children: Array<Paragraph | Table> = [];
 
-  // Formal Text-Only Letterhead Box (100% RTL, Zar font, cohesive Royal Navy palette, NO emblem)
+  // Formal Text-Only Letterhead Box (100% RTL, B Zar font, soft warm ivory/gold styling, NO emblem)
   const letterheadParagraphs: Paragraph[] = [
-    new Paragraph({
-      bidirectional: true,
-      alignment: AlignmentType.RIGHT,
-      spacing: { after: 40 },
-      children: [
+    makeRtlParagraph(
+      [
         rtlTextRun(payload.letterhead.organizationName, {
           bold: true,
-          size: ZAR_16PT,
-          color: PALETTE.navyDeep,
+          size: BZAR_16PT,
+          color: PALETTE.inkNavy,
         }),
       ],
-    }),
+      { after: 40 }
+    ),
   ];
 
   if (payload.letterhead.unitName) {
     letterheadParagraphs.push(
-      new Paragraph({
-        bidirectional: true,
-        alignment: AlignmentType.RIGHT,
-        spacing: { after: 40 },
-        children: [
+      makeRtlParagraph(
+        [
           rtlTextRun(payload.letterhead.unitName, {
             bold: true,
-            size: ZAR_14PT,
-            color: PALETTE.navyMid,
+            size: BZAR_14PT,
+            color: PALETTE.inkMuted,
           }),
         ],
-      })
+        { after: 40 }
+      )
     );
   }
 
   if (payload.letterhead.subtitle) {
     letterheadParagraphs.push(
-      new Paragraph({
-        bidirectional: true,
-        alignment: AlignmentType.RIGHT,
-        spacing: { after: 40 },
-        children: [
+      makeRtlParagraph(
+        [
           rtlTextRun(payload.letterhead.subtitle, {
-            size: ZAR_12PT,
-            color: PALETTE.textMuted,
+            size: BZAR_12PT,
+            color: PALETTE.inkMuted,
           }),
         ],
-      })
+        { after: 40 }
+      )
     );
   }
 
   if (payload.letterhead.showDateAndNumber) {
     letterheadParagraphs.push(
-      new Paragraph({
-        bidirectional: true,
-        alignment: AlignmentType.RIGHT,
-        spacing: { before: 40, after: 0 },
-        children: [
+      makeRtlParagraph(
+        [
           rtlTextRun(
             `تاریخ گزارش: ${formatJalaliDate(payload.date || todayIsoDate())}   |   شماره: ${payload.documentNumber || 'ثبت محلی'}`,
-            { size: ZAR_12PT, color: PALETTE.textMuted }
+            { size: BZAR_12PT, color: PALETTE.inkMuted }
           ),
         ],
-      })
+        { before: 40, after: 0 }
+      )
     );
   }
 
   children.push(
     new Table({
-      visuallyRightToLeft: true,
-      alignment: AlignmentType.RIGHT,
-      width: { size: 100, type: WidthType.PERCENTAGE },
+      layout: TableLayoutType.FIXED,
+      columnWidths: [A4_CONTENT_WIDTH_TWIP],
+      width: { size: A4_CONTENT_WIDTH_TWIP, type: WidthType.DXA },
       borders: {
-        top: { style: BorderStyle.SINGLE, size: 12, color: PALETTE.navyDeep },
-        bottom: { style: BorderStyle.SINGLE, size: 6, color: PALETTE.navyDeep },
+        top: { style: BorderStyle.SINGLE, size: 8, color: PALETTE.borderGold },
+        bottom: { style: BorderStyle.SINGLE, size: 8, color: PALETTE.borderGold },
         left: { style: BorderStyle.SINGLE, size: 4, color: PALETTE.borderInner },
-        right: { style: BorderStyle.SINGLE, size: 12, color: PALETTE.navyDeep },
+        right: { style: BorderStyle.SINGLE, size: 12, color: PALETTE.borderStrong },
         insideHorizontal: { style: BorderStyle.NONE, size: 0, color: PALETTE.white },
         insideVertical: { style: BorderStyle.NONE, size: 0, color: PALETTE.white },
       },
       rows: [
         new TableRow({
+          cantSplit: true,
           children: [
             new TableCell({
-              shading: { type: ShadingType.SOLID, color: PALETTE.bannerBg },
+              width: { size: A4_CONTENT_WIDTH_TWIP, type: WidthType.DXA },
+              shading: { type: ShadingType.SOLID, color: PALETTE.bannerFill },
               margins: { top: 120, bottom: 120, left: 160, right: 160 },
               children: letterheadParagraphs,
             }),
@@ -387,72 +609,61 @@ export async function exportToWordDocx(payload: ExportTablePayload, fileName: st
     })
   );
 
-  // Document Title (RTL Right-Aligned)
+  // Document Title (RTL)
   children.push(
-    new Paragraph({
-      bidirectional: true,
-      alignment: AlignmentType.RIGHT,
-      spacing: { before: 180, after: 120 },
-      children: [rtlTextRun(payload.title, { bold: true, size: ZAR_16PT, color: PALETTE.navyDeep })],
-    })
+    makeRtlParagraph(
+      [rtlTextRun(payload.title, { bold: true, size: BZAR_16PT, color: PALETTE.inkNavy })],
+      { before: 180, after: 120 },
+      true
+    )
   );
 
   if (payload.subtitle) {
     children.push(
-      new Paragraph({
-        bidirectional: true,
-        alignment: AlignmentType.RIGHT,
-        spacing: { after: 140 },
-        children: [rtlTextRun(payload.subtitle, { size: ZAR_14PT, color: PALETTE.textMuted })],
-      })
+      makeRtlParagraph(
+        [rtlTextRun(payload.subtitle, { size: BZAR_14PT, color: PALETTE.inkMuted })],
+        { after: 140 }
+      )
     );
   }
 
-  // Narrative Paragraphs (گزارش متنی راست‌چین با فونت زر ۱۴)
+  // Narrative Paragraphs (گزارش متنی راست‌چین با فونت B Zar ۱۴)
   if (payload.narrativeParagraphs && payload.narrativeParagraphs.length > 0) {
     children.push(
-      new Paragraph({
-        bidirectional: true,
-        alignment: AlignmentType.RIGHT,
-        spacing: { before: 80, after: 80 },
-        children: [
-          rtlTextRun('گزارش متنی و تحلیلی', {
-            bold: true,
-            size: ZAR_14PT,
-            color: PALETTE.navyDeep,
-          }),
-        ],
-      })
+      makeRtlParagraph(
+        [rtlTextRun('گزارش متنی و تحلیلی', { bold: true, size: BZAR_14PT, color: PALETTE.inkNavy })],
+        { before: 80, after: 80 },
+        true
+      )
     );
 
-    const narrativeParagraphNodes = payload.narrativeParagraphs.map(
-      (para) =>
-        new Paragraph({
-          bidirectional: true,
-          alignment: AlignmentType.RIGHT,
-          spacing: { before: 30, after: 70 },
-          children: [rtlTextRun(para, { size: ZAR_14PT, color: PALETTE.textPrimary })],
-        })
+    const narrativeParagraphNodes = payload.narrativeParagraphs.map((para) =>
+      makeRtlParagraph([rtlTextRun(para, { size: BZAR_14PT, color: PALETTE.textBody })], {
+        before: 30,
+        after: 70,
+      })
     );
 
     children.push(
       new Table({
-        visuallyRightToLeft: true,
-        alignment: AlignmentType.RIGHT,
-        width: { size: 100, type: WidthType.PERCENTAGE },
+        layout: TableLayoutType.FIXED,
+        columnWidths: [A4_CONTENT_WIDTH_TWIP],
+        width: { size: A4_CONTENT_WIDTH_TWIP, type: WidthType.DXA },
         borders: {
           top: { style: BorderStyle.SINGLE, size: 4, color: PALETTE.borderInner },
           bottom: { style: BorderStyle.SINGLE, size: 4, color: PALETTE.borderInner },
           left: { style: BorderStyle.SINGLE, size: 4, color: PALETTE.borderInner },
-          right: { style: BorderStyle.SINGLE, size: 10, color: PALETTE.navyMid },
+          right: { style: BorderStyle.SINGLE, size: 10, color: PALETTE.borderGold },
           insideHorizontal: { style: BorderStyle.NONE, size: 0, color: PALETTE.white },
           insideVertical: { style: BorderStyle.NONE, size: 0, color: PALETTE.white },
         },
         rows: [
           new TableRow({
+            cantSplit: true,
             children: [
               new TableCell({
-                shading: { type: ShadingType.SOLID, color: PALETTE.zebraBg },
+                width: { size: A4_CONTENT_WIDTH_TWIP, type: WidthType.DXA },
+                shading: { type: ShadingType.SOLID, color: PALETTE.narrativeFill },
                 margins: { top: 100, bottom: 100, left: 140, right: 160 },
                 children: narrativeParagraphNodes,
               }),
@@ -461,32 +672,31 @@ export async function exportToWordDocx(payload: ExportTablePayload, fileName: st
         ],
       })
     );
-    children.push(new Paragraph({ bidirectional: true, alignment: AlignmentType.RIGHT, spacing: { after: 120 }, children: [] }));
+    children.push(makeRtlParagraph([], { after: 120 }));
   }
 
-  // Embedded Donut Chart PNG + Structured Breakdown Table (گزارش دوناتی)
+  // Embedded Donut Chart PNG + Universal Visual-RTL Breakdown Table
   if (payload.donutChartData && payload.donutChartData.segments.length > 0) {
     const renderedChart = renderDonutChartPng(payload.donutChartData);
     children.push(
-      new Paragraph({
-        bidirectional: true,
-        alignment: AlignmentType.RIGHT,
-        spacing: { before: 100, after: 80 },
-        children: [
+      makeRtlParagraph(
+        [
           rtlTextRun(payload.donutChartData.title, {
             bold: true,
-            size: ZAR_14PT,
-            color: PALETTE.navyDeep,
+            size: BZAR_14PT,
+            color: PALETTE.inkNavy,
           }),
         ],
-      })
+        { before: 100, after: 80 },
+        true
+      )
     );
 
     if (renderedChart) {
       children.push(
         new Paragraph({
           bidirectional: true,
-          alignment: AlignmentType.RIGHT,
+          alignment: AlignmentType.CENTER,
           spacing: { after: 140 },
           children: [
             new ImageRun({
@@ -502,158 +712,124 @@ export async function exportToWordDocx(payload: ExportTablePayload, fileName: st
       );
     }
 
-    const donutHeaderRow = new TableRow({
-      tableHeader: true,
-      children: ['بخش وضعیت بودجه', 'مبلغ (ریال)', 'سهم / درصد'].map((h) =>
-        makeRtlTableCell(h, { bold: true, color: PALETTE.white, fill: PALETTE.navyDeep })
-      ),
-    });
-
-    const donutDataRows = payload.donutChartData.segments.map(
-      (seg, idx) =>
-        new TableRow({
-          children: [seg.label, seg.formattedValue, seg.percentText].map((val) =>
-            makeRtlTableCell(val, {
-              fill: idx % 2 === 1 ? PALETTE.zebraBg : PALETTE.white,
-            })
-          ),
-        })
-    );
-
     children.push(
-      new Table({
-        visuallyRightToLeft: true,
-        alignment: AlignmentType.RIGHT,
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: COHESIVE_TABLE_BORDERS,
-        rows: [donutHeaderRow, ...donutDataRows],
-      })
-    );
-    children.push(new Paragraph({ bidirectional: true, alignment: AlignmentType.RIGHT, spacing: { after: 140 }, children: [] }));
-  }
-
-  // Key-value summary rows (RTL table)
-  if (payload.summaryRows && payload.summaryRows.length > 0) {
-    const summaryTableRows = payload.summaryRows.map(
-      (item, idx) =>
-        new TableRow({
-          children: [
-            makeRtlTableCell(item.label, {
-              bold: true,
-              color: PALETTE.navyDeep,
-              fill: PALETTE.keyBg,
-              widthPct: 36,
-            }),
-            makeRtlTableCell(item.value, {
-              fill: idx % 2 === 1 ? PALETTE.zebraBg : PALETTE.white,
-              widthPct: 64,
-            }),
+      buildUniversalRtlWordTable({
+        logicalHeaders: ['بخش وضعیت بودجه', 'مبلغ (ریال)', 'سهم / درصد'],
+        logicalColWidths: [4082, 4082, 2042],
+        headerFontSize: BZAR_14PT,
+        logicalRows: payload.donutChartData.segments.map((seg, idx) => ({
+          cells: [
+            {
+              text: seg.label,
+              fill: idx % 2 === 1 ? PALETTE.zebraFill : PALETTE.white,
+              size: BZAR_14PT,
+            },
+            {
+              text: seg.formattedValue,
+              fill: idx % 2 === 1 ? PALETTE.zebraFill : PALETTE.white,
+              size: BZAR_14PT,
+            },
+            {
+              text: seg.percentText,
+              fill: idx % 2 === 1 ? PALETTE.zebraFill : PALETTE.white,
+              size: BZAR_14PT,
+            },
           ],
-        })
-    );
-
-    children.push(
-      new Table({
-        visuallyRightToLeft: true,
-        alignment: AlignmentType.RIGHT,
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: COHESIVE_TABLE_BORDERS,
-        rows: summaryTableRows,
+        })),
       })
     );
-    children.push(new Paragraph({ bidirectional: true, alignment: AlignmentType.RIGHT, spacing: { after: 140 }, children: [] }));
+    children.push(makeRtlParagraph([], { after: 140 }));
   }
 
-  // Main Data Table (100% RTL — Cohesive Royal Navy Monochromatic Styling)
-  if (payload.headers.length > 0) {
-    const headerRow = new TableRow({
-      tableHeader: true,
-      children: payload.headers.map((h) =>
-        makeRtlTableCell(h, { bold: true, color: PALETTE.white, fill: PALETTE.navyDeep })
-      ),
-    });
-
-    const dataRows = payload.rows.map(
-      (row, idx) =>
-        new TableRow({
-          children: row.map((cellText) =>
-            makeRtlTableCell(cellText, {
-              fill: idx % 2 === 1 ? PALETTE.zebraBg : PALETTE.white,
-            })
-          ),
-        })
-    );
-
+  // Key-value summary rows (Universal Visual-RTL: Key on the RIGHT, Value on the LEFT; kept together cleanly)
+  if (payload.summaryRows && payload.summaryRows.length > 0) {
     children.push(
-      new Table({
-        visuallyRightToLeft: true,
-        alignment: AlignmentType.RIGHT,
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: COHESIVE_TABLE_BORDERS,
-        rows: [headerRow, ...dataRows],
+      buildUniversalRtlWordTable({
+        logicalColWidths: [3674, 6532],
+        logicalRows: payload.summaryRows.map((item, idx) => ({
+          keepNext: idx < payload.summaryRows!.length - 1,
+          cells: [
+            {
+              text: item.label,
+              bold: true,
+              color: PALETTE.inkNavy,
+              fill: PALETTE.keyFill,
+              size: BZAR_14PT,
+            },
+            {
+              text: item.value,
+              fill: idx % 2 === 1 ? PALETTE.zebraFill : PALETTE.white,
+              size: BZAR_14PT,
+            },
+          ],
+        })),
+      })
+    );
+    children.push(makeRtlParagraph([], { after: 140 }));
+  }
+
+  // Main Data Table (Universal Visual-RTL: First logical column on the FAR RIGHT, last on the FAR LEFT)
+  if (payload.headers.length > 0) {
+    const mainColWidths = computeSmartColumnWidths(payload.headers, payload.rows);
+    children.push(
+      buildUniversalRtlWordTable({
+        logicalHeaders: payload.headers,
+        logicalColWidths: mainColWidths,
+        headerFontSize: BZAR_12PT,
+        logicalRows: payload.rows.map((row, idx) => ({
+          cells: payload.headers.map((_, i) => ({
+            text: row[i] ?? '—',
+            fill: idx % 2 === 1 ? PALETTE.zebraFill : PALETTE.white,
+            size: BZAR_12PT,
+          })),
+        })),
       })
     );
   }
 
   if (payload.notes) {
     children.push(
-      new Paragraph({
-        bidirectional: true,
-        alignment: AlignmentType.RIGHT,
-        spacing: { before: 160, after: 100 },
-        children: [rtlTextRun(`توضیحات: ${payload.notes}`)],
-      })
+      makeRtlParagraph([rtlTextRun(`توضیحات: ${payload.notes}`)], { before: 160, after: 100 })
     );
   }
 
-  // Historical Signatures Table
+  // Historical Signatures Table (Universal Visual-RTL)
   if (payload.letterhead.showSignaturesFooter && payload.signatures && payload.signatures.length > 0) {
     children.push(
-      new Paragraph({
-        bidirectional: true,
-        alignment: AlignmentType.RIGHT,
-        spacing: { before: 220, after: 100 },
-        children: [
+      makeRtlParagraph(
+        [
           rtlTextRun('امضاکنندگان و نظرات (ثبت تاریخی)', {
             bold: true,
-            color: PALETTE.navyDeep,
+            color: PALETTE.inkNavy,
           }),
         ],
-      })
+        { before: 220, after: 100 },
+        true
+      )
     );
 
-    const sigRows = [
-      new TableRow({
-        tableHeader: true,
-        children: ['نام و نام خانوادگی', 'سمت', 'تاریخ', 'وضعیت امضا', 'نظر'].map((lbl) =>
-          makeRtlTableCell(lbl, { bold: true, color: PALETTE.white, fill: PALETTE.navyDeep })
-        ),
-      }),
-      ...payload.signatures.map(
-        (sig, idx) =>
-          new TableRow({
-            children: [
-              sig.snapshotFullName,
-              sig.snapshotRoleTitle,
-              sig.signedDate ? formatJalaliDate(sig.signedDate) : '—',
-              sig.isSignedConfirmed ? 'تأیید و امضاشده' : 'صرفاً درج نام (فاقد امضای معتبر)',
-              sig.comment || '—',
-            ].map((val) =>
-              makeRtlTableCell(val, {
-                fill: idx % 2 === 1 ? PALETTE.zebraBg : PALETTE.white,
-              })
-            ),
-          })
-      ),
-    ];
+    const sigHeaders = ['نام و نام خانوادگی', 'سمت', 'تاریخ', 'وضعیت امضا', 'نظر'];
+    const sigRowsData = payload.signatures.map((sig) => [
+      sig.snapshotFullName,
+      sig.snapshotRoleTitle,
+      sig.signedDate ? formatJalaliDate(sig.signedDate) : '—',
+      sig.isSignedConfirmed ? 'تأیید و امضاشده' : 'صرفاً درج نام (فاقد امضای معتبر)',
+      sig.comment || '—',
+    ]);
+    const sigColWidths = computeSmartColumnWidths(sigHeaders, sigRowsData);
 
     children.push(
-      new Table({
-        visuallyRightToLeft: true,
-        alignment: AlignmentType.RIGHT,
-        width: { size: 100, type: WidthType.PERCENTAGE },
-        borders: COHESIVE_TABLE_BORDERS,
-        rows: sigRows,
+      buildUniversalRtlWordTable({
+        logicalHeaders: sigHeaders,
+        logicalColWidths: sigColWidths,
+        headerFontSize: BZAR_12PT,
+        logicalRows: sigRowsData.map((row, idx) => ({
+          cells: row.map((val) => ({
+            text: val,
+            fill: idx % 2 === 1 ? PALETTE.zebraFill : PALETTE.white,
+            size: BZAR_12PT,
+          })),
+        })),
       })
     );
   }
@@ -664,17 +840,18 @@ export async function exportToWordDocx(payload: ExportTablePayload, fileName: st
         document: {
           run: {
             font: {
-              name: ZAR_FONT,
-              cs: ZAR_FONT,
-              ascii: ZAR_FONT,
-              hAnsi: ZAR_FONT,
+              name: BZAR_FONT,
+              cs: BZAR_FONT,
+              ascii: BZAR_FONT,
+              hAnsi: BZAR_FONT,
+              eastAsia: BZAR_FONT,
             },
-            size: ZAR_14PT,
-            color: PALETTE.textPrimary,
+            size: BZAR_14PT,
+            color: PALETTE.textBody,
             rightToLeft: true,
-          },
-          paragraph: {
-            alignment: AlignmentType.RIGHT,
+            language: {
+              bidirectional: 'fa-IR',
+            },
           },
         },
       },
@@ -688,7 +865,12 @@ export async function exportToWordDocx(payload: ExportTablePayload, fileName: st
               height: A4_HEIGHT_TWIP,
               orientation: PageOrientation.PORTRAIT,
             },
-            margin: { top: 850, right: 850, bottom: 850, left: 850 },
+            margin: {
+              top: A4_MARGIN_TWIP,
+              right: A4_MARGIN_TWIP,
+              bottom: A4_MARGIN_TWIP,
+              left: A4_MARGIN_TWIP,
+            },
           },
         },
         children,
@@ -696,8 +878,9 @@ export async function exportToWordDocx(payload: ExportTablePayload, fileName: st
     ],
   });
 
-  const blob = await Packer.toBlob(doc);
-  triggerBlobDownload(blob, fileName.endsWith('.docx') ? fileName : `${fileName}.docx`);
+  const rawBlob = await Packer.toBlob(doc);
+  const strictRtlBlob = await enforceDocxStrictRtlXml(rawBlob);
+  triggerBlobDownload(strictRtlBlob, fileName.endsWith('.docx') ? fileName : `${fileName}.docx`);
 }
 
 // Column index to Excel letter (0 -> A, 25 -> Z, 26 -> AA)
@@ -720,20 +903,15 @@ interface ExcelRowSpec {
   mergeFullWidth?: boolean;
 }
 
-// Generates a spec-compliant A4 RTL Excel (.xlsx) workbook with Zar 14pt font,
-// cohesive monochromatic Royal Navy palette, full-width merged headers, bordered RTL tables & optional Donut chart PNG.
+// Generates a 100% spec-compliant A4 RTL Excel (.xlsx) workbook with:
+// - B Zar font everywhere (with charset="178" for Persian)
+// - Complete OOXML styles.xml (<cellStyleXfs> + <cellStyles> + xfId="0")
+// - <bookViews> + <sheetView rightToLeft="1" tabSelected="1"/> so Column A starts on the RIGHT
+// - readingOrder="2" & horizontal="right" on EVERY cell style
+// - Soft warm gold/cream & muted slate-navy palette readable in BOTH color and B&W printing
+// - Explicit A4 Portrait print setup (paperSize="9", fitToWidth="1")
 export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: string): Promise<void> {
   const zip = new JSZip();
-
-  // Style indices defined in xl/styles.xml below:
-  // 0: Normal blank/plain RTL Zar 14pt
-  // 1: Deep Navy Table Header (Bold White Zar 14pt, #1D3250 fill)
-  // 2: Letterhead / Report Title Banner (Bold Deep Navy Zar 15pt, #E4ECF6 fill)
-  // 3: Data Cell — White (#FFFFFF fill, #C3D2E4 border)
-  // 4: Data Cell — Zebra Mist (#F7FAFD fill, #C3D2E4 border)
-  // 5: Summary Key / Section Banner (Bold Deep Navy Zar 14pt, #EEF3FA fill)
-  // 6: Narrative Paragraph Box (#F7FAFD fill, #C3D2E4 border)
-  // 7: Metadata / Subtitle Row (Muted Navy Zar 13pt, #FFFFFF fill)
 
   const allRows: ExcelRowSpec[] = [];
 
@@ -779,7 +957,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
   });
   allRows.push({ cells: [''], styleIdx: 0, height: 12 });
 
-  // Narrative Paragraphs (گزارش متنی — full-width merged RTL rows)
+  // Narrative Paragraphs
   if (payload.narrativeParagraphs && payload.narrativeParagraphs.length > 0) {
     allRows.push({
       cells: ['گزارش متنی و تحلیلی'],
@@ -799,7 +977,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
     allRows.push({ cells: [''], styleIdx: 0, height: 12 });
   }
 
-  // Donut Breakdown Table (گزارش دوناتی)
+  // Donut Breakdown Table
   const renderedChart = renderDonutChartPng(payload.donutChartData);
   if (payload.donutChartData && payload.donutChartData.segments.length > 0) {
     allRows.push({
@@ -889,7 +1067,6 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
 
   const maxCols = Math.max(3, ...allRows.map((r) => r.cells.length));
 
-  // Compute balanced column widths ignoring merged full-width banners so A4 portrait fits comfortably
   const colWidths = Array.from({ length: maxCols }, (_, ci) => {
     const maxLen = Math.max(
       14,
@@ -939,6 +1116,8 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
       : '';
 
   const hasChartImage = Boolean(renderedChart);
+  const lastColLetter = colLetter(maxCols - 1);
+  const totalRowsCount = Math.max(1, allRows.length);
 
   zip.file(
     '[Content_Types].xml',
@@ -966,6 +1145,9 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
     'xl/workbook.xml',
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <bookViews>
+    <workbookView xWindow="0" yWindow="0" windowWidth="24000" windowHeight="15000" activeTab="0"/>
+  </bookViews>
   <sheets>
     <sheet name="گزارش دفتر فنی" sheetId="1" r:id="rId1"/>
   </sheets>
@@ -981,26 +1163,24 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
 </Relationships>`
   );
 
-  // Explicit Zar 14pt fonts, 100% RTL (horizontal="right" + readingOrder="2"),
-  // Cohesive Monochromatic Royal Navy Palette (#1D3250, #E4ECF6, #EEF3FA, #F7FAFD, #C3D2E4)
   zip.file(
     'xl/styles.xml',
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="5">
-    <font><sz val="14"/><color rgb="FF${PALETTE.textPrimary}"/><name val="${ZAR_FONT}"/></font>
-    <font><b/><sz val="14"/><color rgb="FF${PALETTE.white}"/><name val="${ZAR_FONT}"/></font>
-    <font><b/><sz val="15"/><color rgb="FF${PALETTE.navyDeep}"/><name val="${ZAR_FONT}"/></font>
-    <font><b/><sz val="14"/><color rgb="FF${PALETTE.navyDeep}"/><name val="${ZAR_FONT}"/></font>
-    <font><sz val="13"/><color rgb="FF${PALETTE.textMuted}"/><name val="${ZAR_FONT}"/></font>
+  <fonts count="4">
+    <font><sz val="14"/><color rgb="FF${PALETTE.textBody}"/><name val="${BZAR_FONT}"/><family val="2"/><charset val="178"/></font>
+    <font><b/><sz val="14"/><color rgb="FF${PALETTE.inkNavy}"/><name val="${BZAR_FONT}"/><family val="2"/><charset val="178"/></font>
+    <font><b/><sz val="15"/><color rgb="FF${PALETTE.inkNavy}"/><name val="${BZAR_FONT}"/><family val="2"/><charset val="178"/></font>
+    <font><sz val="13"/><color rgb="FF${PALETTE.inkMuted}"/><name val="${BZAR_FONT}"/><family val="2"/><charset val="178"/></font>
   </fonts>
-  <fills count="7">
+  <fills count="8">
     <fill><patternFill patternType="none"/></fill>
     <fill><patternFill patternType="gray125"/></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF${PALETTE.navyDeep}"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF${PALETTE.bannerBg}"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF${PALETTE.keyBg}"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF${PALETTE.zebraBg}"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF${PALETTE.headerFill}"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF${PALETTE.bannerFill}"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF${PALETTE.keyFill}"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF${PALETTE.zebraFill}"/></patternFill></fill>
+    <fill><patternFill patternType="solid"><fgColor rgb="FF${PALETTE.narrativeFill}"/></patternFill></fill>
     <fill><patternFill patternType="solid"><fgColor rgb="FF${PALETTE.white}"/></patternFill></fill>
   </fills>
   <borders count="3">
@@ -1013,39 +1193,45 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
       <diagonal/>
     </border>
     <border>
-      <left style="thin"><color rgb="FF${PALETTE.navyDeep}"/></left>
-      <right style="medium"><color rgb="FF${PALETTE.navyDeep}"/></right>
-      <top style="medium"><color rgb="FF${PALETTE.navyDeep}"/></top>
-      <bottom style="medium"><color rgb="FF${PALETTE.navyDeep}"/></bottom>
+      <left style="thin"><color rgb="FF${PALETTE.borderGold}"/></left>
+      <right style="medium"><color rgb="FF${PALETTE.borderStrong}"/></right>
+      <top style="medium"><color rgb="FF${PALETTE.borderGold}"/></top>
+      <bottom style="medium"><color rgb="FF${PALETTE.borderStrong}"/></bottom>
       <diagonal/>
     </border>
   </borders>
+  <cellStyleXfs count="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>
+  </cellStyleXfs>
   <cellXfs count="8">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" applyFont="1" applyAlignment="1">
+    <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1">
       <alignment horizontal="right" vertical="center" readingOrder="2" wrapText="1"/>
     </xf>
-    <xf numFmtId="0" fontId="1" fillId="2" borderId="2" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+    <xf numFmtId="0" fontId="1" fillId="2" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="right" vertical="center" readingOrder="2" wrapText="1"/>
     </xf>
-    <xf numFmtId="0" fontId="2" fillId="3" borderId="2" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+    <xf numFmtId="0" fontId="2" fillId="3" borderId="2" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="right" vertical="center" readingOrder="2" wrapText="1"/>
     </xf>
-    <xf numFmtId="0" fontId="0" fillId="6" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+    <xf numFmtId="0" fontId="0" fillId="7" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="right" vertical="center" readingOrder="2" wrapText="1"/>
     </xf>
-    <xf numFmtId="0" fontId="0" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+    <xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="right" vertical="center" readingOrder="2" wrapText="1"/>
     </xf>
-    <xf numFmtId="0" fontId="3" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+    <xf numFmtId="0" fontId="1" fillId="4" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="right" vertical="center" readingOrder="2" wrapText="1"/>
     </xf>
-    <xf numFmtId="0" fontId="0" fillId="5" borderId="1" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
+    <xf numFmtId="0" fontId="0" fillId="6" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1">
       <alignment horizontal="right" vertical="center" readingOrder="2" wrapText="1"/>
     </xf>
-    <xf numFmtId="0" fontId="4" fillId="6" borderId="0" applyFont="1" applyFill="1" applyAlignment="1">
+    <xf numFmtId="0" fontId="3" fillId="3" borderId="0" xfId="0" applyFont="1" applyFill="1" applyAlignment="1">
       <alignment horizontal="right" vertical="center" readingOrder="2" wrapText="1"/>
     </xf>
   </cellXfs>
+  <cellStyles count="1">
+    <cellStyle name="Normal" xfId="0" builtinId="0"/>
+  </cellStyles>
 </styleSheet>`
   );
 
@@ -1101,13 +1287,12 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
     zip.file(
       'xl/worksheets/_rels/sheet1.xml.rels',
       `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationships xmlns="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
 </Relationships>`
     );
   }
 
-  // Strict OOXML worksheet schema order: sheetPr -> sheetViews -> cols -> sheetData -> mergeCells -> pageMargins -> pageSetup (paperSize="9" = A4) -> drawing
   zip.file(
     'xl/worksheets/sheet1.xml',
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -1115,9 +1300,11 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
   <sheetPr>
     <pageSetUpPr fitToPage="1"/>
   </sheetPr>
+  <dimension ref="A1:${lastColLetter}${totalRowsCount}"/>
   <sheetViews>
-    <sheetView workbookViewId="0" rightToLeft="1" showGridLines="1"/>
+    <sheetView tabSelected="1" rightToLeft="1" workbookViewId="0" showGridLines="1"/>
   </sheetViews>
+  <sheetFormatPr defaultRowHeight="24"/>
   <cols>${colsXml}</cols>
   <sheetData>${sheetDataXml}</sheetData>
   ${mergeCellsXml}
@@ -1134,7 +1321,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
   triggerBlobDownload(blob, fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`);
 }
 
-// Build clean RTL A4 printable HTML document (Formal text letterhead without emblem, Zar 14pt, cohesive Royal Navy palette)
+// Build clean RTL A4 printable HTML document (B Zar 14pt, soft warm sand/gold + slate palette, color & B&W print-friendly, NO emblem)
 export function buildPrintableReportHtml(payload: ExportTablePayload): string {
   const esc = sanitizeCsvOrXml;
   const narrativeHtml =
@@ -1235,10 +1422,10 @@ export function buildPrintableReportHtml(payload: ExportTablePayload): string {
   <style>
     @page { size: A4 portrait; margin: 15mm; }
     body {
-      font-family: 'Zar', 'B Zar', Tahoma, Arial, sans-serif;
+      font-family: 'B Zar', 'BZar', 'Zar', Tahoma, Arial, sans-serif;
       font-size: 14pt;
       line-height: 1.75;
-      color: #${PALETTE.textPrimary};
+      color: #${PALETTE.textBody};
       direction: rtl;
       text-align: right;
       margin: 0;
@@ -1247,33 +1434,34 @@ export function buildPrintableReportHtml(payload: ExportTablePayload): string {
     }
     .letterhead {
       text-align: right;
-      background: #${PALETTE.bannerBg};
+      background: #${PALETTE.bannerFill};
       border: 1px solid #${PALETTE.borderInner};
-      border-top: 3px solid #${PALETTE.navyDeep};
-      border-right: 4px solid #${PALETTE.navyDeep};
+      border-top: 2.5px solid #${PALETTE.borderGold};
+      border-bottom: 2px solid #${PALETTE.borderGold};
+      border-right: 4px solid #${PALETTE.borderStrong};
       padding: 12px 16px;
       margin-bottom: 14px;
     }
-    .letterhead h1 { margin: 0; font-size: 16pt; color: #${PALETTE.navyDeep}; }
-    .letterhead h2 { margin: 2px 0; font-size: 14pt; font-weight: bold; color: #${PALETTE.navyMid}; }
-    .letterhead p { margin: 2px 0; font-size: 12pt; color: #${PALETTE.textMuted}; }
+    .letterhead h1 { margin: 0; font-size: 16pt; color: #${PALETTE.inkNavy}; }
+    .letterhead h2 { margin: 2px 0; font-size: 14pt; font-weight: bold; color: #${PALETTE.inkMuted}; }
+    .letterhead p { margin: 2px 0; font-size: 12pt; color: #${PALETTE.inkMuted}; }
     .doc-meta {
       margin-top: 6px;
       font-size: 12pt;
-      color: #${PALETTE.textMuted};
+      color: #${PALETTE.inkMuted};
     }
-    .doc-title { font-size: 15pt; font-weight: bold; color: #${PALETTE.navyDeep}; margin: 10px 0 12px; text-align: right; }
+    .doc-title { font-size: 15pt; font-weight: bold; color: #${PALETTE.inkNavy}; margin: 10px 0 12px; text-align: right; }
     .narrative-box {
       margin-bottom: 14px;
       padding: 10px 14px;
       border: 1px solid #${PALETTE.borderInner};
-      border-right: 4px solid #${PALETTE.navyMid};
-      background: #${PALETTE.zebraBg};
+      border-right: 4px solid #${PALETTE.borderGold};
+      background: #${PALETTE.narrativeFill};
       text-align: right;
     }
-    .narrative-box h3 { margin: 0 0 6px; font-size: 14pt; color: #${PALETTE.navyDeep}; }
+    .narrative-box h3 { margin: 0 0 6px; font-size: 14pt; color: #${PALETTE.inkNavy}; }
     .narrative-box p { margin: 4px 0; font-size: 13.5pt; }
-    .chart-block { margin-bottom: 14px; text-align: right; }
+    .chart-block { margin-bottom: 14px; text-align: center; }
     .chart-img { max-width: 100%; height: auto; margin-bottom: 10px; border: 1px solid #${PALETTE.borderInner}; }
     table {
       width: 100%;
@@ -1288,13 +1476,13 @@ export function buildPrintableReportHtml(payload: ExportTablePayload): string {
       text-align: right;
       vertical-align: middle;
     }
-    th { background: #${PALETTE.navyDeep}; font-weight: bold; color: #FFFFFF; border-color: #${PALETTE.navyDeep}; }
-    tbody tr:nth-child(even) td { background: #${PALETTE.zebraBg}; }
-    .meta-table th { width: 34%; background: #${PALETTE.keyBg}; color: #${PALETTE.navyDeep}; border-color: #${PALETTE.borderInner}; }
-    .notes { margin-top: 10px; padding: 8px 12px; border: 1px solid #${PALETTE.borderInner}; background: #${PALETTE.zebraBg}; font-size: 13pt; text-align: right; }
-    .sig-block h3 { font-size: 14pt; margin: 16px 0 6px; color: #${PALETTE.navyDeep}; text-align: right; }
+    th { background: #${PALETTE.headerFill}; font-weight: bold; color: #${PALETTE.inkNavy}; border-color: #${PALETTE.borderGold}; }
+    tbody tr:nth-child(even) td { background: #${PALETTE.zebraFill}; }
+    .meta-table th { width: 34%; background: #${PALETTE.keyFill}; color: #${PALETTE.inkNavy}; border-color: #${PALETTE.borderInner}; }
+    .notes { margin-top: 10px; padding: 8px 12px; border: 1px solid #${PALETTE.borderInner}; background: #${PALETTE.narrativeFill}; font-size: 13pt; text-align: right; }
+    .sig-block h3 { font-size: 14pt; margin: 16px 0 6px; color: #${PALETTE.inkNavy}; text-align: right; }
     @media print {
-      body { padding: 0; }
+      body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
   </style>
 </head>

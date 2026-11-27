@@ -2,13 +2,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Calculator,
   Calendar,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Download,
   Edit2,
-  FileSpreadsheet,
-  FileText,
   FolderOpen,
   Image as ImageIcon,
   MapPin,
@@ -16,7 +13,6 @@ import {
   Plus,
   Search,
   Trash2,
-  X,
 } from 'lucide-react';
 import {
   BudgetProposal,
@@ -40,7 +36,7 @@ import { HelpSectionId } from '../help/helpContent';
 import { SectionHelpLink } from '../help/SectionHelpLink';
 import { BudgetProposalEditor } from './BudgetProposalEditor';
 import { BudgetStatusDonut, buildBudgetReportPayload } from './BudgetStatusDonut';
-import { exportToExcelXlsx, exportToWordDocx } from '../../utils/exportEngine';
+import { SectionReportExportBar } from '../layout/SectionReportExportBar';
 
 export type BudgetSubTab = 'credits' | 'payments' | 'proposals';
 
@@ -71,7 +67,6 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
   };
   const [selectedProjectId, setSelectedProjectId] = useState<string>('همه');
   const [donutScopeProjectId, setDonutScopeProjectId] = useState<string>('همه');
-  const [exportingFormat, setExportingFormat] = useState<'word' | 'excel' | null>(null);
   const [editingBudget, setEditingBudget] = useState<{ project: Project; budget: ProjectBudget } | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [proposalEditing, setProposalEditing] = useState<BudgetProposal | null | undefined>(undefined);
@@ -91,13 +86,6 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
   const [proposalStatusFilter, setProposalStatusFilter] = useState<string>('همه');
   const [expandedProposalId, setExpandedProposalId] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<ProposalImageItem | null>(null);
-  const [budgetNotice, setBudgetNotice] = useState<{ title: string; detail: string } | null>(null);
-
-  useEffect(() => {
-    if (!budgetNotice) return;
-    const timer = window.setTimeout(() => setBudgetNotice(null), 5000);
-    return () => window.clearTimeout(timer);
-  }, [budgetNotice]);
 
   const projectFinancialRows = useMemo(() => {
     return store.projects.map((project) => {
@@ -155,33 +143,6 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
       { approved: 0, allocated: 0, funded: 0, paid: 0, remaining: 0 }
     );
   }, [projectFinancialRows]);
-
-  const handleExportBudgetReport = async (format: 'word' | 'excel') => {
-    if (exportingFormat) return;
-    setExportingFormat(format);
-    try {
-      const { payload, slug } = buildBudgetReportPayload(
-        projectFinancialRows,
-        donutScopeProjectId,
-        store.settings.letterhead
-      );
-      if (format === 'word') {
-        await exportToWordDocx(payload, slug);
-        setBudgetNotice({
-          title: 'گزارش بودجه در قالب Word آماده شد',
-          detail: 'فایل گزارش راست‌چین A4 با فونت زر و رنگ‌بندی رسمی دریافت شد.',
-        });
-      } else {
-        await exportToExcelXlsx(payload, slug);
-        setBudgetNotice({
-          title: 'گزارش بودجه در قالب Excel آماده شد',
-          detail: 'فایل اکسل راست‌چین A4 با فونت زر و رنگ‌بندی رسمی دریافت شد.',
-        });
-      }
-    } finally {
-      setExportingFormat(null);
-    }
-  };
 
   const openProposalEditor = (prop: BudgetProposal | null) => {
     setProposalEditing(prop);
@@ -873,39 +834,15 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
       )}
 
       {/* Bottom Page Section: Clean Budget Report Exports */}
-      <section
-        aria-label="خروجی گزارش"
-        className="rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] px-4 py-3.5 sm:px-5 shadow-[0_2px_8px_rgba(29,50,80,0.04)]"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h3 className="text-sm font-bold text-[#1D3250]">خروجی گزارش</h3>
-
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              type="button"
-              disabled={exportingFormat !== null}
-              onClick={() => handleExportBudgetReport('word')}
-              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-[#1D3250] bg-[#1D3250] px-4 text-xs font-medium text-[#FFFFFF] transition-colors hover:bg-[#2E4A73] disabled:opacity-60 cursor-pointer whitespace-nowrap sm:flex-initial"
-            >
-              <FileText className="h-4 w-4 shrink-0" />
-              <span>
-                {exportingFormat === 'word' ? 'در حال آماده‌سازی Word...' : 'خروجی Word'}
-              </span>
-            </button>
-            <button
-              type="button"
-              disabled={exportingFormat !== null}
-              onClick={() => handleExportBudgetReport('excel')}
-              className="inline-flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border border-[#1D3250] bg-[#E4ECF6] px-4 text-xs font-semibold text-[#1D3250] transition-colors hover:bg-[#D4E2F3] disabled:opacity-60 cursor-pointer whitespace-nowrap sm:flex-initial"
-            >
-              <FileSpreadsheet className="h-4 w-4 shrink-0 text-[#1D3250]" />
-              <span>
-                {exportingFormat === 'excel' ? 'در حال آماده‌سازی Excel...' : 'خروجی Excel'}
-              </span>
-            </button>
-          </div>
-        </div>
-      </section>
+      <SectionReportExportBar
+        buildExport={() =>
+          buildBudgetReportPayload(
+            projectFinancialRows,
+            donutScopeProjectId,
+            store.settings.letterhead
+          )
+        }
+      />
 
       {/* Edit Project Budget Floating Window */}
       {editingBudget && (
@@ -1080,32 +1017,6 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         }}
       />
 
-      {/* Standard Themed Export Notification Window */}
-      {budgetNotice && (
-        <div
-          role="status"
-          aria-live="polite"
-          className="fixed bottom-6 left-1/2 z-50 w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl border border-[#C6D5C4] bg-[#FFFFFF] p-4 shadow-[0_14px_34px_rgba(29,50,80,0.18)]"
-        >
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E7ECE6] text-[#2D6A4F]">
-              <CheckCircle2 className="h-5 w-5" />
-            </div>
-            <div className="min-w-0 flex-1 space-y-1">
-              <div className="text-xs font-bold text-[#1D3250]">{budgetNotice.title}</div>
-              <p className="text-xs leading-5 text-[#5B6573]">{budgetNotice.detail}</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setBudgetNotice(null)}
-              aria-label="بستن اعلان"
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#E2DDD0] bg-[#FAF8F3] text-[#5B6573] hover:border-[#243B5A] hover:text-[#243B5A] cursor-pointer"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

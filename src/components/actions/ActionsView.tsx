@@ -12,6 +12,7 @@ import {
 } from '../../utils/format';
 import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
+import { SectionReportExportBar } from '../layout/SectionReportExportBar';
 import { HelpSectionId } from '../help/helpContent';
 import { SectionHelpLink } from '../help/SectionHelpLink';
 
@@ -30,6 +31,11 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
 
   const projectMap = useMemo(
     () => new Map(store.projects.map((p) => [p.id, p.title])),
+    [store.projects]
+  );
+
+  const projectCodeMap = useMemo(
+    () => new Map(store.projects.map((p) => [p.id, p.code])),
     [store.projects]
   );
 
@@ -224,6 +230,68 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
           </table>
         )}
       </div>
+
+      {/* Bottom Page Section: Actions Report Export (Word & Excel) */}
+      <SectionReportExportBar
+        buildExport={() => {
+          const urgentCount = filtered.filter(
+            (a) => a.priority === 'فوری' && a.status !== 'تکمیل‌شده'
+          ).length;
+          const overdueCount = filtered.filter(
+            (a) => a.status === 'عقب‌افتاده' || isOverdue(a.dueDate, a.status)
+          ).length;
+          const doneCount = filtered.filter((a) => a.status === 'تکمیل‌شده').length;
+
+          return {
+            slug: `actions-report-${todayIsoDate()}`,
+            payload: {
+              title:
+                filterMode === 'همه'
+                  ? 'گزارش اقدامات و پیگیری‌های دفتر فنی'
+                  : `گزارش اقدامات و پیگیری‌های دفتر فنی (${filterMode})`,
+              documentNumber: `اق-${Math.floor(100 + Math.random() * 899)}`,
+              date: todayIsoDate(),
+              letterhead: {
+                ...store.settings.letterhead,
+                showDateAndNumber: true,
+              },
+              narrativeParagraphs: [
+                `این گزارش فهرست ${toPersianDigits(filtered.length)} اقدام و پیگیری ثبت‌شده در دفتر فنی اداره گلزار شهدا را همراه با کد پروژه مرتبط، اولویت، مهلت انجام، وضعیت و نتیجه پیگیری ارائه می‌دهد.`,
+                `از مجموع موارد این فهرست، ${toPersianDigits(doneCount)} اقدام تکمیل‌شده، ${toPersianDigits(urgentCount)} اقدام فوری و ${toPersianDigits(overdueCount)} اقدام عقب‌افتاده از مهلت مقرر است.`,
+              ],
+              summaryRows: [
+                { label: 'تعداد کل اقدامات', value: `${toPersianDigits(filtered.length)} مورد` },
+                { label: 'تکمیل‌شده', value: `${toPersianDigits(doneCount)} مورد` },
+                { label: 'اقدامات فوری', value: `${toPersianDigits(urgentCount)} مورد` },
+                { label: 'اقدامات عقب‌افتاده', value: `${toPersianDigits(overdueCount)} مورد` },
+              ],
+              headers: [
+                'کد پروژه',
+                'عنوان اقدام',
+                'پروژه مرتبط',
+                'اولویت',
+                'وضعیت',
+                'تاریخ ثبت',
+                'مهلت انجام',
+                'نتیجه پیگیری',
+              ],
+              rows: filtered.map((act) => {
+                const overdue = act.status === 'عقب‌افتاده' || isOverdue(act.dueDate, act.status);
+                return [
+                  act.projectId ? projectCodeMap.get(act.projectId) ?? '—' : 'عمومی',
+                  act.title,
+                  act.projectId ? projectMap.get(act.projectId) ?? '—' : 'عمومی دفتر فنی',
+                  act.priority,
+                  overdue && act.status !== 'تکمیل‌شده' ? 'عقب‌افتاده' : act.status,
+                  formatJalaliDate(act.registeredDate),
+                  formatJalaliDate(act.dueDate),
+                  act.followUpResult || '—',
+                ];
+              }),
+            },
+          };
+        }}
+      />
 
       {editing !== undefined && (
         <ActionEditorWindow

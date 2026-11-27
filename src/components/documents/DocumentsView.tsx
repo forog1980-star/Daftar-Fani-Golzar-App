@@ -20,6 +20,7 @@ import {
 } from '../../utils/format';
 import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
+import { SectionReportExportBar } from '../layout/SectionReportExportBar';
 import { FormBuilderView } from './FormBuilderView';
 import { HelpSectionId } from '../help/helpContent';
 import { SectionHelpLink } from '../help/SectionHelpLink';
@@ -69,6 +70,11 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
 
   const projectMap = useMemo(
     () => new Map(store.projects.map((p) => [p.id, p.title])),
+    [store.projects]
+  );
+
+  const projectCodeMap = useMemo(
+    () => new Map(store.projects.map((p) => [p.id, p.code])),
     [store.projects]
   );
 
@@ -301,6 +307,57 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
               </table>
             )}
           </div>
+          {/* Bottom Page Section: Documents Report Export (Word & Excel) */}
+          <SectionReportExportBar
+            buildExport={() => {
+              const followUpCount = filteredDocs.filter((d) => d.status === 'نیازمند پیگیری').length;
+              const archivedCount = filteredDocs.filter((d) => d.status === 'بایگانی‌شده').length;
+              return {
+                slug: `documents-report-${todayIsoDate()}`,
+                payload: {
+                  title:
+                    categoryFilter === 'همه'
+                      ? 'گزارش اسناد، مکاتبات و صورتجلسات دفتر فنی'
+                      : `گزارش اسناد و مکاتبات (${categoryFilter})`,
+                  documentNumber: `مک-${Math.floor(100 + Math.random() * 899)}`,
+                  date: todayIsoDate(),
+                  letterhead: {
+                    ...store.settings.letterhead,
+                    showDateAndNumber: true,
+                  },
+                  narrativeParagraphs: [
+                    `این گزارش فهرست ${toPersianDigits(filteredDocs.length)} سند و مکاتبه ثبت‌شده در بایگانی دفتر فنی اداره گلزار شهدا را به تفکیک شماره سند، نوع، موضوع، کد پروژه مرتبط و وضعیت ارائه می‌دهد.`,
+                  ],
+                  summaryRows: [
+                    { label: 'تعداد کل اسناد و مکاتبات', value: `${toPersianDigits(filteredDocs.length)} سند` },
+                    { label: 'نیازمند پیگیری', value: `${toPersianDigits(followUpCount)} مورد` },
+                    { label: 'بایگانی‌شده', value: `${toPersianDigits(archivedCount)} مورد` },
+                    { label: 'تعداد پیوست‌های محلی', value: `${toPersianDigits(store.attachments.length)} فایل` },
+                  ],
+                  headers: [
+                    'شماره سند',
+                    'نوع سند',
+                    'موضوع',
+                    'کد پروژه',
+                    'پروژه مرتبط',
+                    'طرف مکاتبه',
+                    'تاریخ',
+                    'وضعیت',
+                  ],
+                  rows: filteredDocs.map((d) => [
+                    d.documentNumber || '—',
+                    d.category,
+                    d.subject,
+                    d.projectId ? projectCodeMap.get(d.projectId) ?? '—' : 'عمومی',
+                    d.projectId ? projectMap.get(d.projectId) ?? '—' : 'عمومی دفتر فنی',
+                    d.senderOrReceiver || '—',
+                    formatJalaliDate(d.date),
+                    d.status,
+                  ]),
+                },
+              };
+            }}
+          />
         </>
       )}
 

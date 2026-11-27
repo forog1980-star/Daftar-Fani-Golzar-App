@@ -13,10 +13,11 @@ import {
 import { Project, ProjectStatus } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
 import { useVoiceSearch } from '../../hooks/useVoiceSearch';
-import { formatJalaliDate, formatRial, toPersianDigits } from '../../utils/format';
+import { formatJalaliDate, formatRial, todayIsoDate, toPersianDigits } from '../../utils/format';
 import { getNeutralProjectImage } from '../../utils/officialAssets';
 import { ProjectFormModal } from './ProjectFormModal';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
+import { SectionReportExportBar } from '../layout/SectionReportExportBar';
 import { HelpSectionId } from '../help/helpContent';
 import { SectionHelpLink } from '../help/SectionHelpLink';
 
@@ -444,6 +445,68 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Bottom Page Section: Projects Report Export (Word & Excel) */}
+      <SectionReportExportBar
+        buildExport={() => {
+          const totalContract = filtered.reduce((s, p) => s + (p.contractAmount || 0), 0);
+          const avgProgress =
+            filtered.length > 0
+              ? Math.round(
+                  filtered.reduce((s, p) => s + (p.physicalProgress || 0), 0) / filtered.length
+                )
+              : 0;
+          const inProg = filtered.filter((p) => p.status === 'در حال اجرا').length;
+          const issue = filtered.filter((p) => p.status === 'دارای مشکل').length;
+          const done = filtered.filter((p) => p.status === 'تکمیل‌شده').length;
+
+          return {
+            slug: `projects-report-${todayIsoDate()}`,
+            payload: {
+              title: hasActiveFilters
+                ? 'گزارش پرونده پروژه‌های دفتر فنی (فیلترشده)'
+                : 'گزارش جامع پرونده پروژه‌های دفتر فنی',
+              documentNumber: `پ-${Math.floor(100 + Math.random() * 899)}`,
+              date: todayIsoDate(),
+              letterhead: {
+                ...store.settings.letterhead,
+                showDateAndNumber: true,
+              },
+              narrativeParagraphs: [
+                `این گزارش شامل مشخصات، کد پرونده، وضعیت اجرایی، پیمانکار، مبلغ قرارداد و پیشرفت فیزیکی ${toPersianDigits(filtered.length)} پرونده پروژه ثبت‌شده در دفتر فنی اداره گلزار شهدا است.`,
+                `از میان پرونده‌های این فهرست، ${toPersianDigits(inProg)} پروژه در حال اجرا، ${toPersianDigits(issue)} پروژه دارای مشکل و ${toPersianDigits(done)} پروژه تکمیل‌شده بوده و میانگین پیشرفت فیزیکی معادل ${toPersianDigits(avgProgress)} درصد است.`,
+              ],
+              summaryRows: [
+                { label: 'تعداد پرونده پروژه‌ها', value: `${toPersianDigits(filtered.length)} پرونده` },
+                { label: 'در حال اجرا / دارای مشکل', value: `${toPersianDigits(inProg)} / ${toPersianDigits(issue)}` },
+                { label: 'تکمیل‌شده', value: `${toPersianDigits(done)} پرونده` },
+                { label: 'میانگین پیشرفت فیزیکی', value: `${toPersianDigits(avgProgress)} درصد` },
+                { label: 'جمع مبلغ قراردادها', value: formatRial(totalContract) },
+              ],
+              headers: [
+                'کد پروژه',
+                'عنوان پروژه',
+                'نوع',
+                'وضعیت',
+                'پیمانکار / مجری',
+                'مبلغ قرارداد',
+                'پیشرفت فیزیکی',
+                'تاریخ ابلاغ',
+              ],
+              rows: filtered.map((p) => [
+                p.code,
+                p.title,
+                p.type,
+                p.status,
+                p.contractor || '—',
+                formatRial(p.contractAmount),
+                `${toPersianDigits(p.physicalProgress)}٪`,
+                formatJalaliDate(p.notificationDate),
+              ]),
+            },
+          };
+        }}
+      />
 
       {editing !== undefined && (
         <ProjectFormModal

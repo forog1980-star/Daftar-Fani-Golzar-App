@@ -10,11 +10,13 @@
     --bg-soft-sage: #E7ECE6;
     --border-hairline: #E2DDD2;
     --border-strong: #CEC8BA;
+    --border-accent: #D5C39E;
     --text-primary: #263448;
     --text-secondary: #5B6573;
     --text-muted: #788290;
     --app-primary: #243B5A;
     --app-primary-light: #354F73;
+    --app-primary-deep: #1D3250;
     --accent-gold: #B99A62;
     --app-radius: 12px;
   }
@@ -44,6 +46,74 @@
   input[type="number"] {
     font-variant-numeric: tabular-nums;
   }
+}
+
+/*
+ * Dynamic App-Wide Palette Binding
+ * Maps core administrative brand/surface tokens to live CSS variables so selecting any
+ * color palette in Settings updates every view instantaneously while keeping semantic
+ * status colors (success/warning/danger) and WCAG AA contrast intact.
+ */
+:root[data-app-theme="active"] .bg-\[\#243B5A\] {
+  background-color: var(--app-primary);
+}
+:root[data-app-theme="active"] .hover\:bg-\[\#243B5A\]:hover {
+  background-color: var(--app-primary);
+}
+:root[data-app-theme="active"] .hover\:bg-\[\#354F73\]:hover {
+  background-color: var(--app-primary-light);
+}
+:root[data-app-theme="active"] .bg-\[\#354F73\] {
+  background-color: var(--app-primary-light);
+}
+:root[data-app-theme="active"] .bg-\[\#243B5A\]\/30 {
+  background-color: color-mix(in srgb, var(--app-primary) 30%, transparent);
+}
+:root[data-app-theme="active"] .text-\[\#243B5A\] {
+  color: var(--app-primary);
+}
+:root[data-app-theme="active"] .hover\:text-\[\#243B5A\]:hover {
+  color: var(--app-primary);
+}
+:root[data-app-theme="active"] .text-\[\#1D3250\] {
+  color: var(--app-primary-deep);
+}
+:root[data-app-theme="active"] .text-\[\#354F73\],
+:root[data-app-theme="active"] .text-\[\#2F4A6F\] {
+  color: var(--app-primary-light);
+}
+:root[data-app-theme="active"] .border-\[\#243B5A\] {
+  border-color: var(--app-primary);
+}
+:root[data-app-theme="active"] .hover\:border-\[\#243B5A\]:hover,
+:root[data-app-theme="active"] .focus\:border-\[\#243B5A\]:focus {
+  border-color: var(--app-primary);
+}
+:root[data-app-theme="active"] .accent-\[\#243B5A\] {
+  accent-color: var(--app-primary);
+}
+:root[data-app-theme="active"] .text-\[\#B99A62\] {
+  color: var(--accent-gold);
+}
+:root[data-app-theme="active"] .border-\[\#D5C39E\]\/75 {
+  border-color: color-mix(in srgb, var(--border-accent) 75%, transparent);
+}
+:root[data-app-theme="active"] .border-\[\#D5C39E\] {
+  border-color: var(--border-accent);
+}
+:root[data-app-theme="active"] .bg-\[\#FAF8F3\] {
+  background-color: var(--bg-canvas);
+}
+:root[data-app-theme="active"] .bg-\[\#FAF8F3\]\/95 {
+  background-color: color-mix(in srgb, var(--bg-canvas) 95%, transparent);
+}
+:root[data-app-theme="active"] .bg-\[\#F2EEE6\],
+:root[data-app-theme="active"] .hover\:bg-\[\#F2EEE6\]:hover {
+  background-color: var(--app-card-surface);
+}
+:root[data-app-theme="active"] .bg-\[\#E5EBF2\],
+:root[data-app-theme="active"] .hover\:bg-\[\#E5EBF2\]:hover {
+  background-color: var(--bg-soft-blue);
 }
 
 @keyframes splashLogoFadeOut {
@@ -97,7 +167,7 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #F2EEE6;
+  background: var(--app-card-surface);
 }
 
 ::-webkit-scrollbar-thumb {

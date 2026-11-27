@@ -7,15 +7,30 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
   const base = process.env.GITHUB_PAGES === 'true' ? '/Daftar-Fani-Golzar-App/' : '/';
+  const appVersion = '1.3.0';
+  const buildTimestamp = new Date().toISOString();
+  const buildId = `${appVersion}-${buildTimestamp.replace(/[-:TZ.]/g, '').slice(0, 14)}`;
 
   return {
     base,
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion),
+      __APP_BUILD_ID__: JSON.stringify(buildId),
+    },
     plugins: [
       react(),
       tailwindcss(),
       VitePWA({
-        registerType: 'autoUpdate',
-        includeAssets: ['icon.svg', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png', 'pwa-maskable-512x512.png'],
+        registerType: 'prompt',
+        includeAssets: [
+          'favicon.ico',
+          'favicon-32x32.png',
+          'apple-touch-icon.png',
+          'app-icon.png',
+          'pwa-192x192.png',
+          'pwa-512x512.png',
+          'pwa-maskable-512x512.png',
+        ],
         manifest: {
           id: base,
           name: 'دفتر فنی اداره گلزار شهدا',
@@ -24,7 +39,7 @@ export default defineConfig(() => {
           lang: 'fa',
           dir: 'rtl',
           theme_color: '#FAF8F3',
-          background_color: '#FAF8F3',
+          background_color: '#FBEFD7',
           display: 'standalone',
           start_url: base,
           scope: base,
@@ -50,7 +65,9 @@ export default defineConfig(() => {
           ],
         },
         workbox: {
+          cleanupOutdatedCaches: true,
           globPatterns: ['**/*.{js,css,html,ico,png,jpg,jpeg,svg}'],
+          globIgnores: ['**/version.json'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         },
         devOptions: {
@@ -58,6 +75,22 @@ export default defineConfig(() => {
           type: 'module',
         },
       }),
+      // Emit fresh version.json in dist/ so installed offline PWAs can check GitHub Pages for newer builds
+      {
+        name: 'emit-version-manifest',
+        apply: 'build',
+        closeBundle(error?: Error): void {
+          if (error) return;
+          const distDir = path.resolve(__dirname, 'dist');
+          if (fs.existsSync(distDir)) {
+            fs.writeFileSync(
+              path.resolve(distDir, 'version.json'),
+              JSON.stringify({ version: appVersion, buildId, builtAt: buildTimestamp }, null, 2),
+              'utf-8'
+            );
+          }
+        },
+      },
       // Copies src/assets into dist/ so root-relative URLs like
       // "/src/assets/images/..." (e.g. generate_image output) still resolve
       // in production builds. Do not remove.

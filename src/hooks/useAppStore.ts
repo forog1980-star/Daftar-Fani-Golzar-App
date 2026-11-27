@@ -28,6 +28,7 @@ import {
 } from '../db/database';
 import { createDefaultSettings } from '../db/seedData';
 import { generateId } from '../utils/format';
+import { applyAppearanceToDocument } from '../utils/themeEngine';
 
 export interface SaveToast {
   id: string;
@@ -135,13 +136,7 @@ export function useAppStore() {
 
   // Apply dynamic appearance tokens from settings to CSS custom properties
   useEffect(() => {
-    const app = state.settings.appearance;
-    if (!app) return;
-    const root = document.documentElement;
-    root.style.setProperty('--app-primary', app.primaryColor || '#243B5A');
-    root.style.setProperty('--app-primary-light', app.headerColor || '#354F73');
-    root.style.setProperty('--app-card-surface', app.cardSurface || '#F2EEE6');
-    root.style.setProperty('--app-radius', `${app.radiusPx ?? 12}px`);
+    applyAppearanceToDocument(state.settings.appearance);
   }, [state.settings.appearance]);
 
   const deviceId = state.settings.deviceId;

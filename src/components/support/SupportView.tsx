@@ -1,12 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Archive,
   Download,
   FileJson,
   HelpCircle,
   History,
-  Info,
-  Palette,
   RotateCcw,
   Save,
   Trash2,
@@ -17,13 +15,15 @@ import { AppStore } from '../../hooks/useAppStore';
 import { DEFAULT_APPEARANCE, MASTER_STAGE_CATALOG } from '../../db/seedData';
 import { createFullZipBackup, restoreFullZipBackup } from '../../utils/backupSync';
 import { formatJalaliDateTime, toPersianDigits } from '../../utils/format';
-import { PWAInstallButton } from '../layout/PWAInstallButton';
+import { applyAppearanceToDocument, resolveAppearance } from '../../utils/themeEngine';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
 import { PeopleManager } from './PeopleManager';
 import { MediaManagerView } from './MediaManagerView';
 import { JsonExportWindow, JsonImportWindow } from './JsonTransferWindows';
 import { HelpCenterView } from '../help/HelpCenterView';
 import { HelpSectionId } from '../help/helpContent';
+import { AppearanceSettingsPanel } from './AppearanceSettingsPanel';
+import { AppUpdatePanel } from './AppUpdatePanel';
 
 export type SupportTab = 'settings' | 'media' | 'transfer' | 'backup' | 'people' | 'guide';
 
@@ -34,25 +34,6 @@ interface SupportViewProps {
   onTabChange?: (tab: SupportTab) => void;
   onHelpSectionChange?: (section: HelpSectionId | null) => void;
 }
-
-// Controlled formal Navy palette presets (Section 9)
-const PRIMARY_PRESETS: Array<{ label: string; primary: string; header: string }> = [
-  { label: 'سرمه‌ای رسمی (پیش‌فرض)', primary: '#243B5A', header: '#354F73' },
-  { label: 'سرمه‌ای تیره اداری', primary: '#1D3049', header: '#2F4868' },
-  { label: 'سرمه‌ای خاکستری ملایم', primary: '#2E435A', header: '#425A74' },
-];
-
-const SURFACE_PRESETS: Array<{ label: string; surface: string }> = [
-  { label: 'کرم گرم (پیش‌فرض)', surface: '#F2EEE6' },
-  { label: 'خاکستری گرم ملایم', surface: '#ECEAE4' },
-  { label: 'آبی بسیار ملایم', surface: '#E5EBF2' },
-];
-
-const RADIUS_PRESETS: Array<{ label: string; value: number }> = [
-  { label: 'گردی ملایم (۸ پیکسل)', value: 8 },
-  { label: 'گردی استاندارد (۱۲ پیکسل)', value: 12 },
-  { label: 'گردی نرم (۱۶ پیکسل)', value: 16 },
-];
 
 export const SupportView: React.FC<SupportViewProps> = ({
   store,
@@ -69,8 +50,8 @@ export const SupportView: React.FC<SupportViewProps> = ({
   const [authEnabled, setAuthEnabled] = useState(store.settings.auth.enabled);
   const [selectedProcessType, setSelectedProcessType] = useState('عمرانی');
   const [processTemplates, setProcessTemplates] = useState(store.settings.processTemplates);
-  const [appearance, setAppearance] = useState<AppearanceConfig>(
-    store.settings.appearance ?? DEFAULT_APPEARANCE
+  const [appearance, setAppearance] = useState<AppearanceConfig>(() =>
+    resolveAppearance(store.settings.appearance)
   );
 
   const [openExportWindow, setOpenExportWindow] = useState(false);
@@ -85,14 +66,31 @@ export const SupportView: React.FC<SupportViewProps> = ({
     setTab(initialTab);
   }, [initialTab]);
 
-  // Live preview of appearance changes immediately on CSS variables
+  const savedAppearanceRef = useRef(store.settings.appearance);
+  savedAppearanceRef.current = store.settings.appearance;
+
+  // Live preview of appearance changes immediately across the entire application
   useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty('--app-primary', appearance.primaryColor);
-    root.style.setProperty('--app-primary-light', appearance.headerColor);
-    root.style.setProperty('--app-card-surface', appearance.cardSurface);
-    root.style.setProperty('--app-radius', `${appearance.radiusPx}px`);
+    applyAppearanceToDocument(appearance);
   }, [appearance]);
+
+  // Restore persisted theme if the user navigates away without saving preview changes
+  useEffect(() => {
+    return () => {
+      applyAppearanceToDocument(savedAppearanceRef.current);
+    };
+  }, []);
+
+  const handleSaveAppearanceNow = async (nextAppearance: AppearanceConfig) => {
+    const resolved = resolveAppearance(nextAppearance);
+    setAppearance(resolved);
+    await store.saveSettings({
+      ...store.settings,
+      appearance: resolved,
+    });
+    setNotice('پالت رنگی و تنظیمات ظاهری با موفقیت روی کل نرم‌افزار ذخیره شد.');
+    setError('');
+  };
 
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,19 +108,20 @@ export const SupportView: React.FC<SupportViewProps> = ({
         subtitle: subtitle.trim(),
       },
       processTemplates,
-      appearance,
+      appearance: resolveAppearance(appearance),
     });
     setNotice('تنظیمات ظاهری و سازمانی با موفقیت در حافظه محلی دستگاه ذخیره شد.');
     setError('');
   };
 
   const handleResetAppearance = async () => {
-    setAppearance({ ...DEFAULT_APPEARANCE });
+    const resetVal = { ...DEFAULT_APPEARANCE };
+    setAppearance(resetVal);
     await store.saveSettings({
       ...store.settings,
-      appearance: { ...DEFAULT_APPEARANCE },
+      appearance: resetVal,
     });
-    setNotice('تنظیمات ظاهری به حالت پیش‌فرض سرمه‌ای و کرم بازگردانده شد.');
+    setNotice('ظاهر نرم‌افزار به پالت پیش‌فرض سرمه‌ای و طلایی بازگردانده شد.');
   };
 
   const toggleStageInTemplate = (type: string, stageKey: string) => {
@@ -211,164 +210,20 @@ export const SupportView: React.FC<SupportViewProps> = ({
         </div>
       )}
 
-      {/* Tab 1: Appearance Settings (Controlled Palette + Live Preview + Reset) & Org Settings */}
+      {/* Tab 1: Software Update (GitHub/PWA), Multi-Palette Appearance & Org Settings */}
       {tab === 'settings' && (
         <form onSubmit={handleSaveSettings} className="space-y-5">
-          {/* Controlled Appearance Customizer (Section 9) */}
-          <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#E8E5DE] pb-3">
-              <div className="flex items-center gap-2">
-                <Palette className="h-4 w-4 text-[#B99A62]" />
-                <h3 className="text-sm font-semibold text-[#243B5A]">
-                  تنظیمات ظاهری (پالت کنترل‌شده رسمی)
-                </h3>
-              </div>
-              <button
-                type="button"
-                onClick={handleResetAppearance}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-3 py-1.5 text-xs text-[#263448] hover:bg-[#E5EBF2] cursor-pointer"
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                <span>بازگشت به حالت پیش‌فرض</span>
-              </button>
-            </div>
+          {/* Software Update & Installable PWA Icon Card */}
+          <AppUpdatePanel />
 
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-              <div className="space-y-4 lg:col-span-7">
-                <div>
-                  <div className="mb-2 text-xs font-medium text-[#5B6573]">
-                    رنگ اصلی در طیف سرمه‌ای اداری
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {PRIMARY_PRESETS.map((p) => {
-                      const active = appearance.primaryColor === p.primary;
-                      return (
-                        <button
-                          key={p.primary}
-                          type="button"
-                          onClick={() =>
-                            setAppearance((prev) => ({
-                              ...prev,
-                              primaryColor: p.primary,
-                              headerColor: p.header,
-                            }))
-                          }
-                          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs cursor-pointer ${
-                            active
-                              ? 'border-[#243B5A] bg-[#E5EBF2] font-medium text-[#243B5A]'
-                              : 'border-[#E2DDD2] bg-[#FAF8F3] text-[#263448]'
-                          }`}
-                        >
-                          <span
-                            className="h-4 w-4 rounded-full border border-white/60"
-                            style={{ backgroundColor: p.primary }}
-                          />
-                          <span>{p.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 text-xs font-medium text-[#5B6573]">
-                    رنگ مکمل سطوح و کارت‌های فرعی
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {SURFACE_PRESETS.map((s) => {
-                      const active = appearance.cardSurface === s.surface;
-                      return (
-                        <button
-                          key={s.surface}
-                          type="button"
-                          onClick={() =>
-                            setAppearance((prev) => ({ ...prev, cardSurface: s.surface }))
-                          }
-                          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs cursor-pointer ${
-                            active
-                              ? 'border-[#243B5A] bg-[#E5EBF2] font-medium text-[#243B5A]'
-                              : 'border-[#E2DDD2] bg-[#FAF8F3] text-[#263448]'
-                          }`}
-                        >
-                          <span
-                            className="h-4 w-4 rounded-full border border-[#CEC7B6]"
-                            style={{ backgroundColor: s.surface }}
-                          />
-                          <span>{s.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div>
-                  <div className="mb-2 text-xs font-medium text-[#5B6573]">
-                    میزان گردی گوشه‌های کارت‌ها و پنجره‌ها
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {RADIUS_PRESETS.map((r) => {
-                      const active = appearance.radiusPx === r.value;
-                      return (
-                        <button
-                          key={r.value}
-                          type="button"
-                          onClick={() =>
-                            setAppearance((prev) => ({ ...prev, radiusPx: r.value }))
-                          }
-                          className={`rounded-lg border px-3 py-2 text-xs cursor-pointer ${
-                            active
-                              ? 'border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'
-                              : 'border-[#E2DDD2] bg-[#FAF8F3] text-[#263448]'
-                          }`}
-                        >
-                          {r.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              {/* Live Preview Box */}
-              <div className="lg:col-span-5">
-                <div className="mb-2 text-xs font-medium text-[#5B6573]">پیش‌نمایش زنده ظاهر</div>
-                <div
-                  className="border border-[#D7D2C6] p-4 space-y-3"
-                  style={{
-                    backgroundColor: appearance.cardSurface,
-                    borderRadius: `${appearance.radiusPx}px`,
-                  }}
-                >
-                  <div
-                    className="px-3 py-2 text-xs font-semibold text-[#FAF8F3]"
-                    style={{
-                      backgroundColor: appearance.primaryColor,
-                      borderRadius: `${Math.max(6, appearance.radiusPx - 4)}px`,
-                    }}
-                  >
-                    سربرگ کارت — دفتر فنی اداره گلزار شهدا
-                  </div>
-                  <div
-                    className="border border-[#E2DDD2] bg-[#FFFFFF] p-3 text-xs text-[#263448]"
-                    style={{ borderRadius: `${Math.max(6, appearance.radiusPx - 4)}px` }}
-                  >
-                    نمونه کارت اطلاعاتی با زمینه کرم و نوشتار رسمی اداری.
-                  </div>
-                  <div className="flex justify-end">
-                    <span
-                      className="px-3 py-1 text-[11px] text-[#FAF8F3]"
-                      style={{
-                        backgroundColor: appearance.headerColor,
-                        borderRadius: `${Math.max(6, appearance.radiusPx - 4)}px`,
-                      }}
-                    >
-                      دکمه عملیاتی
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* Redesigned Multi-Palette Appearance Customizer */}
+          <AppearanceSettingsPanel
+            value={appearance}
+            savedValue={store.settings.appearance}
+            onChange={setAppearance}
+            onSaveNow={handleSaveAppearanceNow}
+            onReset={handleResetAppearance}
+          />
 
           {/* Device Identity & Letterhead */}
           <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-4">
@@ -691,33 +546,9 @@ export const SupportView: React.FC<SupportViewProps> = ({
             onSectionChange={onHelpSectionChange}
           />
 
-          {/* Software Version, PWA Install & Sample Data Controls (Preserved intact) */}
+          {/* Software Version, GitHub Update, PWA Install & Sample Data Controls */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-3">
-              <div className="flex items-center gap-2 text-sm font-semibold text-[#243B5A]">
-                <Info className="h-4 w-4 text-[#B99A62]" />
-                <span>مشخصات نسخه و نصب آفلاین (PWA)</span>
-              </div>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 text-xs">
-                <div className="rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-2.5">
-                  <div className="text-[11px] text-[#788290]">نسخه</div>
-                  <div className="mt-0.5 font-semibold tabular-nums text-[#243B5A]">
-                    {toPersianDigits(store.settings.appVersion || '1.2.0')}
-                  </div>
-                </div>
-                <div className="rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-2.5">
-                  <div className="text-[11px] text-[#788290]">ذخیره‌سازی</div>
-                  <div className="mt-0.5 font-semibold text-[#243B5A]">IndexedDB محلی</div>
-                </div>
-                <div className="rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] p-2.5">
-                  <div className="text-[11px] text-[#788290]">انتقال</div>
-                  <div className="mt-0.5 font-semibold text-[#243B5A]">فایل JSON</div>
-                </div>
-              </div>
-              <div className="pt-1">
-                <PWAInstallButton />
-              </div>
-            </div>
+            <AppUpdatePanel compact />
 
             <div className="flex flex-col justify-between rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-3">
               <div className="space-y-1.5">

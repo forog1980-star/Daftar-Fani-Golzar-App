@@ -364,10 +364,14 @@ export interface ProjectImageRecord {
 }
 
 export interface AppearanceConfig {
+  presetId?: string;
   primaryColor: string; // Default #243B5A
   headerColor: string; // Default #354F73
+  accentColor?: string; // Default #B99A62
+  canvasColor?: string; // Default #FAF8F3
   cardSurface: string; // Default #F2EEE6
-  radiusPx: number; // Default 12 (8 / 12 / 16)
+  softTint?: string; // Default #E5EBF2
+  radiusPx: number; // Default 12 (6 / 12 / 16)
 }
 
 export interface LetterheadConfig {

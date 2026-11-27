@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { CheckCircle2, AlertCircle, X } from 'lucide-react';
+import { CheckCircle2, AlertCircle, CloudDownload, X } from 'lucide-react';
 import { AppRoute, Project } from './types';
 import { useAppStore } from './hooks/useAppStore';
+import { useAppUpdater } from './utils/appUpdater';
 import { SplashIntro } from './components/layout/SplashIntro';
 import { AppHeader } from './components/layout/AppHeader';
 import { SidebarNav } from './components/layout/SidebarNav';
@@ -39,12 +40,14 @@ const REPORT_TITLES: Record<ReportType, string> = {
 
 export default function App() {
   const store = useAppStore();
+  const updater = useAppUpdater();
   const [showSplash, setShowSplash] = useState(true);
   const [historyStack, setHistoryStack] = useState<HistoryStack>(createInitialHistoryStack);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sessionState, setSessionState] = useState<'active' | 'exited'>('active');
   const [authUnlocked, setAuthUnlocked] = useState(false);
   const [confirmExitOpen, setConfirmExitOpen] = useState(false);
+  const [dismissUpdateBanner, setDismissUpdateBanner] = useState(false);
 
   const current = historyStack[historyStack.length - 1];
 
@@ -201,6 +204,36 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#FAF8F3] text-[#263448]">
       <OfflineBanner />
+
+      {updater.needRefresh && !dismissUpdateBanner && (
+        <div className="border-b border-[#D5C39E] bg-[#E5EBF2] px-4 py-2 text-xs text-[#243B5A]">
+          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <CloudDownload className="h-4 w-4 shrink-0" />
+              <span className="font-medium">
+                نسخه جدید نرم‌افزار در دسترس است (اطلاعات محلی شما بدون تغییر حفظ می‌شود).
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => updater.applyUpdate(false)}
+                className="rounded-lg border border-[#243B5A] bg-[#243B5A] px-3 py-1 text-[11px] font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap"
+              >
+                اعمال به‌روزرسانی
+              </button>
+              <button
+                type="button"
+                onClick={() => setDismissUpdateBanner(true)}
+                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[#5B6573] hover:text-[#243B5A] cursor-pointer"
+                aria-label="بستن پیام به‌روزرسانی"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AppHeader
         route={current.route}

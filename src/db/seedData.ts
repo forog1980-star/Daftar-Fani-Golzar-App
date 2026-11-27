@@ -98,9 +98,13 @@ export function buildStagesForProjectType(
 }
 
 export const DEFAULT_APPEARANCE = {
+  presetId: 'navy-gold',
   primaryColor: '#243B5A',
   headerColor: '#354F73',
+  accentColor: '#B99A62',
+  canvasColor: '#FAF8F3',
   cardSurface: '#F2EEE6',
+  softTint: '#E5EBF2',
   radiusPx: 12,
 };
 
@@ -109,7 +113,7 @@ export function createDefaultSettings(): AppSettings {
     id: 'app-settings',
     deviceId: getOrCreateDeviceId(),
     deviceName: getDefaultDeviceName(),
-    appVersion: '1.2.0',
+    appVersion: '1.3.0',
     appearance: { ...DEFAULT_APPEARANCE },
     auth: {
       enabled: false, // Strictly disabled by default per Section 16

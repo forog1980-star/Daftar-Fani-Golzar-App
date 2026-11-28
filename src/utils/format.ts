@@ -119,7 +119,9 @@ export function isUpcomingDeadline(dueDate?: string, status?: string, withinDays
 }
 
 export function sanitizeCsvOrXml(text: unknown): string {
+  // Remove illegal XML 1.0 control characters (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F) so Excel/Word OOXML never breaks
   return String(text ?? '')
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

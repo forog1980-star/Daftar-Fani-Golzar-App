@@ -4,6 +4,7 @@ import {
   BarChart3,
   CheckCircle2,
   CheckSquare,
+  ClipboardCheck,
   Download,
   FileJson,
   FileSpreadsheet,
@@ -45,8 +46,16 @@ import { StatusChartPanel } from '../dashboard/StatusChartPanel';
 import { getNeutralProjectImage } from '../../utils/officialAssets';
 import { HelpSectionId } from '../help/helpContent';
 import { SectionHelpLink } from '../help/SectionHelpLink';
+import { calculateStatementFinancials } from '../../utils/statementCalculations';
 
-export type ReportType = 'projects' | 'budget' | 'proposals' | 'actions' | 'documents' | 'single-project';
+export type ReportType =
+  | 'projects'
+  | 'budget'
+  | 'statements'
+  | 'proposals'
+  | 'actions'
+  | 'documents'
+  | 'single-project';
 export type ReportDisplayMode = 'table' | 'narrative' | 'chart';
 
 interface ReportsViewProps {
@@ -80,6 +89,7 @@ const REPORT_CARDS: Array<{
 }> = [
   { key: 'projects', title: 'گزارش جامع پروژه‌ها', icon: FolderKanban },
   { key: 'budget', title: 'گزارش بودجه و اعتبارات', icon: Wallet },
+  { key: 'statements', title: 'گزارش وضعیت صورت‌وضعیت‌ها', icon: ClipboardCheck },
   { key: 'proposals', title: 'گزارش پیشنهاد بودجه سالانه', icon: Lightbulb },
   { key: 'actions', title: 'گزارش اقدامات و پیگیری‌ها', icon: CheckSquare },
   { key: 'documents', title: 'گزارش اسناد و مکاتبات', icon: FileText },
@@ -343,6 +353,55 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       };
     }
 
+    if (reportType === 'statements') {
+      const stmts = store.progressStatements;
+      const totalGross = stmts.reduce((s, st) => s + (st.currentStatementAmount || 0), 0);
+      const totalNet = stmts.reduce(
+        (s, st) => s + calculateStatementFinancials(st).netPayableAmount,
+        0
+      );
+      const defectsCount = stmts.filter((st) => st.status === 'دارای نقص').length;
+      const financeOrPaidCount = stmts.filter(
+        (st) => st.status === 'ارجاع مالی' || st.status === 'پرداخت‌شده' || st.status === 'مختومه'
+      ).length;
+      return {
+        ...base,
+        title: 'گزارش وضعیت صورت‌وضعیت‌های پروژه‌های اداره گلزار شهدا',
+        summaryRows: [
+          { label: 'تعداد کل صورت‌وضعیت‌های ثبت‌شده', value: `${toPersianDigits(stmts.length)} فقره` },
+          { label: 'مجموع مبلغ ناخالص کارکرد (ریال)', value: formatAmount(totalGross) },
+          { label: 'مجموع خالص قابل پرداخت (ریال)', value: formatAmount(totalNet) },
+          {
+            label: 'دارای نقص / ارجاع مالی و پرداخت‌شده',
+            value: `${toPersianDigits(defectsCount)} / ${toPersianDigits(financeOrPaidCount)}`,
+          },
+        ],
+        headers: [
+          'کد پروژه',
+          'نام پروژه',
+          'شماره / نوع',
+          'تاریخ دریافت',
+          'مبلغ فعلی (ریال)',
+          'تجمعی (ریال)',
+          'خالص قابل پرداخت (ریال)',
+          'نتیجه فنی / وضعیت',
+        ],
+        rows: stmts.map((st) => {
+          const calc = calculateStatementFinancials(st);
+          return [
+            st.projectCode || projectMap.get(st.projectId)?.code || '—',
+            st.projectTitle || projectMap.get(st.projectId)?.title || '—',
+            `${toPersianDigits(st.statementNumber)} (${st.statementType})`,
+            formatJalaliDate(st.receiptDate),
+            formatAmount(st.currentStatementAmount),
+            formatAmount(calc.cumulativeAmount),
+            formatAmount(calc.netPayableAmount),
+            `${st.technicalReviewResult} · ${st.status}`,
+          ];
+        }),
+      };
+    }
+
     if (reportType === 'proposals') {
       const totalEstimated = store.proposals.reduce((s, p) => s + (p.estimatedAmount || 0), 0);
       const itemizedCount = store.proposals.filter((p) => (p.estimateItems?.length ?? 0) > 0).length;
@@ -523,6 +582,18 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       });
     }
     if (singleSections.includeDocuments) {
+      store.progressStatements
+        .filter((st) => st.projectId === proj.id)
+        .forEach((st) => {
+          const calc = calculateStatementFinancials(st);
+          rows.push([
+            'رسیدگی صورت‌وضعیت',
+            `شماره ${toPersianDigits(st.statementNumber)} (${st.statementType}) — خالص: ${formatRial(calc.netPayableAmount)}`,
+            `${st.status} (${st.technicalReviewResult})`,
+            formatJalaliDate(st.receiptDate),
+            `تجمعی: ${formatRial(calc.cumulativeAmount)}`,
+          ]);
+        });
       selectedProjectDocuments.forEach((doc) => {
         rows.push([
           doc.category,
@@ -573,6 +644,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     store.proposals,
     store.actions,
     store.documents,
+    store.progressStatements,
     store.attachments,
     projectMap,
     selectedProject,
@@ -605,6 +677,21 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       return [
         `مجموع اعتبار مصوب پروژه‌های ثبت‌شده معادل ${formatRial(approved)} و مجموع اعتبار تأمین‌شده معادل ${formatRial(funded)} است.`,
         `تا تاریخ تهیه این گزارش، مجموع پرداخت‌های ثبت‌شده معادل ${formatRial(paid)} (${toPersianDigits(pct)} درصد اعتبار مصوب) بوده و مانده اعتبار هر پرونده در جدول مالی محاسبه شده است.`,
+      ];
+    }
+    if (reportType === 'statements') {
+      const stmts = store.progressStatements;
+      const totalNet = stmts.reduce(
+        (s, st) => s + calculateStatementFinancials(st).netPayableAmount,
+        0
+      );
+      const approvedTech = stmts.filter(
+        (st) => st.technicalReviewResult === 'تأیید فنی' || st.status === 'تأیید فنی'
+      ).length;
+      const defects = stmts.filter((st) => st.status === 'دارای نقص').length;
+      return [
+        `در مجموع تعداد ${toPersianDigits(stmts.length)} فقره فرم رسیدگی به صورت‌وضعیت با جمع خالص قابل پرداخت ${formatRial(totalNet)} در پرونده پروژه‌ها ثبت شده است.`,
+        `از این تعداد، ${toPersianDigits(approvedTech)} فقره دارای تأیید فنی دفتر فنی و ${toPersianDigits(defects)} فقره در وضعیت دارای نقص و نیازمند اصلاح توسط پیمانکار می‌باشد.`,
       ];
     }
     if (reportType === 'proposals') {
@@ -650,6 +737,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     store.proposals,
     store.actions,
     store.documents,
+    store.progressStatements,
     store.attachments,
     selectedProject,
     selectedProjectPayments,
@@ -696,6 +784,28 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           value: paid,
           display: `${formatAmount(paid)} از ${formatAmount(approved)}`,
           pct: Math.round((paid / maxVal) * 100),
+        };
+      });
+    }
+    if (reportType === 'statements') {
+      const statuses = [
+        'ثبت‌شده',
+        'در کنترل',
+        'دارای نقص',
+        'تأیید فنی',
+        'ارجاع مالی',
+        'متوقف',
+        'پرداخت‌شده',
+        'مختومه',
+      ];
+      const total = Math.max(1, store.progressStatements.length);
+      return statuses.map((st) => {
+        const c = store.progressStatements.filter((item) => item.status === st).length;
+        return {
+          label: st,
+          value: c,
+          display: `${toPersianDigits(c)} فقره`,
+          pct: Math.round((c / total) * 100),
         };
       });
     }
@@ -779,6 +889,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     store.proposals,
     store.actions,
     store.documents,
+    store.progressStatements,
     selectedProject,
     selectedProjectPayments,
   ]);
@@ -833,6 +944,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const cardCounts: Record<ReportType, string> = {
     projects: `${toPersianDigits(store.projects.length)} پروژه`,
     budget: `${toPersianDigits(store.budgets.length)} ردیف`,
+    statements: `${toPersianDigits(store.progressStatements.length)} فقره`,
     proposals: `${toPersianDigits(store.proposals.length)} پیشنهاد`,
     actions: `${toPersianDigits(store.actions.length)} اقدام`,
     documents: `${toPersianDigits(store.documents.length)} سند`,
@@ -841,7 +953,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
   return (
     <div className="animate-page-in mx-auto max-w-[1280px] space-y-5 px-4 py-5 sm:px-6">
-      {/* 1. Six Clean Interactive Report Cards (Click card -> scroll to report | Click gear -> open Settings & Export window) */}
+      {/* 1. Clean Interactive Report Cards (Click card -> scroll to report | Click gear -> open Settings & Export window) */}
       <section aria-label="انتخاب نوع گزارش" className="space-y-2.5">
         <div className="flex items-center justify-between gap-2 px-0.5">
           <span className="text-xs font-semibold text-[#243B5A]">
@@ -850,7 +962,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           {onOpenHelp && <SectionHelpLink sectionId="reports" onOpenHelp={onOpenHelp} />}
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
           {REPORT_CARDS.map((card) => {
             const active = reportType === card.key;
             const Icon = card.icon;

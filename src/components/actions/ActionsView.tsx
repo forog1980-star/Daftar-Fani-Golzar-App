@@ -3,6 +3,7 @@ import {
   Check,
   Download,
   Edit2,
+  Eye,
   Paperclip,
   Plus,
   Search,
@@ -20,6 +21,7 @@ import {
   todayIsoDate,
   toPersianDigits,
 } from '../../utils/format';
+import { saveBinaryFile } from '../../utils/platformBridge';
 import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
 import { SectionReportExportBar } from '../layout/SectionReportExportBar';
@@ -40,6 +42,8 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
   const [editing, setEditing] = useState<ActionItem | null | undefined>(undefined);
   const [deleting, setDeleting] = useState<ActionItem | null>(null);
 
+  const [previewAtt, setPreviewAtt] = useState<{ att: AttachmentRecord; url: string } | null>(null);
+
   const projectMap = useMemo(
     () => new Map(store.projects.map((p) => [p.id, p.title])),
     [store.projects]
@@ -55,17 +59,16 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
     return store.attachments.filter((att) => att.actionId === act.id || idSet.has(att.id));
   };
 
-  const downloadAttachment = (att: AttachmentRecord) => {
+  const canPreviewAttachment = (att: AttachmentRecord) =>
+    att.mimeType.startsWith('image/') || att.mimeType === 'application/pdf';
+
+  const openAttachmentPreview = (att: AttachmentRecord) => {
     const url = URL.createObjectURL(att.data);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = att.fileName;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 250);
+    setPreviewAtt({ att, url });
+  };
+
+  const downloadAttachment = async (att: AttachmentRecord) => {
+    await saveBinaryFile(att.data, att.fileName, 'attachments', att.mimeType);
   };
 
   const filtered = useMemo(() => {
@@ -195,9 +198,13 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
                     </td>
                     <td className="px-4 py-3 text-xs tabular-nums whitespace-nowrap">
                       <div className="text-[#7C8287]">ثبت: {formatJalaliDate(act.registeredDate)}</div>
-                      <div className={overdue ? 'font-medium text-[#B43E3E]' : 'text-[#2B3033]'}>
-                        مهلت: {formatJalaliDate(act.dueDate)}
-                      </div>
+                      {act.dueDate ? (
+                        <div className={overdue ? 'font-medium text-[#B43E3E]' : 'text-[#2B3033]'}>
+                          مهلت: {formatJalaliDate(act.dueDate)}
+                        </div>
+                      ) : (
+                        <div className="text-[#8E959E]">مهلت: تعیین‌نشده</div>
+                      )}
                       {act.completedDate && (
                         <div className="text-[#2D6A4F]">
                           انجام: {formatJalaliDate(act.completedDate)}
@@ -225,16 +232,31 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
                       {linkedFiles.length > 0 && (
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
                           {linkedFiles.map((att) => (
-                            <button
+                            <span
                               key={att.id}
-                              type="button"
-                              onClick={() => downloadAttachment(att)}
-                              className="inline-flex max-w-[200px] items-center gap-1 rounded border border-[#D4CEBF] bg-[#FAF8F3] px-2 py-0.5 text-[11px] text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
-                              title={`دریافت ${att.fileName}`}
+                              className="inline-flex max-w-[220px] items-center gap-1 rounded border border-[#D4CEBF] bg-[#FAF8F3] px-1.5 py-0.5 text-[11px] text-[#243B5A]"
                             >
                               <Paperclip className="h-3 w-3 shrink-0" />
                               <span className="truncate">{att.fileName}</span>
-                            </button>
+                              {canPreviewAttachment(att) && (
+                                <button
+                                  type="button"
+                                  onClick={() => openAttachmentPreview(att)}
+                                  className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-[#E5EBF2] cursor-pointer"
+                                  title={`مشاهده ${att.fileName}`}
+                                >
+                                  <Eye className="h-3 w-3" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => void downloadAttachment(att)}
+                                className="inline-flex h-5 w-5 items-center justify-center rounded hover:bg-[#E5EBF2] cursor-pointer"
+                                title={`دریافت ${att.fileName}`}
+                              >
+                                <Download className="h-3 w-3" />
+                              </button>
+                            </span>
                           ))}
                         </div>
                       )}
@@ -345,12 +367,38 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
           store={store}
           projects={store.projects.map((p) => ({ id: p.id, title: p.title, code: p.code }))}
           deviceId={store.settings.deviceId}
+          onPreviewAttachment={openAttachmentPreview}
           onClose={() => setEditing(undefined)}
           onSave={async (item, isNew) => {
             await store.saveAction(item, isNew);
             setEditing(undefined);
           }}
         />
+      )}
+
+      {previewAtt && (
+        <FloatingWindow
+          title={`پیش‌نمایش پیوست: ${previewAtt.att.fileName}`}
+          onClose={() => {
+            URL.revokeObjectURL(previewAtt.url);
+            setPreviewAtt(null);
+          }}
+          width={760}
+        >
+          {previewAtt.att.mimeType.startsWith('image/') ? (
+            <img
+              src={previewAtt.url}
+              alt={previewAtt.att.fileName}
+              className="max-h-[65vh] w-full object-contain border border-[#E2DDD2]"
+            />
+          ) : (
+            <iframe
+              src={previewAtt.url}
+              title={previewAtt.att.fileName}
+              className="h-[65vh] w-full border border-[#E2DDD2]"
+            />
+          )}
+        </FloatingWindow>
       )}
 
       <ConfirmDialog
@@ -376,26 +424,31 @@ const ActionEditorWindow: React.FC<{
   store: AppStore;
   projects: Array<{ id: string; title: string; code: string }>;
   deviceId: string;
+  onPreviewAttachment: (att: AttachmentRecord) => void;
   onSave: (item: ActionItem, isNew: boolean) => Promise<void>;
   onClose: () => void;
-}> = ({ initial, store, projects, deviceId, onSave, onClose }) => {
+}> = ({ initial, store, projects, deviceId, onPreviewAttachment, onSave, onClose }) => {
   const isNew = !initial;
   const actionId = useMemo(() => initial?.id ?? generateId('act'), [initial]);
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [projectId, setProjectId] = useState(initial?.projectId ?? '');
   const [registeredDate, setRegisteredDate] = useState(initial?.registeredDate ?? todayIsoDate());
-  const [dueDate, setDueDate] = useState(initial?.dueDate ?? todayIsoDate());
+  const [dueDate, setDueDate] = useState(initial?.dueDate ?? '');
   const [priority, setPriority] = useState<ActionPriority>(initial?.priority ?? 'عادی');
   const [status, setStatus] = useState<ActionStatus>(initial?.status ?? 'در انتظار');
   const [completedDate, setCompletedDate] = useState(initial?.completedDate ?? '');
   const [followUpResult, setFollowUpResult] = useState(initial?.followUpResult ?? '');
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [attachmentIds, setAttachmentIds] = useState<string[]>(initial?.attachmentIds ?? []);
+  const [formError, setFormError] = useState('');
 
   const linkedAttachments = store.attachments.filter(
     (a) => a.actionId === actionId || attachmentIds.includes(a.id)
   );
+
+  const canPreview = (att: AttachmentRecord) =>
+    att.mimeType.startsWith('image/') || att.mimeType === 'application/pdf';
 
   const handleFileAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -417,22 +470,25 @@ const ActionEditorWindow: React.FC<{
     setAttachmentIds((prev) => prev.filter((id) => id !== att.id));
   };
 
-  const handleDownloadAttachment = (att: AttachmentRecord) => {
-    const url = URL.createObjectURL(att.data);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = att.fileName;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 250);
+  const handleDownloadAttachment = async (att: AttachmentRecord) => {
+    await saveBinaryFile(att.data, att.fileName, 'attachments', att.mimeType);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim()) {
+      setFormError('وارد کردن «عنوان اقدام» الزامی است.');
+      return;
+    }
+    if (!registeredDate.trim()) {
+      setFormError('انتخاب «تاریخ ثبت» الزامی است.');
+      return;
+    }
+    if (!description.trim()) {
+      setFormError('وارد کردن «شرح اقدام» الزامی است.');
+      return;
+    }
+    setFormError('');
     const now = new Date().toISOString();
     await onSave(
       {
@@ -440,15 +496,15 @@ const ActionEditorWindow: React.FC<{
         title: title.trim(),
         description: description.trim(),
         projectId: projectId || undefined,
-        registeredDate,
-        dueDate,
+        registeredDate: registeredDate.trim(),
+        dueDate: dueDate.trim() || undefined,
         priority,
         status,
         completedDate: status === 'تکمیل‌شده' ? completedDate || todayIsoDate() : completedDate || undefined,
         followUpResult: followUpResult.trim(),
         notes: notes.trim(),
         attachmentIds,
-        isSample: false,
+        isSample: initial?.isSample ?? false,
         createdAt: initial?.createdAt ?? now,
         updatedAt: now,
         updatedByDevice: deviceId,
@@ -464,6 +520,11 @@ const ActionEditorWindow: React.FC<{
       width={680}
     >
       <form onSubmit={handleSubmit} className="space-y-3.5">
+        {formError && (
+          <div className="rounded-lg border border-[#D8B4B4] bg-[#FBF1F1] px-3 py-2 text-xs text-[#9E3B3B]">
+            {formError}
+          </div>
+        )}
         <div>
           <label className="mb-1 block text-xs text-[#5B6268]">عنوان اقدام *</label>
           <input
@@ -471,21 +532,24 @@ const ActionEditorWindow: React.FC<{
             required
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            placeholder="مثال: پیگیری تلفنی وضعیت تأمین مصالح قطعه ۲۴"
             className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-[#5B6268]">شرح اقدام</label>
+          <label className="mb-1 block text-xs text-[#5B6268]">شرح اقدام *</label>
           <textarea
             rows={2}
+            required
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            placeholder="شرح مختصر اقدام، تماس، جلسه یا پیگیری انجام‌شده..."
             className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
           />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-[#5B6268]">پروژه مرتبط</label>
+            <label className="mb-1 block text-xs text-[#5B6268]">پروژه مرتبط (اختیاری)</label>
             <select
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
@@ -514,7 +578,7 @@ const ActionEditorWindow: React.FC<{
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
-            <label className="mb-1 block text-xs text-[#5B6268]">تاریخ ثبت</label>
+            <label className="mb-1 block text-xs text-[#5B6268]">تاریخ ثبت *</label>
             <JalaliDateInput
               value={registeredDate}
               onChange={setRegisteredDate}
@@ -523,11 +587,11 @@ const ActionEditorWindow: React.FC<{
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-[#5B6268]">مهلت انجام</label>
+            <label className="mb-1 block text-xs text-[#5B6268]">مهلت انجام (اختیاری)</label>
             <JalaliDateInput
               value={dueDate}
               onChange={setDueDate}
-              required
+              placeholder="بدون مهلت اجباری"
               ariaLabel="مهلت انجام شمسی"
             />
           </div>
@@ -548,7 +612,7 @@ const ActionEditorWindow: React.FC<{
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-[#5B6268]">تاریخ انجام</label>
+            <label className="mb-1 block text-xs text-[#5B6268]">تاریخ انجام (اختیاری)</label>
             <JalaliDateInput
               value={completedDate}
               onChange={setCompletedDate}
@@ -557,7 +621,7 @@ const ActionEditorWindow: React.FC<{
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-[#5B6268]">نتیجه پیگیری</label>
+            <label className="mb-1 block text-xs text-[#5B6268]">نتیجه پیگیری (اختیاری)</label>
             <input
               type="text"
               value={followUpResult}
@@ -567,7 +631,7 @@ const ActionEditorWindow: React.FC<{
           </div>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-[#5B6268]">توضیحات</label>
+          <label className="mb-1 block text-xs text-[#5B6268]">توضیحات تکمیلی (اختیاری)</label>
           <textarea
             rows={2}
             value={notes}
@@ -576,16 +640,21 @@ const ActionEditorWindow: React.FC<{
           />
         </div>
 
-        {/* Universal Attachment Section — accepts any file type */}
+        {/* Optional Universal Multi-File Attachment Section — never mandatory */}
         <div className="rounded-xl border border-[#E2DDD0] bg-[#FAF8F3] p-3.5 space-y-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2B3033]">
-              <Paperclip className="h-3.5 w-3.5 text-[#243B5A]" />
-              <span>الحاق پیوست</span>
-            </span>
-            <label className="inline-flex items-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#FFFFFF] px-3 py-1.5 text-xs font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-0.5">
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2B3033]">
+                <Paperclip className="h-3.5 w-3.5 text-[#243B5A]" />
+                <span>پیوست‌های اقدام (اختیاری)</span>
+              </span>
+              <div className="text-[11px] text-[#788290]">
+                افزودن فایل اجباری نیست؛ برای پیگیری‌های تلفنی، جلسات و اقدامات شفاهی می‌توانید بدون پیوست ثبت کنید.
+              </div>
+            </div>
+            <label className="inline-flex items-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#FFFFFF] px-3 py-1.5 text-xs font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer whitespace-nowrap">
               <Upload className="h-3.5 w-3.5" />
-              <span>الحاق پیوست</span>
+              <span>الحاق فایل (اختیاری)</span>
               <input
                 type="file"
                 multiple
@@ -609,9 +678,19 @@ const ActionEditorWindow: React.FC<{
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
+                    {canPreview(att) && (
+                      <button
+                        type="button"
+                        onClick={() => onPreviewAttachment(att)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded border border-[#D4CEBF] text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+                        title="مشاهده پیش‌نمایش"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => handleDownloadAttachment(att)}
+                      onClick={() => void handleDownloadAttachment(att)}
                       className="inline-flex h-7 w-7 items-center justify-center rounded border border-[#D4CEBF] text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
                       title="دریافت فایل"
                     >
@@ -619,7 +698,7 @@ const ActionEditorWindow: React.FC<{
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleRemoveAttachment(att)}
+                      onClick={() => void handleRemoveAttachment(att)}
                       className="inline-flex h-7 w-7 items-center justify-center rounded border border-[#D4CEBF] text-[#5B6268] hover:border-[#B43E3E] hover:text-[#B43E3E] cursor-pointer"
                       title="حذف پیوست"
                     >

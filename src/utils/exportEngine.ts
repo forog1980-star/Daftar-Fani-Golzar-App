@@ -283,8 +283,19 @@ function renderDonutChartPng(donut?: ExportDonutChartData): RenderedChartPng | n
   };
 }
 
-function triggerBlobDownload(blob: Blob, filename: string) {
-  void saveBinaryFile(blob, filename, 'exports', blob.type || 'application/octet-stream');
+export function sanitizeExportFileName(fileName: string, extension: string): string {
+  const ext = extension.startsWith('.') ? extension.toLowerCase() : `.${extension.toLowerCase()}`;
+  const cleaned = String(fileName || 'report')
+    .trim()
+    .replace(/[/\\:*?"<>|\r\n\t]+/g, '-')
+    .replace(/\s+/g, ' ')
+    .replace(/\.+$/g, '');
+  const base = cleaned || 'report';
+  return base.toLowerCase().endsWith(ext) ? base : `${base}${ext}`;
+}
+
+async function triggerBlobDownload(blob: Blob, filename: string) {
+  return saveBinaryFile(blob, filename, 'exports', blob.type || 'application/octet-stream');
 }
 
 const CELL_MARGINS = {
@@ -970,7 +981,7 @@ interface ExcelRowSpec {
 // - Full-width aligned RTL tables (summary, donut, main data, signatures)
 // - Soft warm gold/cream & muted slate-navy palette readable in BOTH color and B&W printing
 // - Explicit A4 Portrait print setup (paperSize="9", fitToWidth="1")
-export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: string): Promise<void> {
+export async function buildExcelXlsxBlob(payload: ExportTablePayload): Promise<Blob> {
   const zip = new JSZip();
 
   const allRows: ExcelRowSpec[] = [];
@@ -1211,7 +1222,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
         const cellsXml = Array.from({ length: maxCols }, (_, cIdx) => {
           const ref = `${colLetter(cIdx)}${rNum}`;
           const val = cIdx === 0 ? rowObj.cells[0] ?? '' : '';
-          return `<c r="${ref}" t="inlineStr" s="${rowObj.styleIdx}"><is><t>${sanitizeCsvOrXml(val)}</t></is></c>`;
+          return `<c r="${ref}" t="inlineStr" s="${rowObj.styleIdx}"><is><t xml:space="preserve">${sanitizeCsvOrXml(val)}</t></is></c>`;
         }).join('');
         return `<row r="${rNum}" ht="${rowHeight}" customHeight="1">${cellsXml}</row>`;
       }
@@ -1229,7 +1240,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
             const ref = `${colLetter(c)}${rNum}`;
             const val = c === startCol ? cellValue : '';
             cellsParts.push(
-              `<c r="${ref}" t="inlineStr" s="${st}"><is><t>${sanitizeCsvOrXml(val)}</t></is></c>`
+              `<c r="${ref}" t="inlineStr" s="${st}"><is><t xml:space="preserve">${sanitizeCsvOrXml(val)}</t></is></c>`
             );
           }
         });
@@ -1240,7 +1251,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
         .map((val, cIdx) => {
           const ref = `${colLetter(cIdx)}${rNum}`;
           const st = rowObj.cellStyles?.[cIdx] ?? rowObj.styleIdx;
-          return `<c r="${ref}" t="inlineStr" s="${st}"><is><t>${sanitizeCsvOrXml(val)}</t></is></c>`;
+          return `<c r="${ref}" t="inlineStr" s="${st}"><is><t xml:space="preserve">${sanitizeCsvOrXml(val)}</t></is></c>`;
         })
         .join('');
       return `<row r="${rNum}" ht="${rowHeight}" customHeight="1">${cellsXml}</row>`;
@@ -1255,6 +1266,7 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
   const hasChartImage = Boolean(renderedChart);
   const lastColLetter = colLetter(maxCols - 1);
   const totalRowsCount = Math.max(1, allRows.length);
+  const isoNow = new Date().toISOString();
 
   zip.file(
     '[Content_Types].xml',
@@ -1266,6 +1278,8 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
   <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+  <Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/>
+  <Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/>
   ${hasChartImage ? '<Override PartName="/xl/drawings/drawing1.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>' : ''}
 </Types>`
   );
@@ -1275,7 +1289,28 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
   <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/>
+  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/>
 </Relationships>`
+  );
+
+  zip.file(
+    'docProps/core.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <dc:title>${sanitizeCsvOrXml(payload.title)}</dc:title>
+  <dc:creator>${sanitizeCsvOrXml(payload.letterhead.organizationName || 'دفتر فنی اداره گلزار شهدا')}</dc:creator>
+  <dcterms:created xsi:type="dcterms:W3CDTF">${isoNow}</dcterms:created>
+  <dcterms:modified xsi:type="dcterms:W3CDTF">${isoNow}</dcterms:modified>
+</cp:coreProperties>`
+  );
+
+  zip.file(
+    'docProps/app.xml',
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
+  <Application>Daftar Fani Golzar</Application>
+</Properties>`
   );
 
   zip.file(
@@ -1454,11 +1489,17 @@ export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: s
 </worksheet>`
   );
 
-  const blob = await zip.generateAsync({
+  return zip.generateAsync({
     type: 'blob',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });
-  triggerBlobDownload(blob, fileName.endsWith('.xlsx') ? fileName : `${fileName}.xlsx`);
+}
+
+export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: string): Promise<void> {
+  const blob = await buildExcelXlsxBlob(payload);
+  await triggerBlobDownload(blob, sanitizeExportFileName(fileName, '.xlsx'));
 }
 
 // Build clean RTL A4 printable HTML document (B Zar 14pt, soft warm sand/gold + slate palette, color & B&W print-friendly, NO emblem)

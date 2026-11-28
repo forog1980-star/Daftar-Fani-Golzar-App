@@ -30,9 +30,11 @@ import {
 } from '../../utils/format';
 import { ProjectFormModal } from './ProjectFormModal';
 import { ProjectImageUploader } from './ProjectImageUploader';
+import { ProjectProgressStatementsSection } from './ProjectProgressStatementsSection';
 import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
 import { exportToWordDocx } from '../../utils/exportEngine';
+import { saveBinaryFile } from '../../utils/platformBridge';
 import { getNeutralProjectImage } from '../../utils/officialAssets';
 import { JalaliDateInput } from '../common/JalaliDateInput';
 
@@ -92,8 +94,11 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 
   const [actTitle, setActTitle] = useState('');
   const [actDesc, setActDesc] = useState('');
-  const [actDue, setActDue] = useState(todayIsoDate());
+  const [actRegDate, setActRegDate] = useState(todayIsoDate());
+  const [actDue, setActDue] = useState('');
   const [actPriority, setActPriority] = useState<'فوری' | 'عادی' | 'کم'>('عادی');
+  const [actPendingFiles, setActPendingFiles] = useState<File[]>([]);
+  const [actError, setActError] = useState('');
 
   const projectDocs = useMemo(
     () => store.documents.filter((d) => d.projectId === projectId),
@@ -182,19 +187,41 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
 
   const handleQuickActionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!actTitle.trim()) return;
+    if (!actTitle.trim()) {
+      setActError('وارد کردن «عنوان اقدام» الزامی است.');
+      return;
+    }
+    if (!actRegDate.trim()) {
+      setActError('انتخاب «تاریخ ثبت» الزامی است.');
+      return;
+    }
+    if (!actDesc.trim()) {
+      setActError('وارد کردن «شرح اقدام» الزامی است.');
+      return;
+    }
+    setActError('');
     const now = new Date().toISOString();
+    const actionId = generateId('act');
+    const attachmentIds: string[] = [];
+    for (const file of actPendingFiles) {
+      const savedAtt = await store.addAttachment(file, {
+        projectId: project.id,
+        actionId,
+      });
+      attachmentIds.push(savedAtt.id);
+    }
     const item: ActionItem = {
-      id: generateId('act'),
+      id: actionId,
       title: actTitle.trim(),
       description: actDesc.trim(),
       projectId: project.id,
-      registeredDate: todayIsoDate(),
-      dueDate: actDue,
+      registeredDate: actRegDate.trim(),
+      dueDate: actDue.trim() || undefined,
       priority: actPriority,
       status: 'در انتظار',
       followUpResult: '',
       notes: '',
+      attachmentIds,
       createdAt: now,
       updatedAt: now,
       updatedByDevice: store.settings.deviceId,
@@ -203,6 +230,10 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
     setQuickActionOpen(false);
     setActTitle('');
     setActDesc('');
+    setActRegDate(todayIsoDate());
+    setActDue('');
+    setActPendingFiles([]);
+    setActError('');
   };
 
   const handleAttachmentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -220,16 +251,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   };
 
   const downloadAttachment = (att: AttachmentRecord) => {
-    const url = URL.createObjectURL(att.data);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = att.fileName;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 300);
+    void saveBinaryFile(att.data, att.fileName, 'attachments', att.mimeType);
   };
 
   const exportSingleProjectWord = async () => {
@@ -694,11 +716,20 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             'هنوز قرارداد یا دستورکاری برای این پروژه ثبت نشده است.'
           )}
 
-        {tab === 'minutes' &&
-          renderDocList(
-            ['صورتجلسه', 'صورت‌وضعیت'],
-            'هنوز صورتجلسه یا صورت‌وضعیتی برای این پروژه ثبت نشده است.'
-          )}
+        {tab === 'minutes' && (
+          <div className="space-y-5">
+            <ProjectProgressStatementsSection project={project} store={store} />
+            <div className="space-y-2">
+              <h4 className="text-xs font-semibold text-[#5B6573]">
+                بایگانی صورتجلسات و اسناد ثبت‌شده این پروژه
+              </h4>
+              {renderDocList(
+                ['صورتجلسه', 'صورت‌وضعیت'],
+                'هنوز صورتجلسه یا سند صورت‌وضعیتی در بایگانی این پروژه ثبت نشده است.'
+              )}
+            </div>
+          </div>
+        )}
 
         {tab === 'correspondence' &&
           renderDocList(
@@ -729,8 +760,12 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                   <div key={a.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
                     <div>
                       <div className="text-sm font-medium text-[#263448]">{a.title}</div>
+                      {a.description && (
+                        <div className="mt-0.5 text-xs text-[#5B6573]">{a.description}</div>
+                      )}
                       <div className="mt-1 text-xs text-[#5B6573]">
-                        اولویت: {a.priority} · وضعیت: {a.status} · مهلت: {formatJalaliDate(a.dueDate)}
+                        ثبت: {formatJalaliDate(a.registeredDate)} · اولویت: {a.priority} · وضعیت: {a.status} · مهلت:{' '}
+                        {a.dueDate ? formatJalaliDate(a.dueDate) : 'تعیین‌نشده'}
                       </div>
                       {a.followUpResult && (
                         <div className="mt-1 text-xs text-[#243B5A]">
@@ -910,9 +945,14 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
         <FloatingWindow
           title={`ثبت اقدام جدید برای ${project.code}`}
           onClose={() => setQuickActionOpen(false)}
-          width={520}
+          width={560}
         >
           <form onSubmit={handleQuickActionSubmit} className="space-y-3.5">
+            {actError && (
+              <div className="rounded-lg border border-[#D8B4B4] bg-[#FBF1F1] px-3 py-2 text-xs text-[#9E3B3B]">
+                {actError}
+              </div>
+            )}
             <div>
               <label className="mb-1 block text-xs text-[#5B6573]">عنوان اقدام *</label>
               <input
@@ -923,13 +963,34 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 className="w-full rounded border border-[#CEC8BA] bg-[#FAF8F3] px-3 py-2 text-sm"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-[#5B6573]">شرح اقدام *</label>
+              <textarea
+                rows={3}
+                required
+                value={actDesc}
+                onChange={(e) => setActDesc(e.target.value)}
+                placeholder="شرح تماس، جلسه، بازدید یا پیگیری انجام‌شده..."
+                className="w-full rounded border border-[#CEC8BA] bg-[#FAF8F3] px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div>
-                <label className="mb-1 block text-xs text-[#5B6573]">مهلت انجام</label>
+                <label className="mb-1 block text-xs text-[#5B6573]">تاریخ ثبت *</label>
+                <JalaliDateInput
+                  value={actRegDate}
+                  onChange={setActRegDate}
+                  required
+                  className="rounded border-[#CEC8BA]"
+                  ariaLabel="تاریخ ثبت شمسی"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-[#5B6573]">مهلت انجام (اختیاری)</label>
                 <JalaliDateInput
                   value={actDue}
                   onChange={setActDue}
-                  required
+                  placeholder="بدون مهلت اجباری"
                   className="rounded border-[#CEC8BA]"
                   ariaLabel="مهلت انجام شمسی"
                 />
@@ -947,26 +1008,54 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 </select>
               </div>
             </div>
-            <div>
-              <label className="mb-1 block text-xs text-[#5B6573]">شرح اقدام</label>
-              <textarea
-                rows={3}
-                value={actDesc}
-                onChange={(e) => setActDesc(e.target.value)}
-                className="w-full rounded border border-[#CEC8BA] bg-[#FAF8F3] px-3 py-2 text-sm"
-              />
+            <div className="rounded-lg border border-[#E2DDD0] bg-[#FAF8F3] p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs text-[#5B6573]">
+                  پیوست فایل (اختیاری — ثبت بدون پیوست مجاز است)
+                </span>
+                <label className="inline-flex items-center gap-1 rounded border border-[#243B5A] bg-[#FFFFFF] px-2.5 py-1 text-[11px] text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer">
+                  <Upload className="h-3 w-3" />
+                  <span>انتخاب فایل</span>
+                  <input
+                    type="file"
+                    multiple
+                    onChange={(e) => {
+                      const list = e.target.files ? Array.from(e.target.files) : [];
+                      if (list.length > 0) setActPendingFiles((prev) => [...prev, ...list]);
+                      e.target.value = '';
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+              {actPendingFiles.length > 0 && (
+                <div className="space-y-1 text-[11px] text-[#263448]">
+                  {actPendingFiles.map((f, i) => (
+                    <div key={`${f.name}-${i}`} className="flex items-center justify-between rounded bg-[#FFFFFF] px-2 py-1 border border-[#E2DDD0]">
+                      <span className="truncate">{f.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => setActPendingFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="text-[#B43E3E] hover:underline cursor-pointer"
+                      >
+                        حذف
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button
                 type="button"
                 onClick={() => setQuickActionOpen(false)}
-                className="rounded border border-[#CEC8BA] px-4 py-2 text-xs"
+                className="rounded border border-[#CEC8BA] px-4 py-2 text-xs cursor-pointer"
               >
                 انصراف
               </button>
               <button
                 type="submit"
-                className="rounded border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3]"
+                className="rounded border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3] cursor-pointer"
               >
                 ثبت اقدام
               </button>

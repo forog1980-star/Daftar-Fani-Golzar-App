@@ -62,6 +62,7 @@ export const DataCleanupPanel: React.FC<DataCleanupPanelProps> = ({
     store.proposals.length,
     store.actions.length,
     store.documents.length,
+    store.progressStatements.length,
     store.attachments.length,
   ]);
 
@@ -398,6 +399,7 @@ export const DataCleanupPanel: React.FC<DataCleanupPanelProps> = ({
                 <li>فایل‌های پیوست: {toPersianDigits(fullInfo.counts.attachments)}</li>
                 <li>اشخاص و امضاها: {toPersianDigits(fullInfo.counts.people)}</li>
                 <li>فرم‌های پرشده: {toPersianDigits(fullInfo.counts.formSubmissions)}</li>
+                <li>صورت‌وضعیت‌ها: {toPersianDigits(fullInfo.counts.progressStatements ?? 0)}</li>
                 <li>تصاویر پروژه‌ها: {toPersianDigits(fullInfo.counts.projectImages)}</li>
               </ul>
             </div>

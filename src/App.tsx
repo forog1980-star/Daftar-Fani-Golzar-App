@@ -32,6 +32,7 @@ import {
 const REPORT_TITLES: Record<ReportType, string> = {
   projects: 'گزارش جامع پروژه‌ها',
   budget: 'گزارش بودجه و اعتبارات',
+  statements: 'گزارش وضعیت صورت‌وضعیت‌ها',
   proposals: 'گزارش پیشنهاد بودجه سالانه',
   actions: 'گزارش اقدامات و پیگیری‌ها',
   documents: 'گزارش اسناد و مکاتبات',

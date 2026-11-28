@@ -40,6 +40,7 @@ import { BudgetProposalEditor } from './BudgetProposalEditor';
 import { BudgetStatusDonut, buildBudgetReportPayload } from './BudgetStatusDonut';
 import { SectionReportExportBar } from '../layout/SectionReportExportBar';
 import { JalaliDateInput } from '../common/JalaliDateInput';
+import { summarizeProjectStatements } from '../../utils/statementCalculations';
 
 export type BudgetSubTab = 'credits' | 'payments' | 'proposals';
 
@@ -121,6 +122,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         budget.approvedCredit > 0 ? (budget.fundedCredit / budget.approvedCredit) * 100 : 0;
       const physicalToFundingRatio =
         fundingPercent > 0 ? project.physicalProgress / fundingPercent : 0;
+      const statementSummary = summarizeProjectStatements(store.progressStatements, project.id);
 
       return {
         project,
@@ -130,9 +132,10 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         usagePercent,
         fundingPercent,
         physicalToFundingRatio,
+        statementSummary,
       };
     });
-  }, [store.projects, store.budgets, store.payments, store.settings.deviceId]);
+  }, [store.projects, store.budgets, store.payments, store.progressStatements, store.settings.deviceId]);
 
   const openProposalEditor = (prop: BudgetProposal | null) => {
     setProposalEditing(prop);
@@ -338,10 +341,25 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
                       {formatAmount(row.budget.committedAmount)}
                     </td>
                     <td className="px-3 py-3 tabular-nums whitespace-nowrap">
-                      <div>{formatAmount(row.budget.submittedStatementAmount)}</div>
-                      <div className="text-[11px] text-[#2D6A4F]">
-                        {formatAmount(row.budget.approvedStatementAmount)}
+                      <div>
+                        {formatAmount(
+                          row.statementSummary.count > 0
+                            ? row.statementSummary.totalCurrentGross
+                            : row.budget.submittedStatementAmount
+                        )}
                       </div>
+                      <div className="text-[11px] text-[#2D6A4F]">
+                        {formatAmount(
+                          row.statementSummary.count > 0
+                            ? row.statementSummary.totalNetPayable
+                            : row.budget.approvedStatementAmount
+                        )}
+                      </div>
+                      {row.statementSummary.count > 0 && (
+                        <div className="text-[10px] text-[#5B6573]">
+                          {toPersianDigits(row.statementSummary.count)} فقره فرم رسیدگی
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-3 font-semibold tabular-nums text-[#2D6A4F] whitespace-nowrap">
                       {formatAmount(row.paidAmount)}

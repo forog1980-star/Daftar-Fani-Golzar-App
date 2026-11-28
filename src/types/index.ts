@@ -172,12 +172,136 @@ export interface ActionItem {
   description: string;
   projectId?: string;
   registeredDate: string;
-  dueDate: string;
+  dueDate?: string;
   priority: ActionPriority;
   status: ActionStatus;
   completedDate?: string;
   followUpResult: string;
   notes: string;
+  attachmentIds?: string[];
+  isSample?: boolean;
+  createdAt: string;
+  updatedAt: string;
+  updatedByDevice: string;
+}
+
+export type ProgressStatementType = 'موقت' | 'قطعی' | 'تعدیل' | string;
+
+export type ProgressStatementStatus =
+  | 'ثبت‌شده'
+  | 'در کنترل'
+  | 'دارای نقص'
+  | 'تأیید فنی'
+  | 'ارجاع مالی'
+  | 'متوقف'
+  | 'پرداخت‌شده'
+  | 'مختومه';
+
+export type TechnicalReviewResult =
+  | 'در انتظار بررسی'
+  | 'تأیید فنی'
+  | 'تأیید فنی مشروط'
+  | 'نیازمند رفع نقص'
+  | 'عدم تأیید فنی';
+
+export type DefectResolutionStatus =
+  | 'فاقد نقص'
+  | 'در دست رفع توسط پیمانکار'
+  | 'رفع‌شده و تأیید مجدد'
+  | 'باقی‌مانده';
+
+export type StatementWorkflowStageKey =
+  | 'supervisor'
+  | 'management'
+  | 'ceo_referral'
+  | 'hse'
+  | 'funding'
+  | 'finance_referral'
+  | 'final_result';
+
+export type StatementWorkflowStageStatus =
+  | 'در انتظار'
+  | 'در حال بررسی'
+  | 'تأییدشده'
+  | 'نیازمند اصلاح'
+  | 'متوقف / عودت'
+  | 'عدم نیاز';
+
+export interface StatementWorkflowStage {
+  key: StatementWorkflowStageKey;
+  title: string;
+  domain: 'technical' | 'management' | 'hse' | 'financial' | 'final';
+  required: boolean;
+  status: StatementWorkflowStageStatus;
+  date?: string;
+  responsibleName: string;
+  responsibleRole?: string;
+  notes: string;
+  holdOrReturnReason?: string;
+}
+
+export interface StatementHistoryEntry {
+  id: string;
+  timestamp: string;
+  actor: string;
+  summary: string;
+  statusBefore?: ProgressStatementStatus;
+  statusAfter?: ProgressStatementStatus;
+}
+
+export interface ProgressStatement {
+  id: string;
+  projectId: string;
+  // الف) مشخصات پایه
+  projectCode: string;
+  projectTitle: string;
+  contractOrOrderNumber: string;
+  contractorName: string;
+  statementNumber: string;
+  statementType: ProgressStatementType;
+  workPeriodFrom?: string;
+  workPeriodTo?: string;
+  workPeriodLabel?: string;
+  receiptDate: string;
+  preparationDate?: string;
+  referralDate?: string;
+  status: ProgressStatementStatus;
+  // ب) اطلاعات مالی (قابل کنترل، شفاف و بدون فرض غیرقابل تغییر)
+  initialContractAmount: number;
+  contractAdjustmentAmount: number; // مثبت = افزایش قرارداد، منفی = کاهش قرارداد
+  apply25PercentCeiling: boolean;
+  ceilingPercent: number; // پیش‌فرض ۲۵ درصد، قابل تنظیم برای هر قرارداد
+  previousStatementsTotal: number;
+  currentStatementAmount: number;
+  deductionsAmount: number; // کسورات قراردادی/قانونی
+  deductionsNotes?: string;
+  vatEnabled: boolean;
+  vatRate: number; // درصد ارزش افزوده قابل تنظیم (مثلاً ۱۰)
+  vatManualOverride: boolean;
+  vatAmount: number;
+  penaltiesAndShortfall: number; // جریمه و کسرکار
+  otherDeductions: number; // سایر کسورات
+  otherDeductionsNotes?: string;
+  // مقادیر محاسبه‌شده (همواره شفاف و قابل بررسی مجدد)
+  modifiedContractAmount: number;
+  allowedCeilingAmount: number;
+  cumulativeAmount: number;
+  netPayableAmount: number;
+  // ج) کنترل فنی و مدارک (صرفاً حیطه فنی دفتر فنی، مجزا از تأیید مالی و دستور پرداخت)
+  receivedDocuments: string;
+  documentReviewNotes: string;
+  supervisorReport: string;
+  quantityVerification: string;
+  discrepanciesAndDefects: string;
+  expertOpinion: string;
+  technicalReviewResult: TechnicalReviewResult;
+  defectResolutionStatus: DefectResolutionStatus;
+  // د) گردش ارجاع و بررسی (۷ مرحله مستقل)
+  workflowStages: StatementWorkflowStage[];
+  // هـ) امضاها (قابل تنظیم با حفظ سابقه تاریخی نام‌ها و سمت‌ها)
+  signatures: SignatureSnapshot[];
+  // تاریخچه تغییرات و ارجاعات
+  history: StatementHistoryEntry[];
   attachmentIds?: string[];
   isSample?: boolean;
   createdAt: string;
@@ -412,6 +536,7 @@ export type SyncEntityStore =
   | 'proposals'
   | 'actions'
   | 'documents'
+  | 'progressStatements'
   | 'people'
   | 'formTemplates'
   | 'formSubmissions';

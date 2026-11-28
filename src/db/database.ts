@@ -11,6 +11,7 @@ import {
   GolzarImageRecord,
   PaymentRecord,
   Person,
+  ProgressStatement,
   Project,
   ProjectBudget,
   ProjectImageRecord,
@@ -35,6 +36,7 @@ export interface RollbackSnapshot {
     proposals: BudgetProposal[];
     actions: ActionItem[];
     documents: DocumentItem[];
+    progressStatements?: ProgressStatement[];
     people: Person[];
     formTemplates: FormTemplate[];
     formSubmissions: FormSubmission[];
@@ -51,6 +53,7 @@ interface DaftarFaniDB extends DBSchema {
   proposals: { key: string; value: BudgetProposal };
   actions: { key: string; value: ActionItem };
   documents: { key: string; value: DocumentItem };
+  progressStatements: { key: string; value: ProgressStatement };
   attachments: { key: string; value: AttachmentRecord };
   people: { key: string; value: Person };
   formTemplates: { key: string; value: FormTemplate };
@@ -63,7 +66,7 @@ interface DaftarFaniDB extends DBSchema {
 }
 
 const DB_NAME = 'daftar-fani-golzar-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBPDatabase<DaftarFaniDB>> | null = null;
 
@@ -78,6 +81,7 @@ export function getDB(): Promise<IDBPDatabase<DaftarFaniDB>> {
           'proposals',
           'actions',
           'documents',
+          'progressStatements',
           'attachments',
           'people',
           'formTemplates',
@@ -187,6 +191,7 @@ export interface SampleCleanupInspection {
     proposals: number;
     actions: number;
     documents: number;
+    progressStatements?: number;
     people: number;
     formSubmissions: number;
     attachments: number;
@@ -212,6 +217,7 @@ export interface FullWipeInspection {
     proposals: number;
     actions: number;
     documents: number;
+    progressStatements?: number;
     attachments: number;
     people: number;
     formSubmissions: number;
@@ -231,6 +237,7 @@ export async function inspectSampleDataCleanup(): Promise<SampleCleanupInspectio
     proposals,
     actions,
     documents,
+    progressStatements,
     people,
     formSubmissions,
     attachments,
@@ -244,6 +251,7 @@ export async function inspectSampleDataCleanup(): Promise<SampleCleanupInspectio
     db.getAll('proposals'),
     db.getAll('actions'),
     db.getAll('documents'),
+    db.getAll('progressStatements'),
     db.getAll('people'),
     db.getAll('formSubmissions'),
     db.getAll('attachments'),
@@ -265,6 +273,9 @@ export async function inspectSampleDataCleanup(): Promise<SampleCleanupInspectio
     (d) => d.isSample || (d.projectId ? sampleProjectIds.has(d.projectId) : false)
   );
   const sampleDocIds = new Set(sampleDocuments.map((d) => d.id));
+  const sampleStatements = progressStatements.filter(
+    (st) => st.isSample || sampleProjectIds.has(st.projectId)
+  );
   const samplePeople = people.filter((p) => p.isSample);
   const sampleFormSubs = formSubmissions.filter((s) => s.isSample);
 
@@ -283,6 +294,7 @@ export async function inspectSampleDataCleanup(): Promise<SampleCleanupInspectio
     proposals: sampleProposals.length,
     actions: sampleActions.length,
     documents: sampleDocuments.length,
+    progressStatements: sampleStatements.length,
     people: samplePeople.length,
     formSubmissions: sampleFormSubs.length,
     attachments: linkedAttachments.length,
@@ -296,6 +308,7 @@ export async function inspectSampleDataCleanup(): Promise<SampleCleanupInspectio
     counts.proposals +
     counts.actions +
     counts.documents +
+    counts.progressStatements +
     counts.people +
     counts.formSubmissions +
     counts.attachments +
@@ -363,6 +376,10 @@ export async function clearSampleRecordsSafe(
     'documents',
     (r) => Boolean(r.isSample) || (typeof r.projectId === 'string' && sampleProjectIds.has(r.projectId))
   );
+  await deleteByPredicate(
+    'progressStatements',
+    (r) => Boolean(r.isSample) || (typeof r.projectId === 'string' && sampleProjectIds.has(r.projectId))
+  );
   await deleteByPredicate('people', (r) => Boolean(r.isSample));
   await deleteByPredicate('formSubmissions', (r) => Boolean(r.isSample));
 
@@ -420,6 +437,7 @@ export async function inspectFullDataWipe(): Promise<FullWipeInspection> {
     proposals,
     actions,
     documents,
+    progressStatements,
     attachments,
     people,
     formSubmissions,
@@ -433,6 +451,7 @@ export async function inspectFullDataWipe(): Promise<FullWipeInspection> {
     db.getAll('proposals'),
     db.getAll('actions'),
     db.getAll('documents'),
+    db.getAll('progressStatements'),
     db.getAll('attachments'),
     db.getAll('people'),
     db.getAll('formSubmissions'),
@@ -448,6 +467,7 @@ export async function inspectFullDataWipe(): Promise<FullWipeInspection> {
     proposals: proposals.length,
     actions: actions.length,
     documents: documents.length,
+    progressStatements: progressStatements.length,
     attachments: attachments.length,
     people: people.length,
     formSubmissions: formSubmissions.length,
@@ -480,6 +500,7 @@ export async function wipeAllUserDataSafe(
     'proposals',
     'actions',
     'documents',
+    'progressStatements',
     'attachments',
     'people',
     'formSubmissions',
@@ -547,6 +568,7 @@ export async function loadAllData() {
     proposals,
     actions,
     documents,
+    progressStatements,
     attachments,
     people,
     formTemplates,
@@ -563,6 +585,7 @@ export async function loadAllData() {
     db.getAll('proposals'),
     db.getAll('actions'),
     db.getAll('documents'),
+    db.getAll('progressStatements'),
     db.getAll('attachments'),
     db.getAll('people'),
     db.getAll('formTemplates'),
@@ -585,6 +608,7 @@ export async function loadAllData() {
     proposals,
     actions,
     documents,
+    progressStatements,
     attachments,
     people,
     formTemplates,
@@ -627,6 +651,7 @@ export async function createRollbackSnapshot(reason: string): Promise<RollbackSn
     proposals,
     actions,
     documents,
+    progressStatements,
     people,
     formTemplates,
     formSubmissions,
@@ -640,6 +665,7 @@ export async function createRollbackSnapshot(reason: string): Promise<RollbackSn
     db.getAll('proposals'),
     db.getAll('actions'),
     db.getAll('documents'),
+    db.getAll('progressStatements'),
     db.getAll('people'),
     db.getAll('formTemplates'),
     db.getAll('formSubmissions'),
@@ -659,6 +685,7 @@ export async function createRollbackSnapshot(reason: string): Promise<RollbackSn
       proposals,
       actions,
       documents,
+      progressStatements,
       people,
       formTemplates,
       formSubmissions,
@@ -691,6 +718,7 @@ export async function restoreFromSnapshot(snapshotId: string, deviceId: string):
     'proposals',
     'actions',
     'documents',
+    'progressStatements',
     'people',
     'formTemplates',
     'formSubmissions',
@@ -736,6 +764,7 @@ export async function replaceAllDataFromBackup(
     'proposals',
     'actions',
     'documents',
+    'progressStatements',
     'people',
     'formTemplates',
     'formSubmissions',

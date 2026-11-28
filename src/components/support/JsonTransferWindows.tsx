@@ -25,6 +25,7 @@ const STORE_LABELS: Record<SyncEntityStore, string> = {
   proposals: 'پیشنهاد بودجه',
   actions: 'اقدام و پیگیری',
   documents: 'سند / مکاتبه',
+  progressStatements: 'صورت‌وضعیت پروژه',
   people: 'اشخاص و امضاها',
   formTemplates: 'قالب فرم',
   formSubmissions: 'فرم تکمیل‌شده',

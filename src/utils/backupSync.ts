@@ -18,6 +18,7 @@ const SYNC_STORES: SyncEntityStore[] = [
   'proposals',
   'actions',
   'documents',
+  'progressStatements',
   'people',
   'formTemplates',
   'formSubmissions',
@@ -154,6 +155,7 @@ export async function restoreFullZipBackup(
     proposals: parsed.data.proposals ?? [],
     actions: parsed.data.actions ?? [],
     documents: parsed.data.documents ?? [],
+    progressStatements: parsed.data.progressStatements ?? [],
     people: parsed.data.people ?? [],
     formTemplates: parsed.data.formTemplates ?? [],
     formSubmissions: parsed.data.formSubmissions ?? [],
@@ -259,6 +261,9 @@ export interface SyncAnalysisResult {
 }
 
 function getRecordDisplayLabel(store: SyncEntityStore, rec: Record<string, unknown>): string {
+  if (store === 'progressStatements' && rec.statementNumber) {
+    return `صورت‌وضعیت شماره ${String(rec.statementNumber)} — ${String(rec.projectTitle || rec.projectCode || '')}`.trim();
+  }
   return String(
     rec.title ||
       rec.subject ||

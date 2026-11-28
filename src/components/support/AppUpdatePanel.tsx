@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -6,6 +6,7 @@ import {
   ChevronUp,
   CloudDownload,
   Download,
+  Info,
   Link2,
   Monitor,
   RefreshCw,
@@ -14,9 +15,13 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
-import { resolveVersionManifestUrl, useAppUpdater } from '../../utils/appUpdater';
+import {
+  resolveVersionManifestUrl,
+  UpdateErrorCategory,
+  useAppUpdater,
+} from '../../utils/appUpdater';
 import { useOnlineStatus } from '../../hooks/usePWAInstall';
-import { formatJalaliDateTime, toPersianDigits } from '../../utils/format';
+import { formatFileSize, formatJalaliDateTime, toPersianDigits } from '../../utils/format';
 import {
   detectRuntimePlatform,
   getPlatformDisplayLabel,
@@ -24,11 +29,19 @@ import {
 } from '../../utils/platformBridge';
 import { PWAInstallButton } from '../layout/PWAInstallButton';
 
-const GITHUB_RELEASES_URL = 'https://github.com/forog1980-star/Daftar-Fani-Golzar-App/releases';
-
 interface AppUpdatePanelProps {
   compact?: boolean;
 }
+
+const ERROR_CATEGORY_LABELS: Record<Exclude<UpdateErrorCategory, null>, string> = {
+  'invalid-url': 'نشانی نامعتبر',
+  offline: 'حالت آفلاین',
+  network: 'خطای شبکه / زمان انتظار',
+  cors: 'خطای شبکه یا محدودیت CORS',
+  http: 'خطای پاسخ سرور (HTTP)',
+  json: 'قالب نامعتبر JSON',
+  sw: 'هشدار Service Worker',
+};
 
 export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false }) => {
   const updater = useAppUpdater();
@@ -41,16 +54,35 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
   const [showSourceConfig, setShowSourceConfig] = useState(false);
   const [sourceInput, setSourceInput] = useState(updater.versionSourceUrl);
 
-  const handleCheckUpdate = async () => {
-    if (sourceInput.trim() !== updater.versionSourceUrl) {
-      updater.setCustomSourceUrl(sourceInput.trim());
+  const effectiveVersionUrl =
+    updater.checkedUrl ||
+    (typeof window !== 'undefined' ? resolveVersionManifestUrl(sourceInput) : './version.json');
+
+  const releaseInfo = updater.releaseInstallers;
+  const windowsExe = releaseInfo.windowsExe;
+  const androidApk = releaseInfo.androidApk;
+  const isLoadingReleases = releaseInfo.status === 'loading';
+
+  // Auto-check GitHub Releases once when online and in full panel so installer availability is accurate
+  useEffect(() => {
+    if (!compact && isOnline && releaseInfo.status === 'idle') {
+      void updater.checkReleaseInstallers(updater.versionSourceUrl);
     }
-    await updater.checkForUpdate(sourceInput.trim());
+  }, [compact, isOnline, releaseInfo.status, updater]);
+
+  const handleCheckUpdate = async () => {
+    const cleaned = sourceInput.trim();
+    if (cleaned !== updater.versionSourceUrl) {
+      updater.setCustomSourceUrl(cleaned);
+    }
+    await updater.checkForUpdate(cleaned);
   };
+
+  const nativeDirectAsset = runtimePlatform === 'electron' ? windowsExe : androidApk;
 
   return (
     <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-4">
-      {/* Header with New Official App Icon Preview */}
+      {/* Header with Official App Icon Preview */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E8E5DE] pb-4">
         <div className="flex items-center gap-3.5 min-w-0">
           <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[#D5C39E] bg-[#F7F3E9]">
@@ -74,7 +106,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
                 <>
                   <span aria-hidden="true">·</span>
                   <span className="tabular-nums text-[#243B5A]">
-                    نسخه گیت‌هاب: {toPersianDigits(updater.remoteVersion)}
+                    نسخه مخزن: {toPersianDigits(updater.remoteVersion)}
                   </span>
                 </>
               )}
@@ -109,39 +141,156 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
         </div>
       </div>
 
-      {/* Direct Installer Downloads (Windows EXE & Android APK from GitHub Releases) */}
+      {/* Exact version.json Endpoint Transparency */}
       {!compact && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#ECE7DC] bg-[#FAF8F3] px-4 py-3">
-          <div className="space-y-0.5 text-xs">
-            <div className="font-semibold text-[#243B5A]">
-              دریافت فایل‌های نصبی مستقل (بدون نیاز به Google Chrome)
+        <div className="rounded-lg border border-[#ECE7DC] bg-[#FAF8F3] px-3.5 py-2.5 text-[11px] text-[#5B6573] flex flex-wrap items-center justify-between gap-2">
+          <span>نشانی بررسی نسخه (version.json):</span>
+          <code
+            dir="ltr"
+            className="break-all rounded bg-[#FFFFFF] border border-[#E2DDD2] px-2 py-0.5 text-[11px] text-[#243B5A]"
+          >
+            {effectiveVersionUrl}
+          </code>
+        </div>
+      )}
+
+      {/* Direct Verified Installer Downloads (Windows EXE & Android APK from GitHub Releases API) */}
+      {!compact && (
+        <div className="rounded-lg border border-[#ECE7DC] bg-[#FAF8F3] px-4 py-3.5 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="space-y-0.5 text-xs">
+              <div className="font-semibold text-[#243B5A]">
+                دریافت مستقیم فایل‌های نصبی منتشرشده (بدون نیاز به مرورگر Chrome)
+              </div>
+              <div className="text-[11px] text-[#5B6573]">
+                لینک‌های زیر صرفاً پس از تأیید انتشار واقعی فایل EXE و APK در GitHub Releases فعال می‌شوند.
+              </div>
             </div>
-            <div className="text-[11px] text-[#5B6573]">
-              نسخه دسکتاپ ویندوز (ذخیره روی D:\Daftar-Fani-Golzar) و اپلیکیشن اندروید از صفحه Releases گیت‌هاب
+            <button
+              type="button"
+              disabled={isLoadingReleases || !isOnline}
+              onClick={() => void updater.checkReleaseInstallers(sourceInput.trim())}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#D7D2C6] bg-[#FFFFFF] px-2.5 py-1.5 text-[11px] text-[#243B5A] hover:bg-[#E5EBF2] disabled:opacity-50 cursor-pointer whitespace-nowrap"
+            >
+              <RefreshCw className={`h-3 w-3 ${isLoadingReleases ? 'animate-spin' : ''}`} />
+              <span>بروزرسانی وضعیت Releases</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
+            {/* Windows EXE Card */}
+            <div className="rounded-lg border border-[#E2DDD2] bg-[#FFFFFF] p-3 flex flex-col justify-between gap-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-[#243B5A]">
+                    <Monitor className="h-3.5 w-3.5" />
+                    <span>نسخه مستقل ویندوز (EXE)</span>
+                  </div>
+                  <div className="text-[11px] text-[#5B6573]">
+                    مسیر ذخیره‌سازی داده: <code dir="ltr">D:\Daftar-Fani-Golzar</code>
+                  </div>
+                </div>
+                {windowsExe && (
+                  <span className="text-[11px] font-medium tabular-nums text-[#3D6B59]">
+                    {windowsExe.releaseTag}
+                  </span>
+                )}
+              </div>
+
+              {windowsExe ? (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-[#5B6573] break-all">
+                    فایل: <code dir="ltr">{windowsExe.name}</code> ({formatFileSize(windowsExe.sizeBytes)})
+                  </div>
+                  <a
+                    href={windowsExe.downloadUrl}
+                    download={windowsExe.name}
+                    rel="noopener noreferrer"
+                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#243B5A] px-3 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] whitespace-nowrap"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>دانلود مستقیم نصاب ویندوز (EXE)</span>
+                  </a>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-[#9E3B3B]">
+                    {isLoadingReleases
+                      ? 'در حال بررسی انتشار فایل ویندوز...'
+                      : 'فایل نصبی ویندوز (EXE) هنوز در Releases منتشر نشده است.'}
+                  </div>
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#D7D2C6] bg-[#F3EFE6] px-3 text-xs font-medium text-[#788290] cursor-not-allowed whitespace-nowrap"
+                  >
+                    <Monitor className="h-3.5 w-3.5" />
+                    <span>دانلود مستقیم ویندوز (در انتظار انتشار)</span>
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Android APK Card */}
+            <div className="rounded-lg border border-[#E2DDD2] bg-[#FFFFFF] p-3 flex flex-col justify-between gap-2.5">
+              <div className="flex items-start justify-between gap-2">
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-[#3D6B59]">
+                    <Smartphone className="h-3.5 w-3.5" />
+                    <span>اپلیکیشن مستقل اندروید (APK)</span>
+                  </div>
+                  <div className="text-[11px] text-[#5B6573]">
+                    نصب آفلاین روی گوشی و تبلت اندروید
+                  </div>
+                </div>
+                {androidApk && (
+                  <span className="text-[11px] font-medium tabular-nums text-[#3D6B59]">
+                    {androidApk.releaseTag}
+                  </span>
+                )}
+              </div>
+
+              {androidApk ? (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-[#5B6573] break-all">
+                    فایل: <code dir="ltr">{androidApk.name}</code> ({formatFileSize(androidApk.sizeBytes)})
+                  </div>
+                  <a
+                    href={androidApk.downloadUrl}
+                    download={androidApk.name}
+                    rel="noopener noreferrer"
+                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-3 text-xs font-medium text-[#FFFFFF] hover:opacity-90 whitespace-nowrap"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>دانلود مستقیم اپ اندروید (APK)</span>
+                  </a>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="text-[11px] text-[#9E3B3B]">
+                    {isLoadingReleases
+                      ? 'در حال بررسی انتشار فایل اندروید...'
+                      : 'فایل نصبی اندروید (APK) هنوز در Releases منتشر نشده است.'}
+                  </div>
+                  <button
+                    type="button"
+                    disabled
+                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#D7D2C6] bg-[#F3EFE6] px-3 text-xs font-medium text-[#788290] cursor-not-allowed whitespace-nowrap"
+                  >
+                    <Smartphone className="h-3.5 w-3.5" />
+                    <span>دانلود مستقیم اندروید (در انتظار انتشار)</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <a
-              href={GITHUB_RELEASES_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#FFFFFF] px-3 text-xs font-medium text-[#243B5A] hover:bg-[#E5EBF2] whitespace-nowrap"
-            >
-              <Monitor className="h-3.5 w-3.5" />
-              <span>دانلود نصاب ویندوز (EXE)</span>
-              <Download className="h-3 w-3 opacity-75" />
-            </a>
-            <a
-              href={GITHUB_RELEASES_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#3D6B59] bg-[#FFFFFF] px-3 text-xs font-medium text-[#3D6B59] hover:bg-[#E7ECE6] whitespace-nowrap"
-            >
-              <Smartphone className="h-3.5 w-3.5" />
-              <span>دانلود اپ اندروید (APK)</span>
-              <Download className="h-3 w-3 opacity-75" />
-            </a>
-          </div>
+
+          {releaseInfo.message && (
+            <div className="flex items-start gap-1.5 text-[11px] text-[#5B6573]">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#243B5A]" />
+              <span>{releaseInfo.message}</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -152,16 +301,16 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
           <code dir="ltr" className="rounded bg-[#FAF8F3] px-1.5 py-0.5 text-[11px] text-[#243B5A]">
             version.json
           </code>{' '}
-          از مخزن گیت‌هاب بررسی می‌شود.{' '}
+          به‌صورت مستقیم بررسی می‌شود.{' '}
           {runtimePlatform === 'electron'
-            ? 'در صورت انتشار نسخه جدید، فایل نصبی ویندوز (Daftar-Fani-Golzar-Setup.exe) را از صفحه Releases گیت‌هاب دانلود و نصب کنید؛ داده‌های شما در مسیر D:\\Daftar-Fani-Golzar بدون تغییر حفظ می‌شوند.'
+            ? 'در صورت انتشار فایل نصبی جدید ویندوز (EXE) در Releases، دکمه دانلود مستقیم در بالا فعال می‌شود و داده‌های شما در D:\\Daftar-Fani-Golzar بدون تغییر حفظ می‌شوند.'
             : runtimePlatform === 'android'
-              ? 'در صورت انتشار نسخه جدید، فایل نصبی اندروید (Daftar-Fani-Golzar.apk) را از صفحه Releases گیت‌هاب دانلود و روی همین نسخه نصب کنید؛ اطلاعات ذخیره‌شده در گوشی حفظ می‌شوند.'
+              ? 'در صورت انتشار فایل نصبی جدید اندروید (APK) در Releases، دکمه دانلود مستقیم در بالا فعال می‌شود و اطلاعات ذخیره‌شده در گوشی حفظ می‌شوند.'
               : 'در صورت انتشار نسخه جدید، می‌توانید تغییرات نسخه وب را به‌صورت مستقیم روی مرورگر همین دستگاه اعمال کنید.'}
         </p>
       )}
 
-      {/* Status Feedback Box + Optional Release Notes */}
+      {/* Status Feedback Box + Categorized Diagnostics + Optional Release Notes */}
       {updater.statusMessage && (
         <div
           role="status"
@@ -184,7 +333,13 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
             ) : (
               <CloudDownload className="mt-0.5 h-4 w-4 shrink-0 text-[#243B5A]" />
             )}
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
+              {updater.errorCategory && (
+                <div className="text-[11px] font-bold">
+                  نوع خطا: {ERROR_CATEGORY_LABELS[updater.errorCategory]}
+                  {updater.httpStatus ? ` (${toPersianDigits(updater.httpStatus)})` : ''}
+                </div>
+              )}
               <div className="font-medium">{updater.statusMessage}</div>
               {updater.status === 'update-available' && updater.remoteBuiltAt && (
                 <div className="text-[11px] tabular-nums text-[#5B6573]">
@@ -193,6 +348,12 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
               )}
             </div>
           </div>
+
+          {updater.swWarning && (
+            <div className="mr-6 rounded border border-[#E2DDD2] bg-[#FFFFFF]/80 px-2.5 py-1.5 text-[11px] text-[#5B6573]">
+              {updater.swWarning}
+            </div>
+          )}
 
           {updater.status === 'update-available' && updater.remoteNotes.length > 0 && (
             <ul className="mr-6 list-disc space-y-0.5 text-[11px] text-[#263448]">
@@ -243,18 +404,18 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
           </button>
         )}
 
-        {isNativeRuntime && updater.status === 'update-available' && (
+        {isNativeRuntime && updater.status === 'update-available' && nativeDirectAsset && (
           <a
-            href={GITHUB_RELEASES_URL}
-            target="_blank"
+            href={nativeDirectAsset.downloadUrl}
+            download={nativeDirectAsset.name}
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-4 py-2.5 text-xs font-medium text-[#FFFFFF] transition-colors hover:opacity-90 whitespace-nowrap"
           >
             <Download className="h-3.5 w-3.5" />
             <span>
               {runtimePlatform === 'electron'
-                ? 'دانلود نسخه جدید ویندوز (EXE) از Releases'
-                : 'دانلود نسخه جدید اندروید (APK) از Releases'}
+                ? `دانلود مستقیم نسخه جدید ویندوز (${nativeDirectAsset.releaseTag})`
+                : `دانلود مستقیم نسخه جدید اندروید (${nativeDirectAsset.releaseTag})`}
             </span>
           </a>
         )}
@@ -288,7 +449,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
               dir="ltr"
               value={sourceInput}
               onChange={(e) => setSourceInput(e.target.value)}
-              placeholder="https://github.com/username/Daftar-Fani-Golzar-App"
+              placeholder="https://github.com/forog1980-star/Daftar-Fani-Golzar-App"
               className="flex-1 rounded-lg border border-[#D7D2C6] bg-[#FFFFFF] px-3 py-2 text-left text-xs text-[#263448] focus:border-[#243B5A] focus:outline-none"
             />
             <button
@@ -303,11 +464,11 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
             </button>
           </div>
           <p className="text-[11px] leading-5 text-[#788290]">
-            در صورت خالی گذاشتن، به‌صورت خودکار فایل{' '}
+            در صورت خالی گذاشتن، به‌صورت خودکار نشانی{' '}
             <code dir="ltr" className="text-[#263448]">
               {typeof window !== 'undefined' ? resolveVersionManifestUrl(sourceInput) : './version.json'}
             </code>{' '}
-            از سرور گیت‌هاب پیجز بررسی می‌شود.
+            بررسی می‌شود.
           </p>
         </div>
       )}
@@ -317,10 +478,10 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
         <ShieldCheck className="h-4 w-4 shrink-0 text-[#3D6B59]" />
         <span>
           {runtimePlatform === 'electron'
-            ? 'در فرآیند به‌روزرسانی نسخه ویندوز، تمامی پرونده‌ها، بودجه‌ها، تصاویر و پیوست‌ها در پوشه D:\\Daftar-Fani-Golzar کاملاً محفوظ می‌مانند و حذف نمی‌شوند.'
+            ? 'در فرآیند به‌روزرسانی نسخه ویندوز، تمامی پرونده‌ها، صورت‌وضعیت‌ها، بودجه‌ها، تصاویر و پیوست‌ها در پوشه D:\\Daftar-Fani-Golzar کاملاً محفوظ می‌مانند و حذف نمی‌شوند.'
             : runtimePlatform === 'android'
               ? 'در فرآیند نصب نسخه جدید اپلیکیشن اندروید (با همان شناسه بسته)، اطلاعات ذخیره‌شده در حافظه داخلی برنامه محفوظ می‌مانند. تهیه پشتیبان ZIP پیش از ارتقا توصیه می‌شود.'
-              : 'در فرآیند به‌روزرسانی نسخه وب، تمامی پرونده‌ها، بودجه‌ها، تصاویر و پیوست‌های ذخیره‌شده در حافظه محلی مرورگر (IndexedDB) کاملاً محفوظ می‌مانند.'}
+              : 'در فرآیند به‌روزرسانی نسخه وب، تمامی پرونده‌ها، صورت‌وضعیت‌ها، بودجه‌ها، تصاویر و پیوست‌های ذخیره‌شده در حافظه محلی مرورگر (IndexedDB) کاملاً محفوظ می‌مانند.'}
         </span>
       </div>
     </div>

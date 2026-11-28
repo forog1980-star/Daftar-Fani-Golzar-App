@@ -11,6 +11,7 @@ import {
   GolzarImageRecord,
   PaymentRecord,
   Person,
+  ProgressStatement,
   Project,
   ProjectBudget,
   ProjectImageRecord,
@@ -49,6 +50,7 @@ export interface AppStoreState {
   proposals: BudgetProposal[];
   actions: ActionItem[];
   documents: DocumentItem[];
+  progressStatements: ProgressStatement[];
   attachments: AttachmentRecord[];
   people: Person[];
   formTemplates: FormTemplate[];
@@ -70,6 +72,7 @@ export function useAppStore() {
     proposals: [],
     actions: [],
     documents: [],
+    progressStatements: [],
     attachments: [],
     people: [],
     formTemplates: [],
@@ -557,6 +560,73 @@ export function useAppStore() {
     [deviceId, notifySave, refresh, touchLastSaved]
   );
 
+  const saveProgressStatement = useCallback(
+    async (statement: ProgressStatement, isNew: boolean) => {
+      const now = new Date().toISOString();
+      const prev = state.progressStatements.find((s) => s.id === statement.id);
+      const historyEntry = {
+        id: generateId('shist'),
+        timestamp: now,
+        actor: state.settings.deviceName || 'کاربر دفتر فنی',
+        summary: isNew
+          ? `ثبت صورت‌وضعیت شماره ${statement.statementNumber} (${statement.statementType})`
+          : prev && prev.status !== statement.status
+            ? `به‌روزرسانی صورت‌وضعیت شماره ${statement.statementNumber} و تغییر وضعیت از «${prev.status}» به «${statement.status}»`
+            : `ویرایش و تکمیل صورت‌وضعیت شماره ${statement.statementNumber}`,
+        statusBefore: prev?.status,
+        statusAfter: statement.status,
+      };
+      const record: ProgressStatement = {
+        ...statement,
+        history: [...(statement.history ?? []), historyEntry],
+        createdAt: isNew ? now : statement.createdAt,
+        updatedAt: now,
+        updatedByDevice: deviceId,
+      };
+      const ok = await putEntity('progressStatements', record);
+      if (!ok) {
+        notifySave('ذخیره فرم رسیدگی به صورت‌وضعیت ناموفق بود.', false);
+        throw new Error('ProgressStatement save failed');
+      }
+      await addActivity({
+        entityType: 'document',
+        entityId: record.id,
+        action: isNew ? 'ثبت' : 'ویرایش',
+        summary: `${isNew ? 'ثبت' : 'ویرایش'} صورت‌وضعیت شماره ${record.statementNumber} (${record.projectTitle}) — وضعیت: ${record.status}`,
+        deviceId,
+      });
+      await touchLastSaved(now);
+      await refresh();
+      notifySave(
+        isNew
+          ? 'فرم رسیدگی به صورت‌وضعیت با موفقیت ذخیره شد.'
+          : 'تغییرات صورت‌وضعیت با موفقیت ثبت و ذخیره شد.',
+        true
+      );
+      return record;
+    },
+    [deviceId, notifySave, refresh, state.progressStatements, state.settings.deviceName, touchLastSaved]
+  );
+
+  const deleteProgressStatement = useCallback(
+    async (statement: ProgressStatement) => {
+      const ok = await deleteEntity('progressStatements', statement.id);
+      if (!ok) return;
+      const now = new Date().toISOString();
+      await addActivity({
+        entityType: 'document',
+        entityId: statement.id,
+        action: 'حذف',
+        summary: `حذف صورت‌وضعیت شماره ${statement.statementNumber} (${statement.projectTitle})`,
+        deviceId,
+      });
+      await touchLastSaved(now);
+      await refresh();
+      notifySave('صورت‌وضعیت حذف شد.', true);
+    },
+    [deviceId, notifySave, refresh, touchLastSaved]
+  );
+
   const addAttachment = useCallback(
     async (
       file: File,
@@ -806,6 +876,7 @@ export function useAppStore() {
     state.proposals.some((p) => p.isSample) ||
     state.actions.some((a) => a.isSample) ||
     state.documents.some((d) => d.isSample) ||
+    state.progressStatements.some((s) => s.isSample) ||
     state.people.some((p) => p.isSample) ||
     state.formSubmissions.some((s) => s.isSample);
 
@@ -832,6 +903,8 @@ export function useAppStore() {
     deleteAction,
     saveDocument,
     deleteDocument,
+    saveProgressStatement,
+    deleteProgressStatement,
     addAttachment,
     deleteAttachment,
     savePerson,

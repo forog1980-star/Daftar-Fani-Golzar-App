@@ -432,7 +432,7 @@ const ActionEditorWindow: React.FC<{
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || !description.trim() || !registeredDate || !dueDate) return;
     const now = new Date().toISOString();
     await onSave(
       {
@@ -475,9 +475,10 @@ const ActionEditorWindow: React.FC<{
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-[#5B6268]">شرح اقدام</label>
+          <label className="mb-1 block text-xs text-[#5B6268]">شرح اقدام *</label>
           <textarea
             rows={2}
+            required
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"

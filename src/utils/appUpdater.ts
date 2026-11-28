@@ -159,7 +159,7 @@ async function resilientFetchText(
 }
 
 export const LOCAL_APP_VERSION =
-  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.4.1';
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.4.2';
 export const LOCAL_BUILD_ID =
   typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'dev-local';
 

@@ -38,7 +38,7 @@ if (!fs.existsSync(androidGradlePath) || !fs.existsSync(desktopPackagePath)) {
 
 const desktopPackage = JSON.parse(fs.readFileSync(desktopPackagePath, 'utf8'));
 const appVersion = String(desktopPackage.version || '').trim();
-const versionMatch = appVersion.match(/^(\\d+)\\.(\\d+)\\.(\\d+)$/);
+const versionMatch = appVersion.match(/^(\d+)\.(\d+)\.(\d+)$/);
 if (!versionMatch) {
   console.error(`Invalid release version in electron/package.json: ${appVersion}`);
   process.exit(1);
@@ -53,13 +53,13 @@ if (!Number.isSafeInteger(androidVersionCode) || androidVersionCode < 1 || andro
 }
 
 let appGradle = fs.readFileSync(androidGradlePath, 'utf8');
-if (!/versionCode\\s+\\d+/.test(appGradle) || !/versionName\\s+["'][^"']+["']/.test(appGradle)) {
+if (!/versionCode\s+\d+/.test(appGradle) || !/versionName\s+["'][^"']+["']/.test(appGradle)) {
   console.error('Could not locate versionCode/versionName in android/app/build.gradle; refusing to build an APK with an unknown version.');
   process.exit(1);
 }
 appGradle = appGradle
-  .replace(/versionCode\\s+\\d+/, `versionCode ${androidVersionCode}`)
-  .replace(/versionName\\s+["'][^"']+["']/, `versionName "${appVersion}"`);
+  .replace(/versionCode\s+\d+/, `versionCode ${androidVersionCode}`)
+  .replace(/versionName\s+["'][^"']+["']/, `versionName "${appVersion}"`);
 fs.writeFileSync(androidGradlePath, appGradle, 'utf8');
 console.log(`Android package version set to ${appVersion} (versionCode ${androidVersionCode}).`);
 

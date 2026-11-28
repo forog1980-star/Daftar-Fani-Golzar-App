@@ -34,7 +34,6 @@ import {
 import { ReportType } from '../reports/ReportsView';
 import { STATUS_COLORS } from './StatusDonutChart';
 import { StatusChartPanel } from './StatusChartPanel';
-import { GolzarGalleryWidget } from './GolzarGalleryWidget';
 import { getNeutralProjectImage } from '../../utils/officialAssets';
 import { HelpSectionId } from '../help/helpContent';
 import { SectionHelpLink } from '../help/SectionHelpLink';
@@ -78,7 +77,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenHelp,
 }) => {
   const isOnline = useOnlineStatus();
-  const { projects, budgets, actions, activities, golzarImages, projectImages, settings } = store;
+  const { projects, budgets, actions, activities, projectImages, settings } = store;
 
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'همه'>('همه');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -568,22 +567,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         </div>
       </section>
 
-      {/* Mobile-Only Golzar Rotating Showcase (mirrors bottom-right desktop sidebar card on phones) */}
-      <section className="lg:hidden">
-        <GolzarGalleryWidget
-          images={golzarImages}
-          onManageClick={onOpenGolzarManager}
-          variant="card"
-        />
-      </section>
-
-      {/* Row 4: Footer Status Strip — 3 Identical-Height Proportional Cards on Desktop, 3 Stacked Cards on Mobile */}
+      {/* Row 4: Footer Status Strip — Last Backup, Offline Ready, and Recent Changes (last so its expandable drawer attaches directly below it on mobile & desktop) */}
       <footer
         aria-label="نوار وضعیت سامانه"
         className="rounded-2xl border border-[#E5E0D5] bg-[#FFFFFF] p-3 space-y-3"
       >
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-3 items-stretch text-xs">
-          {/* Card 1 (Right): Last Backup */}
+          {/* Card 1: Last Backup */}
           <button
             type="button"
             onClick={() => onNavigate('support')}
@@ -602,11 +592,30 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
           </button>
 
-          {/* Card 2 (Center): Real Recent Changes (toggles full activity log) */}
+          {/* Card 2: Offline Local Storage Indicator */}
+          <div className="flex h-full min-h-[62px] w-full items-center gap-3 rounded-xl border border-[#D4E6D6] bg-[#F3FAF4] px-3.5 py-2.5 text-right">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#DFF0E1] text-[#2E7D32]">
+              <CheckCircle2 className="h-4 w-4" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-semibold text-[#1F5624]">
+                {isOnline ? 'وضعیت آفلاین آماده' : 'حالت آفلاین (بدون اینترنت)'}
+              </div>
+              <div className="mt-0.5 truncate text-xs text-[#3C5A40]">
+                داده‌ها در دستگاه ذخیره شده است
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3 (Last — directly above expandable log): Real Recent Changes */}
           <button
             type="button"
             onClick={() => setShowAllActivities((v) => !v)}
-            className="flex h-full min-h-[62px] w-full items-center justify-between gap-3 rounded-xl border border-[#ECE8DF] bg-[#F8F7F4] px-3.5 py-2.5 text-right transition-colors hover:border-[#243B5A] hover:bg-[#F2EEE6]/70 cursor-pointer"
+            className={`flex h-full min-h-[62px] w-full items-center justify-between gap-3 rounded-xl border px-3.5 py-2.5 text-right transition-colors cursor-pointer ${
+              showAllActivities
+                ? 'border-[#243B5A] bg-[#EEF3F9]'
+                : 'border-[#ECE8DF] bg-[#F8F7F4] hover:border-[#243B5A] hover:bg-[#F2EEE6]/70'
+            }`}
             title={
               latestActivity
                 ? `${formatJalaliDateTime(latestActivity.timestamp)} — ${latestActivity.summary}`
@@ -636,21 +645,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               </span>
             )}
           </button>
-
-          {/* Card 3 (Left): Offline Local Storage Indicator */}
-          <div className="flex h-full min-h-[62px] w-full items-center gap-3 rounded-xl border border-[#D4E6D6] bg-[#F3FAF4] px-3.5 py-2.5 text-right">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#DFF0E1] text-[#2E7D32]">
-              <CheckCircle2 className="h-4 w-4" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="text-[11px] font-semibold text-[#1F5624]">
-                {isOnline ? 'وضعیت آفلاین آماده' : 'حالت آفلاین (بدون اینترنت)'}
-              </div>
-              <div className="mt-0.5 truncate text-xs text-[#3C5A40]">
-                داده‌ها در دستگاه ذخیره شده است
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Expandable Real Recent Changes Log Table */}

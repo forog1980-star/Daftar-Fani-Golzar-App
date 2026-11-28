@@ -36,6 +36,7 @@ import {
 import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
 import { SignatureBlockEditor } from './SignatureBlockEditor';
+import { JalaliDateInput } from '../common/JalaliDateInput';
 
 interface FormBuilderViewProps {
   store: AppStore;
@@ -138,6 +139,8 @@ export const FormBuilderView: React.FC<FormBuilderViewProps> = ({ store }) => {
             notes += `${blk.label}: ${String(val ?? '—')}\n`;
           } else if (blk.fieldType === 'checkbox') {
             summaryRows.push({ label: blk.label, value: val ? 'بله (تأییدشده)' : 'خیر' });
+          } else if (blk.fieldType === 'date') {
+            summaryRows.push({ label: blk.label, value: formatJalaliDate(String(val ?? '')) });
           } else {
             summaryRows.push({ label: blk.label, value: String(val ?? '—') });
           }
@@ -806,11 +809,13 @@ const FormFillerWindow: React.FC<{
           </div>
           <div>
             <label className="mb-1 block text-[11px] text-[#5B6268]">تاریخ</label>
-            <input
-              type="date"
+            <JalaliDateInput
               value={submissionDate}
-              onChange={(e) => setSubmissionDate(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FFFFFF] px-2.5 py-1.5 text-xs"
+              onChange={setSubmissionDate}
+              required
+              compact
+              className="bg-[#FFFFFF]"
+              ariaLabel="تاریخ ثبت فرم شمسی"
             />
           </div>
           <div>
@@ -982,14 +987,19 @@ const FormFillerWindow: React.FC<{
                         </option>
                       ))}
                     </select>
+                  ) : blk.fieldType === 'date' ? (
+                    <JalaliDateInput
+                      required={blk.required}
+                      value={String(val ?? '')}
+                      onChange={(nextIso) => setFieldValue(blk.fieldKey!, nextIso)}
+                      ariaLabel={`${blk.label} (شمسی)`}
+                    />
                   ) : (
                     <input
                       type={
-                        blk.fieldType === 'date'
-                          ? 'date'
-                          : blk.fieldType === 'number' || blk.fieldType === 'currency'
-                            ? 'number'
-                            : 'text'
+                        blk.fieldType === 'number' || blk.fieldType === 'currency'
+                          ? 'number'
+                          : 'text'
                       }
                       required={blk.required}
                       value={String(val ?? '')}

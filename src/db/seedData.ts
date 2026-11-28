@@ -113,7 +113,7 @@ export function createDefaultSettings(): AppSettings {
     id: 'app-settings',
     deviceId: getOrCreateDeviceId(),
     deviceName: getDefaultDeviceName(),
-    appVersion: '1.3.2',
+    appVersion: '1.3.3',
     appearance: { ...DEFAULT_APPEARANCE },
     auth: {
       enabled: false, // Strictly disabled by default per Section 16

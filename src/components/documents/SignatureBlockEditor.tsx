@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Person, SignatureSnapshot } from '../../types';
 import { generateId, todayIsoDate } from '../../utils/format';
+import { JalaliDateInput } from '../common/JalaliDateInput';
 
 interface SignatureBlockEditorProps {
   signatures: SignatureSnapshot[];
@@ -136,11 +137,11 @@ export const SignatureBlockEditor: React.FC<SignatureBlockEditorProps> = ({
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <label className="mb-1 block text-[11px] text-[#5B6268]">تاریخ امضا / اظهارنظر</label>
-                  <input
-                    type="date"
+                  <JalaliDateInput
                     value={sig.signedDate ?? ''}
-                    onChange={(e) => updateSlot(sig.id, { signedDate: e.target.value })}
-                    className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-2.5 py-1.5 text-xs"
+                    onChange={(nextIso) => updateSlot(sig.id, { signedDate: nextIso })}
+                    compact
+                    ariaLabel="تاریخ امضا شمسی"
                   />
                 </div>
                 <div className="sm:col-span-2">

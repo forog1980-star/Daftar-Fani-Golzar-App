@@ -8,6 +8,7 @@ import {
   Edit2,
   FolderOpen,
   Image as ImageIcon,
+  Lightbulb,
   MapPin,
   Paperclip,
   Plus,
@@ -37,6 +38,7 @@ import { SectionHelpLink } from '../help/SectionHelpLink';
 import { BudgetProposalEditor } from './BudgetProposalEditor';
 import { BudgetStatusDonut, buildBudgetReportPayload } from './BudgetStatusDonut';
 import { SectionReportExportBar } from '../layout/SectionReportExportBar';
+import { JalaliDateInput } from '../common/JalaliDateInput';
 
 export type BudgetSubTab = 'credits' | 'payments' | 'proposals';
 
@@ -131,19 +133,6 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
     });
   }, [store.projects, store.budgets, store.payments, store.settings.deviceId]);
 
-  const totals = useMemo(() => {
-    return projectFinancialRows.reduce(
-      (acc, r) => ({
-        approved: acc.approved + r.budget.approvedCredit,
-        allocated: acc.allocated + (r.budget.allocatedCredit || r.budget.fundedCredit || 0),
-        funded: acc.funded + r.budget.fundedCredit,
-        paid: acc.paid + r.paidAmount,
-        remaining: acc.remaining + r.remainingCredit,
-      }),
-      { approved: 0, allocated: 0, funded: 0, paid: 0, remaining: 0 }
-    );
-  }, [projectFinancialRows]);
-
   const openProposalEditor = (prop: BudgetProposal | null) => {
     setProposalEditing(prop);
   };
@@ -220,66 +209,53 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
 
   return (
     <div className="animate-page-in mx-auto max-w-6xl px-4 py-6 sm:px-6 space-y-6">
-      {/* Totals Strip (Ordered: بودجه کل -> تخصیص‌یافته -> هزینه‌شده -> باقیمانده) */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 shadow-[0_2px_8px_rgba(29,50,80,0.04)]">
-          <div className="text-xs text-[#5B6268]">بودجه کل</div>
-          <div className="mt-2 text-base font-semibold tabular-nums text-[#2B3033]">
-            {formatRial(totals.approved)}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 shadow-[0_2px_8px_rgba(29,50,80,0.04)]">
-          <div className="text-xs text-[#5B6268]">تخصیص‌یافته</div>
-          <div className="mt-2 text-base font-semibold tabular-nums text-[#8B6B2E]">
-            {formatRial(totals.allocated)}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 shadow-[0_2px_8px_rgba(29,50,80,0.04)]">
-          <div className="text-xs text-[#5B6268]">هزینه‌شده</div>
-          <div className="mt-2 text-base font-semibold tabular-nums text-[#2D6A4F]">
-            {formatRial(totals.paid)}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 shadow-[0_2px_8px_rgba(29,50,80,0.04)]">
-          <div className="text-xs text-[#5B6268]">باقیمانده</div>
-          <div
-            className={`mt-2 text-base font-semibold tabular-nums ${
-              totals.remaining < 0 ? 'text-[#B43E3E]' : 'text-[#243B5A]'
-            }`}
-          >
-            {formatRial(totals.remaining)}
-          </div>
-        </div>
-      </div>
-
-      {/* Interactive Budget Status Donut (Uncluttered Header; Exports Moved to Bottom of Page) */}
+      {/* Interactive Budget Status Donut (includes all 4 budget summary figures interactively) */}
       <BudgetStatusDonut
         rows={projectFinancialRows}
         scopeProjectId={donutScopeProjectId}
         onScopeChange={setDonutScopeProjectId}
       />
 
-      {/* Sub-navigation */}
+      {/* Sub-navigation — Next-Year Budget Proposal stands out with an independent visual identity */}
       <div className="flex flex-col gap-3 rounded-2xl border border-[#E2DDD0] bg-[#FFFFFF] p-3.5 shadow-[0_2px_8px_rgba(29,50,80,0.04)] lg:flex-row lg:items-center lg:justify-between">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap">
-          {[
-            { key: 'credits' as const, label: 'وضعیت اعتبارات پروژه‌ها' },
-            { key: 'payments' as const, label: `سوابق پرداخت‌ها (${toPersianDigits(store.payments.length)})` },
-            { key: 'proposals' as const, label: `پیشنهاد بودجه سال آینده (${toPersianDigits(store.proposals.length)})` },
-          ].map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => handleSelectSubTab(t.key)}
-              className={`inline-flex h-9 items-center justify-center rounded-xl px-3.5 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
-                subTab === t.key
-                  ? 'border border-[#243B5A] bg-[#E5EBF2] text-[#243B5A]'
-                  : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#5B6268] hover:bg-[#F3EFE6]'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:flex lg:flex-wrap lg:items-center">
+          <button
+            type="button"
+            onClick={() => handleSelectSubTab('credits')}
+            className={`inline-flex h-10 items-center justify-center rounded-xl px-4 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              subTab === 'credits'
+                ? 'border border-[#243B5A] bg-[#E5EBF2] font-semibold text-[#243B5A]'
+                : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#5B6268] hover:bg-[#F3EFE6]'
+            }`}
+          >
+            وضعیت اعتبارات پروژه‌ها
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleSelectSubTab('payments')}
+            className={`inline-flex h-10 items-center justify-center rounded-xl px-4 text-xs font-medium transition-colors cursor-pointer whitespace-nowrap ${
+              subTab === 'payments'
+                ? 'border border-[#243B5A] bg-[#E5EBF2] font-semibold text-[#243B5A]'
+                : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#5B6268] hover:bg-[#F3EFE6]'
+            }`}
+          >
+            سوابق پرداخت‌ها ({toPersianDigits(store.payments.length)})
+          </button>
+
+          {/* Distinct, Prominent Independent Tab for Next-Year Budget Proposal */}
+          <button
+            type="button"
+            onClick={() => handleSelectSubTab('proposals')}
+            className={`inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+              subTab === 'proposals'
+                ? 'border-2 border-[#B38834] bg-[#B38834] text-[#FFFFFF] shadow-[0_3px_10px_rgba(179,136,52,0.28)]'
+                : 'border-2 border-[#D4B46A] bg-[#FDF6E3] text-[#785616] hover:border-[#B38834] hover:bg-[#F8ECC9]'
+            }`}
+          >
+            <Lightbulb className="h-4 w-4 shrink-0" />
+            <span>پیشنهاد بودجه سال آینده ({toPersianDigits(store.proposals.length)})</span>
+          </button>
         </div>
 
         <div className="flex items-center justify-end gap-2 shrink-0">
@@ -290,7 +266,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
                 setPayProjectId(store.projects[0]?.id ?? '');
                 setPaymentModalOpen(true);
               }}
-              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:flex-initial"
+              className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:flex-initial"
             >
               <Plus className="h-3.5 w-3.5 shrink-0" />
               <span>ثبت پرداخت جدید</span>
@@ -300,9 +276,9 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
             <button
               type="button"
               onClick={() => openProposalEditor(null)}
-              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-4 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap lg:flex-initial"
+              className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-[#967023] bg-[#B38834] px-4 text-xs font-semibold text-[#FFFFFF] hover:bg-[#967023] cursor-pointer whitespace-nowrap lg:flex-initial"
             >
-              <Plus className="h-3.5 w-3.5 shrink-0" />
+              <Plus className="h-4 w-4 shrink-0" />
               <span>ثبت پیشنهاد بودجه سال آینده</span>
             </button>
           )}
@@ -894,11 +870,11 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
               </div>
               <div>
                 <label className="mb-1 block text-xs text-[#5B6268]">تاریخ پرداخت</label>
-                <input
-                  type="date"
+                <JalaliDateInput
                   value={payDate}
-                  onChange={(e) => setPayDate(e.target.value)}
-                  className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
+                  onChange={setPayDate}
+                  required
+                  ariaLabel="تاریخ پرداخت شمسی"
                 />
               </div>
             </div>

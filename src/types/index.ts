@@ -178,6 +178,7 @@ export interface ActionItem {
   completedDate?: string;
   followUpResult: string;
   notes: string;
+  attachmentIds?: string[];
   isSample?: boolean;
   createdAt: string;
   updatedAt: string;
@@ -220,6 +221,7 @@ export interface AttachmentRecord {
   data: Blob;
   projectId?: string;
   documentId?: string;
+  actionId?: string;
   createdAt: string;
   updatedAt: string;
   updatedByDevice: string;
@@ -443,6 +445,7 @@ export interface SyncPackage {
     size: number;
     projectId?: string;
     documentId?: string;
+    actionId?: string;
     createdAt: string;
     updatedAt: string;
     updatedByDevice: string;

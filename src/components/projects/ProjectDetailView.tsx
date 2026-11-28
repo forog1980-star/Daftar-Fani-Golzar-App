@@ -34,6 +34,7 @@ import { FloatingWindow } from '../layout/FloatingWindow';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
 import { exportToWordDocx } from '../../utils/exportEngine';
 import { getNeutralProjectImage } from '../../utils/officialAssets';
+import { JalaliDateInput } from '../common/JalaliDateInput';
 
 export type ProjectDetailTab =
   | 'overview'
@@ -653,13 +654,15 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                               <option value="انجام‌شده">انجام‌شده</option>
                             </select>
                           </td>
-                          <td className="px-3 py-3">
-                            <input
-                              type="date"
+                          <td className="px-3 py-3 min-w-[155px]">
+                            <JalaliDateInput
                               disabled={!st.enabled}
                               value={st.completedDate ?? ''}
-                              onChange={(e) => updateStage(st.id, { completedDate: e.target.value })}
-                              className="w-full rounded border border-[#CEC8BA] bg-[#FAF8F3] px-2 py-1 text-xs text-[#263448] disabled:opacity-50"
+                              onChange={(val) => updateStage(st.id, { completedDate: val })}
+                              compact
+                              className="rounded border-[#CEC8BA]"
+                              placeholder="تاریخ انجام"
+                              ariaLabel={`تاریخ انجام مرحله ${st.title}`}
                             />
                           </td>
                           <td className="px-3 py-3">
@@ -844,11 +847,12 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
               </div>
               <div>
                 <label className="mb-1 block text-xs text-[#5B6573]">تاریخ</label>
-                <input
-                  type="date"
+                <JalaliDateInput
                   value={docDate}
-                  onChange={(e) => setDocDate(e.target.value)}
-                  className="w-full rounded border border-[#CEC8BA] bg-[#FAF8F3] px-3 py-2 text-sm"
+                  onChange={setDocDate}
+                  required
+                  className="rounded border-[#CEC8BA]"
+                  ariaLabel="تاریخ سند شمسی"
                 />
               </div>
             </div>
@@ -919,11 +923,12 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="mb-1 block text-xs text-[#5B6573]">مهلت انجام</label>
-                <input
-                  type="date"
+                <JalaliDateInput
                   value={actDue}
-                  onChange={(e) => setActDue(e.target.value)}
-                  className="w-full rounded border border-[#CEC8BA] bg-[#FAF8F3] px-3 py-2 text-sm"
+                  onChange={setActDue}
+                  required
+                  className="rounded border-[#CEC8BA]"
+                  ariaLabel="مهلت انجام شمسی"
                 />
               </div>
               <div>

@@ -1,3 +1,9 @@
+import {
+  jalaliPartsToString,
+  parseAnyDateToJalaliParts,
+  parseAnyDateToLocalDate,
+} from './jalali';
+
 export function generateId(prefix = 'rec'): string {
   const random = Math.random().toString(36).slice(2, 8);
   return `${prefix}_${Date.now().toString(36)}_${random}`;
@@ -30,39 +36,27 @@ export function todayIsoDate(): string {
 }
 
 export function formatJalaliDate(iso?: string): string {
-  if (!iso) return '—';
-  // If user already entered a Persian date string like 1405/08/12, keep it clean
-  if (/^1[34]\d{2}[/-]\d{1,2}[/-]\d{1,2}$/.test(iso.trim())) {
-    return toPersianDigits(iso.trim());
+  if (!iso || !iso.trim()) return '—';
+  const parts = parseAnyDateToJalaliParts(iso);
+  if (parts) {
+    return toPersianDigits(jalaliPartsToString(parts));
   }
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return toPersianDigits(iso);
-  try {
-    return new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(date);
-  } catch {
-    return iso.slice(0, 10);
-  }
+  return toPersianDigits(iso);
 }
 
 export function formatJalaliDateTime(iso?: string): string {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  try {
-    return new Intl.DateTimeFormat('fa-IR-u-ca-persian', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(date);
-  } catch {
-    return iso;
+  if (!iso || !iso.trim()) return '—';
+  const parts = parseAnyDateToJalaliParts(iso);
+  const d = new Date(iso);
+  if (parts && !Number.isNaN(d.getTime())) {
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    return toPersianDigits(`${jalaliPartsToString(parts)}، ${hh}:${mm}`);
   }
+  if (parts) {
+    return toPersianDigits(jalaliPartsToString(parts));
+  }
+  return toPersianDigits(iso);
 }
 
 export function toPersianDigits(value: string | number): string {
@@ -99,11 +93,11 @@ export function formatFileSize(bytes: number): string {
 
 export function daysUntil(isoDate?: string): number | null {
   if (!isoDate) return null;
-  const target = new Date(isoDate);
-  if (Number.isNaN(target.getTime())) return null;
+  const target = parseAnyDateToLocalDate(isoDate);
+  if (!target) return null;
   const now = new Date();
   const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startTarget = new Date(target.getFullYear(), target.getMonth(), target.getDate()).getTime();
+  const startTarget = target.getTime();
   return Math.round((startTarget - startToday) / (1000 * 60 * 60 * 24));
 }
 

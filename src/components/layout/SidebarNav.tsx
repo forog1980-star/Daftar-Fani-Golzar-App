@@ -84,8 +84,8 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     };
   }, [mobileOpen, onCloseMobile]);
   const renderMenuContent = (includeGallery: boolean) => (
-    <div className="flex h-full flex-col justify-between gap-4">
-      <nav className="space-y-1" aria-label="منوی اصلی نرم‌افزار">
+    <div className="flex h-full flex-col justify-between gap-3">
+      <nav className="space-y-0.5" aria-label="منوی اصلی نرم‌افزار">
         {MENU_ITEMS.map((item) => {
           const Icon = item.icon;
           const isExit = item.route === 'exit';
@@ -117,7 +117,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                     );
                   }
                 }}
-                className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-right text-sm transition-colors cursor-pointer ${
+                className={`flex w-full items-center gap-3 rounded-xl px-3.5 py-2 text-right text-sm leading-7 transition-colors cursor-pointer ${
                   isExit
                     ? 'text-[#243B5A] hover:bg-[#FBF1F1] hover:text-[#9E3B3B]'
                     : isActive
@@ -134,7 +134,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                         : 'text-[#2F4A6F]'
                   }`}
                 />
-                <span className="truncate">{item.label}</span>
+                <span className="whitespace-nowrap py-0.5 leading-7">{item.label}</span>
               </button>
             </div>
           );
@@ -143,7 +143,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
 
       {/* Golzar Shohada Rotating Image Card in bottom of right sidebar */}
       {includeGallery && (
-        <div className="mt-auto pt-2">
+        <div className="mt-auto pt-1.5">
           <GolzarGalleryWidget
             images={golzarImages}
             onManageClick={onOpenGolzarManager}

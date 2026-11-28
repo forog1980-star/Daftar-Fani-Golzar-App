@@ -3,6 +3,7 @@ import { Project, ProjectStatus } from '../../types';
 import { buildStagesForProjectType } from '../../db/seedData';
 import { generateId, todayIsoDate } from '../../utils/format';
 import { FloatingWindow } from '../layout/FloatingWindow';
+import { JalaliDateInput } from '../common/JalaliDateInput';
 
 interface ProjectFormModalProps {
   initial?: Project | null;
@@ -244,11 +245,10 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-[#5B6268]">تاریخ قرارداد</label>
-              <input
-                type="date"
+              <JalaliDateInput
                 value={contractDate}
-                onChange={(e) => setContractDate(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
+                onChange={setContractDate}
+                ariaLabel="تاریخ قرارداد شمسی"
               />
             </div>
             <div>
@@ -278,11 +278,10 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-[#5B6268]">تاریخ ابلاغ</label>
-              <input
-                type="date"
+              <JalaliDateInput
                 value={notificationDate}
-                onChange={(e) => setNotificationDate(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
+                onChange={setNotificationDate}
+                ariaLabel="تاریخ ابلاغ شمسی"
               />
             </div>
           </div>
@@ -308,11 +307,10 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               <label className="mb-1 block text-xs font-medium text-[#5B6268]">
                 تاریخ دستور مدیرعامل
               </label>
-              <input
-                type="date"
+              <JalaliDateInput
                 value={ceoOrderDate}
-                onChange={(e) => setCeoOrderDate(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033] focus:border-[#243B5A] focus:outline-none"
+                onChange={setCeoOrderDate}
+                ariaLabel="تاریخ دستور مدیرعامل شمسی"
               />
             </div>
             <div>

@@ -22,9 +22,10 @@ import {
   ProposalPriority,
   ProposalStatus,
 } from '../../types';
-import { formatFileSize, formatJalaliDate, formatRial, generateId, toPersianDigits } from '../../utils/format';
+import { formatFileSize, formatRial, generateId, toPersianDigits } from '../../utils/format';
 import { compressImageFile } from '../../utils/imageMedia';
 import { FloatingWindow } from '../layout/FloatingWindow';
+import { JalaliDateInput } from '../common/JalaliDateInput';
 
 interface BudgetProposalEditorProps {
   initial: BudgetProposal | null;
@@ -516,33 +517,27 @@ export const BudgetProposalEditor: React.FC<BudgetProposalEditorProps> = ({
             <div>
               <label className="mb-1 block text-xs text-[#5B6268]">
                 تاریخ شروع پیش‌بینی‌شده
-                {startDate && (
-                  <span className="mr-1.5 text-[11px] text-[#243B5A]">
-                    ({formatJalaliDate(startDate)})
-                  </span>
-                )}
               </label>
-              <input
-                type="date"
+              <JalaliDateInput
                 value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full rounded-lg border border-[#CEC7B6] bg-[#FFFFFF] px-3 py-2 text-xs text-[#263448]"
+                onChange={setStartDate}
+                placeholder="انتخاب تاریخ شروع (شمسی)"
+                className="rounded-lg bg-[#FFFFFF]"
+                compact
+                ariaLabel="تاریخ شروع پیش‌بینی‌شده شمسی"
               />
             </div>
             <div>
               <label className="mb-1 block text-xs text-[#5B6268]">
                 تاریخ پایان پیش‌بینی‌شده
-                {endDate && (
-                  <span className="mr-1.5 text-[11px] text-[#243B5A]">
-                    ({formatJalaliDate(endDate)})
-                  </span>
-                )}
               </label>
-              <input
-                type="date"
+              <JalaliDateInput
                 value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full rounded-lg border border-[#CEC7B6] bg-[#FFFFFF] px-3 py-2 text-xs text-[#263448]"
+                onChange={setEndDate}
+                placeholder="انتخاب تاریخ پایان (شمسی)"
+                className="rounded-lg bg-[#FFFFFF]"
+                compact
+                ariaLabel="تاریخ پایان پیش‌بینی‌شده شمسی"
               />
             </div>
           </div>

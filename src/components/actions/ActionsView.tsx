@@ -1,8 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import { Check, Edit2, Plus, Search, Trash2 } from 'lucide-react';
-import { ActionItem, ActionPriority, ActionStatus } from '../../types';
+import {
+  Check,
+  Download,
+  Edit2,
+  Paperclip,
+  Plus,
+  Search,
+  Trash2,
+  Upload,
+} from 'lucide-react';
+import { ActionItem, ActionPriority, ActionStatus, AttachmentRecord } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
 import {
+  formatFileSize,
   formatJalaliDate,
   generateId,
   isOverdue,
@@ -15,6 +25,7 @@ import { ConfirmDialog } from '../layout/ConfirmDialog';
 import { SectionReportExportBar } from '../layout/SectionReportExportBar';
 import { HelpSectionId } from '../help/helpContent';
 import { SectionHelpLink } from '../help/SectionHelpLink';
+import { JalaliDateInput } from '../common/JalaliDateInput';
 
 interface ActionsViewProps {
   store: AppStore;
@@ -38,6 +49,24 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
     () => new Map(store.projects.map((p) => [p.id, p.code])),
     [store.projects]
   );
+
+  const getActionAttachments = (act: ActionItem): AttachmentRecord[] => {
+    const idSet = new Set(act.attachmentIds ?? []);
+    return store.attachments.filter((att) => att.actionId === act.id || idSet.has(att.id));
+  };
+
+  const downloadAttachment = (att: AttachmentRecord) => {
+    const url = URL.createObjectURL(att.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = att.fileName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 250);
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -145,13 +174,14 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
                 <th className="px-4 py-3 font-medium">پروژه مرتبط</th>
                 <th className="px-4 py-3 font-medium">ثبت / مهلت</th>
                 <th className="px-4 py-3 font-medium">اولویت و وضعیت</th>
-                <th className="px-4 py-3 font-medium">نتیجه پیگیری</th>
+                <th className="px-4 py-3 font-medium">نتیجه پیگیری و پیوست</th>
                 <th className="px-4 py-3 font-medium">عملیات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#ECE7DA]">
               {filtered.map((act) => {
                 const overdue = act.status === 'عقب‌افتاده' || isOverdue(act.dueDate, act.status);
+                const linkedFiles = getActionAttachments(act);
                 return (
                   <tr key={act.id} className="hover:bg-[#FAF8F3]">
                     <td className="px-4 py-3">
@@ -190,8 +220,24 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
                         {overdue && act.status !== 'تکمیل‌شده' ? 'عقب‌افتاده' : act.status}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-xs text-[#5B6268] max-w-[240px]">
-                      {act.followUpResult || '—'}
+                    <td className="px-4 py-3 text-xs text-[#5B6268] max-w-[260px]">
+                      <div>{act.followUpResult || '—'}</div>
+                      {linkedFiles.length > 0 && (
+                        <div className="mt-1.5 flex flex-wrap gap-1.5">
+                          {linkedFiles.map((att) => (
+                            <button
+                              key={att.id}
+                              type="button"
+                              onClick={() => downloadAttachment(att)}
+                              className="inline-flex max-w-[200px] items-center gap-1 rounded border border-[#D4CEBF] bg-[#FAF8F3] px-2 py-0.5 text-[11px] text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+                              title={`دریافت ${att.fileName}`}
+                            >
+                              <Paperclip className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{att.fileName}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
@@ -296,6 +342,7 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
       {editing !== undefined && (
         <ActionEditorWindow
           initial={editing}
+          store={store}
           projects={store.projects.map((p) => ({ id: p.id, title: p.title, code: p.code }))}
           deviceId={store.settings.deviceId}
           onClose={() => setEditing(undefined)}
@@ -326,12 +373,14 @@ export const ActionsView: React.FC<ActionsViewProps> = ({ store, onOpenHelp }) =
 
 const ActionEditorWindow: React.FC<{
   initial: ActionItem | null;
+  store: AppStore;
   projects: Array<{ id: string; title: string; code: string }>;
   deviceId: string;
   onSave: (item: ActionItem, isNew: boolean) => Promise<void>;
   onClose: () => void;
-}> = ({ initial, projects, deviceId, onSave, onClose }) => {
+}> = ({ initial, store, projects, deviceId, onSave, onClose }) => {
   const isNew = !initial;
+  const actionId = useMemo(() => initial?.id ?? generateId('act'), [initial]);
   const [title, setTitle] = useState(initial?.title ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [projectId, setProjectId] = useState(initial?.projectId ?? '');
@@ -342,6 +391,44 @@ const ActionEditorWindow: React.FC<{
   const [completedDate, setCompletedDate] = useState(initial?.completedDate ?? '');
   const [followUpResult, setFollowUpResult] = useState(initial?.followUpResult ?? '');
   const [notes, setNotes] = useState(initial?.notes ?? '');
+  const [attachmentIds, setAttachmentIds] = useState<string[]>(initial?.attachmentIds ?? []);
+
+  const linkedAttachments = store.attachments.filter(
+    (a) => a.actionId === actionId || attachmentIds.includes(a.id)
+  );
+
+  const handleFileAdd = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const addedIds: string[] = [];
+    for (const file of Array.from(files)) {
+      const rec = await store.addAttachment(file, {
+        actionId,
+        projectId: projectId || undefined,
+      });
+      addedIds.push(rec.id);
+    }
+    setAttachmentIds((prev) => Array.from(new Set([...prev, ...addedIds])));
+    e.target.value = '';
+  };
+
+  const handleRemoveAttachment = async (att: AttachmentRecord) => {
+    await store.deleteAttachment(att);
+    setAttachmentIds((prev) => prev.filter((id) => id !== att.id));
+  };
+
+  const handleDownloadAttachment = (att: AttachmentRecord) => {
+    const url = URL.createObjectURL(att.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = att.fileName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 250);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -349,7 +436,7 @@ const ActionEditorWindow: React.FC<{
     const now = new Date().toISOString();
     await onSave(
       {
-        id: initial?.id ?? generateId('act'),
+        id: actionId,
         title: title.trim(),
         description: description.trim(),
         projectId: projectId || undefined,
@@ -360,6 +447,7 @@ const ActionEditorWindow: React.FC<{
         completedDate: status === 'تکمیل‌شده' ? completedDate || todayIsoDate() : completedDate || undefined,
         followUpResult: followUpResult.trim(),
         notes: notes.trim(),
+        attachmentIds,
         isSample: false,
         createdAt: initial?.createdAt ?? now,
         updatedAt: now,
@@ -373,7 +461,7 @@ const ActionEditorWindow: React.FC<{
     <FloatingWindow
       title={isNew ? 'ثبت اقدام و پیگیری جدید' : `ویرایش اقدام: ${initial?.title}`}
       onClose={onClose}
-      width={660}
+      width={680}
     >
       <form onSubmit={handleSubmit} className="space-y-3.5">
         <div>
@@ -427,20 +515,20 @@ const ActionEditorWindow: React.FC<{
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <label className="mb-1 block text-xs text-[#5B6268]">تاریخ ثبت</label>
-            <input
-              type="date"
+            <JalaliDateInput
               value={registeredDate}
-              onChange={(e) => setRegisteredDate(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
+              onChange={setRegisteredDate}
+              required
+              ariaLabel="تاریخ ثبت شمسی"
             />
           </div>
           <div>
             <label className="mb-1 block text-xs text-[#5B6268]">مهلت انجام</label>
-            <input
-              type="date"
+            <JalaliDateInput
               value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
+              onChange={setDueDate}
+              required
+              ariaLabel="مهلت انجام شمسی"
             />
           </div>
           <div>
@@ -461,11 +549,11 @@ const ActionEditorWindow: React.FC<{
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs text-[#5B6268]">تاریخ انجام</label>
-            <input
-              type="date"
+            <JalaliDateInput
               value={completedDate}
-              onChange={(e) => setCompletedDate(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
+              onChange={setCompletedDate}
+              placeholder="انتخاب تاریخ انجام (شمسی)"
+              ariaLabel="تاریخ انجام شمسی"
             />
           </div>
           <div>
@@ -487,17 +575,74 @@ const ActionEditorWindow: React.FC<{
             className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
           />
         </div>
+
+        {/* Universal Attachment Section — accepts any file type */}
+        <div className="rounded-xl border border-[#E2DDD0] bg-[#FAF8F3] p-3.5 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-[#2B3033]">
+              <Paperclip className="h-3.5 w-3.5 text-[#243B5A]" />
+              <span>الحاق پیوست</span>
+            </span>
+            <label className="inline-flex items-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#FFFFFF] px-3 py-1.5 text-xs font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer">
+              <Upload className="h-3.5 w-3.5" />
+              <span>الحاق پیوست</span>
+              <input
+                type="file"
+                multiple
+                onChange={handleFileAdd}
+                className="hidden"
+              />
+            </label>
+          </div>
+
+          {linkedAttachments.length > 0 && (
+            <div className="divide-y divide-[#ECE7DA] rounded-lg border border-[#E2DDD0] bg-[#FFFFFF]">
+              {linkedAttachments.map((att) => (
+                <div
+                  key={att.id}
+                  className="flex items-center justify-between gap-2 px-3 py-2 text-xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-[#263448]">{att.fileName}</div>
+                    <div className="text-[11px] text-[#788290]">
+                      {formatFileSize(att.size)} · {formatJalaliDate(att.createdAt)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadAttachment(att)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded border border-[#D4CEBF] text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+                      title="دریافت فایل"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveAttachment(att)}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded border border-[#D4CEBF] text-[#5B6268] hover:border-[#B43E3E] hover:text-[#B43E3E] cursor-pointer"
+                      title="حذف پیوست"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
             onClick={onClose}
-            className="border border-[#CEC7B6] px-4 py-2 text-xs"
+            className="border border-[#CEC7B6] px-4 py-2 text-xs cursor-pointer"
           >
             انصراف
           </button>
           <button
             type="submit"
-            className="border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3]"
+            className="border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3] cursor-pointer"
           >
             {isNew ? 'ثبت اقدام' : 'ذخیره تغییرات'}
           </button>

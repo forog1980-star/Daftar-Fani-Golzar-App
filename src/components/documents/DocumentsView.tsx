@@ -24,6 +24,7 @@ import { SectionReportExportBar } from '../layout/SectionReportExportBar';
 import { FormBuilderView } from './FormBuilderView';
 import { HelpSectionId } from '../help/helpContent';
 import { SectionHelpLink } from '../help/SectionHelpLink';
+import { JalaliDateInput } from '../common/JalaliDateInput';
 
 export type DocumentsSectionTab = 'archive' | 'forms';
 
@@ -508,11 +509,11 @@ const DocumentEditorWindow: React.FC<{
           </div>
           <div>
             <label className="mb-1 block text-xs text-[#5B6268]">تاریخ</label>
-            <input
-              type="date"
+            <JalaliDateInput
               value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
+              onChange={setDate}
+              required
+              ariaLabel="تاریخ سند یا مکاتبه شمسی"
             />
           </div>
         </div>

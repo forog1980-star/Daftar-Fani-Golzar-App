@@ -555,7 +555,10 @@ export function useAppStore() {
   );
 
   const addAttachment = useCallback(
-    async (file: File, refs: { projectId?: string; documentId?: string }): Promise<AttachmentRecord> => {
+    async (
+      file: File,
+      refs: { projectId?: string; documentId?: string; actionId?: string }
+    ): Promise<AttachmentRecord> => {
       const now = new Date().toISOString();
       const record: AttachmentRecord = {
         id: generateId('att'),
@@ -565,6 +568,7 @@ export function useAppStore() {
         data: file,
         projectId: refs.projectId,
         documentId: refs.documentId,
+        actionId: refs.actionId,
         createdAt: now,
         updatedAt: now,
         updatedByDevice: deviceId,

@@ -224,17 +224,23 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
   let remoteBuildId: string | null = null;
   let remoteBuiltAt: string | null = null;
   let remoteNotes: string[] = [];
+  let attemptedManifestUrl = 'نشانی فایل version.json تعیین نشد';
 
   try {
-    // 1. Trigger browser Service Worker check against the hosted GitHub Pages deployment
+    // 1. Check the Service Worker independently; a SW error must not block manifest diagnostics.
+    let serviceWorkerCheckError: string | null = null;
     if ('serviceWorker' in navigator) {
-      const reg = swRegistration ?? (await navigator.serviceWorker.getRegistration());
-      if (reg) {
-        swRegistration = reg;
-        await reg.update();
-        if (reg.waiting || reg.installing) {
-          foundUpdate = true;
+      try {
+        const reg = swRegistration ?? (await navigator.serviceWorker.getRegistration());
+        if (reg) {
+          swRegistration = reg;
+          await reg.update();
+          if (reg.waiting || reg.installing) {
+            foundUpdate = true;
+          }
         }
+      } catch (error) {
+        serviceWorkerCheckError = error instanceof Error ? error.message : String(error);
       }
     }
 
@@ -244,8 +250,9 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
     );
     const fetchUrl = new URL(baseManifestUrl);
     fetchUrl.searchParams.set('t', String(Date.now()));
+    attemptedManifestUrl = fetchUrl.toString();
 
-    const res = await fetch(fetchUrl.toString(), {
+    const res = await fetch(attemptedManifestUrl, {
       cache: 'no-store',
     });
 
@@ -297,15 +304,20 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
         remoteNotes,
         lastCheckedAt: nowIso,
         status: 'up-to-date',
-        statusMessage: `فایل version.json بررسی شد؛ نرم‌افزار هم‌اکنون روی آخرین نسخه (${remoteVersion ?? LOCAL_APP_VERSION}) قرار دارد.`,
+        statusMessage: serviceWorkerCheckError
+          ? `فایل version.json بررسی شد، اما بررسی Service Worker ناموفق بود: ${serviceWorkerCheckError}`
+          : `فایل version.json بررسی شد؛ نرم‌افزار هم‌اکنون روی آخرین نسخه (${remoteVersion ?? LOCAL_APP_VERSION}) قرار دارد.`,
       });
     }
-  } catch {
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    const failedUrl =
+      typeof attemptedManifestUrl === 'string' ? attemptedManifestUrl : 'نشانی فایل version.json تعیین نشد';
     emit({
       lastCheckedAt: nowIso,
       status: 'error',
       statusMessage:
-        'دریافت فایل version.json از گیت‌هاب ناموفق بود. لطفاً اتصال اینترنت یا نشانی مخزن را بررسی کرده و دوباره تلاش کنید.',
+        `بررسی به‌روزرسانی ناموفق بود. نشانی: ${failedUrl} | علت: ${reason}`,
     });
   }
 

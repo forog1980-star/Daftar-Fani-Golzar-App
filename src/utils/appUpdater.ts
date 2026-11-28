@@ -536,7 +536,11 @@ function isValidDirectAssetUrl(url: unknown): url is string {
   if (typeof url !== 'string') return false;
   try {
     const parsed = new URL(url);
-    return parsed.protocol === 'https:' && parsed.hostname.endsWith('github.com');
+    return (
+      parsed.protocol === 'https:' &&
+      parsed.hostname === 'github.com' &&
+      parsed.pathname.toLowerCase().includes('/releases/download/')
+    );
   } catch {
     return false;
   }
@@ -713,7 +717,8 @@ export function extractVerifiedInstallersFromReleases(
  * Read-only, never fabricates download URLs, never leaks sensitive paths.
  */
 export async function checkVerifiedReleaseInstallers(
-  overrideUrl?: string
+  overrideUrl?: string,
+  expectedVersion?: string
 ): Promise<VerifiedReleaseInstallers> {
   const sourceUrl = overrideUrl !== undefined ? overrideUrl : currentState.versionSourceUrl;
   const { owner, repo } = extractRepoFromSourceUrl(sourceUrl);
@@ -797,7 +802,22 @@ export async function checkVerifiedReleaseInstallers(
 
   try {
     const payload = JSON.parse(fetchRes.bodyText) as unknown;
-    const parsed = extractVerifiedInstallersFromReleases(payload, repoFullName, nowIso);
+    let parsed = extractVerifiedInstallersFromReleases(payload, repoFullName, nowIso);
+    const normalizedExpected = expectedVersion?.trim().replace(/^v/i, '');
+    const normalizedRelease = parsed.releaseTag?.trim().replace(/^v/i, '');
+    if (
+      normalizedExpected &&
+      normalizedRelease &&
+      normalizedExpected !== normalizedRelease
+    ) {
+      parsed = {
+        ...parsed,
+        status: 'no-release',
+        windowsExe: null,
+        androidApk: null,
+        message: `فایل‌های نصبی Release موجود با نسخه اعلام‌شده برنامه (${expectedVersion}) یکسان نیستند؛ برای جلوگیری از نصب نسخه قدیمی، لینک دانلود فعال نشد.`,
+      };
+    }
     emit({ releaseInstallers: parsed });
     return parsed;
   } catch {
@@ -861,9 +881,6 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
   if (typeof window !== 'undefined') {
     window.localStorage.setItem(LAST_CHECK_KEY, nowIso);
   }
-
-  // Trigger read-only Releases check in parallel (never blocks version.json result)
-  void checkVerifiedReleaseInstallers(rawSource);
 
   let foundUpdate = false;
   let swWarning: string | null = null;
@@ -987,6 +1004,8 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
   }
 
   const remoteVersion = (parsedData.version || LOCAL_APP_VERSION).trim();
+  // Only expose installer assets whose release tag matches the version manifest.
+  void checkVerifiedReleaseInstallers(rawSource, remoteVersion);
   const remoteBuildId = typeof parsedData.buildId === 'string' ? parsedData.buildId.trim() : null;
   const remoteBuiltAt = typeof parsedData.builtAt === 'string' ? parsedData.builtAt.trim() : null;
   const rawNotes = Array.isArray(parsedData.notes)

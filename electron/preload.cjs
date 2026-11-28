@@ -11,4 +11,5 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   relocateStorage: (payload) => ipcRenderer.invoke('desktop:relocate-storage', payload),
   relaunchApp: () => ipcRenderer.invoke('desktop:relaunch'),
   appendLog: (level, message) => ipcRenderer.invoke('desktop:log', { level, message }),
+  fetchJson: (url) => ipcRenderer.invoke('desktop:fetch-json', url),
 });

@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { OFFICIAL_GOLZAR_LOGO } from '../../utils/officialAssets';
+import { isNativeInstalledRuntime } from '../../utils/platformBridge';
 
 interface SplashIntroProps {
   logoUrl?: string;
@@ -7,19 +8,30 @@ interface SplashIntroProps {
 }
 
 export const SplashIntro: React.FC<SplashIntroProps> = ({ logoUrl, onComplete }) => {
+  const isNative = isNativeInstalledRuntime();
+  const durationMs = isNative ? 1600 : 3200;
+
   useEffect(() => {
     const timer = setTimeout(() => {
       onComplete();
-    }, 6450);
+    }, durationMs);
     return () => clearTimeout(timer);
-  }, [onComplete]);
+  }, [durationMs, onComplete]);
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[#FAF8F3] px-6"
-      aria-label="صفحه آغازین دفتر فنی اداره گلزار شهدا"
+      role="button"
+      tabIndex={0}
+      onClick={onComplete}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') onComplete();
+      }}
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#FAF8F3] px-6 cursor-pointer"
+      aria-label="صفحه آغازین دفتر فنی اداره گلزار شهدا — برای ورود فوری لمس یا کلیک کنید"
     >
-      <div className="animate-splash-logo flex flex-col items-center justify-center select-none">
+      <div
+        className={`${isNative ? 'animate-splash-logo-fast' : 'animate-splash-logo'} flex flex-col items-center justify-center select-none`}
+      >
         <img
           src={logoUrl || OFFICIAL_GOLZAR_LOGO}
           alt="آرم رسمی گلزار شهدای تهران"

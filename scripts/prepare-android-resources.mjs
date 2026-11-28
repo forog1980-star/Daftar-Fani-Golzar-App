@@ -54,13 +54,19 @@ if (fs.existsSync(stringsXmlPath)) {
   fs.writeFileSync(stringsXmlPath, stringsXml, 'utf8');
 }
 
-// 4. Enable RTL layout support in AndroidManifest.xml
+// 4. Enable RTL layout and hardware acceleration in AndroidManifest.xml
 if (fs.existsSync(androidManifestPath)) {
   let manifest = fs.readFileSync(androidManifestPath, 'utf8');
   if (!manifest.includes('android:supportsRtl')) {
     manifest = manifest.replace('<application', '<application\n        android:supportsRtl="true"');
   }
+  if (!manifest.includes('android:hardwareAccelerated')) {
+    manifest = manifest.replace(
+      '<application',
+      '<application\n        android:hardwareAccelerated="true"'
+    );
+  }
   fs.writeFileSync(androidManifestPath, manifest, 'utf8');
 }
 
-console.log('Android adaptive icons, Persian strings, splash screen, and RTL manifest configured successfully.');
+console.log('Android adaptive icons, Persian strings, splash screen, hardware acceleration, and RTL manifest configured successfully.');

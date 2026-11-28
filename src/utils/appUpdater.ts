@@ -60,6 +60,8 @@ export interface AppUpdateState {
   remoteNotes: string[];
   versionSourceUrl: string;
   checkedUrl: string;
+  usedFallback: boolean;
+  attemptedUrls: string[];
   needRefresh: boolean;
   offlineReady: boolean;
   swRegistered: boolean;
@@ -83,6 +85,78 @@ export const OFFICIAL_GITHUB_APP_URL =
   'https://forog1980-star.github.io/Daftar-Fani-Golzar-App/';
 export const OFFICIAL_GITHUB_VERSION_URL =
   'https://forog1980-star.github.io/Daftar-Fani-Golzar-App/version.json';
+export const OFFICIAL_GITHUB_RAW_VERSION_URL =
+  'https://raw.githubusercontent.com/forog1980-star/Daftar-Fani-Golzar-App/main/public/version.json';
+export const OFFICIAL_GITHUB_API_VERSION_URL =
+  'https://api.github.com/repos/forog1980-star/Daftar-Fani-Golzar-App/contents/public/version.json';
+
+interface ResilientFetchResult {
+  ok: boolean;
+  status: number;
+  bodyText: string;
+  networkError?: 'timeout' | 'cors' | 'network';
+}
+
+async function resilientFetchText(
+  targetUrl: string,
+  headers?: Record<string, string>
+): Promise<ResilientFetchResult> {
+  // On Windows Electron Desktop, prefer main-process net.fetch to honor Windows proxy/certs and avoid custom-scheme CORS
+  if (typeof window !== 'undefined' && typeof window.desktopBridge?.fetchJson === 'function') {
+    try {
+      const ipcRes = await window.desktopBridge.fetchJson(targetUrl);
+      if (ipcRes && typeof ipcRes.status === 'number') {
+        if (ipcRes.status > 0) {
+          return {
+            ok: Boolean(ipcRes.ok),
+            status: ipcRes.status,
+            bodyText: ipcRes.bodyText || '',
+          };
+        }
+        return {
+          ok: false,
+          status: 0,
+          bodyText: '',
+          networkError: ipcRes.errorCode === 'TIMEOUT' ? 'timeout' : 'network',
+        };
+      }
+    } catch {
+      // Fall through to standard fetch
+    }
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 12000) : null;
+  try {
+    const res = await fetch(targetUrl, {
+      cache: 'no-store',
+      headers,
+      signal: controller?.signal,
+    });
+    const bodyText = await res.text();
+    return { ok: res.ok, status: res.status, bodyText };
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === 'AbortError';
+    let isCrossOrigin = false;
+    try {
+      const parsed = new URL(targetUrl);
+      isCrossOrigin =
+        typeof window !== 'undefined' &&
+        (window.location.protocol === 'http:' || window.location.protocol === 'https:') &&
+        parsed.origin !== window.location.origin;
+    } catch {
+      isCrossOrigin = false;
+    }
+    return {
+      ok: false,
+      status: 0,
+      bodyText: '',
+      networkError: isAbort ? 'timeout' : isCrossOrigin ? 'cors' : 'network',
+    };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
 
 export const LOCAL_APP_VERSION =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.4.0';
@@ -126,6 +200,8 @@ let currentState: AppUpdateState = {
   remoteNotes: [],
   versionSourceUrl: initialSavedUrl,
   checkedUrl: resolveVersionManifestUrl(initialSavedUrl),
+  usedFallback: false,
+  attemptedUrls: [],
   needRefresh: false,
   offlineReady: false,
   swRegistered: false,
@@ -211,7 +287,85 @@ export function resolveVersionManifestUrl(customUrl: string): string {
     return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
   }
 
+  // If user enters a GitHub Pages root URL (e.g. https://forog1980-star.github.io/Daftar-Fani-Golzar-App/), append /version.json
+  const ghPagesRootMatch = trimmed.match(
+    /^https?:\/\/([^./\s]+)\.github\.io\/([^/\s#?]+)\/?$/i
+  );
+  if (ghPagesRootMatch) {
+    const [, owner, repo] = ghPagesRootMatch;
+    return `https://${owner}.github.io/${repo}/version.json`;
+  }
+
   return trimmed;
+}
+
+/**
+ * Builds an ordered, deduplicated fallback chain of version.json mirrors
+ * (GitHub Pages -> raw.githubusercontent.com -> GitHub Contents API) so temporary
+ * DNS/ISP/CDN issues on one endpoint automatically fail over to healthy mirrors.
+ */
+export function buildVersionFallbackCandidates(rawSource: string, resolvedPrimary: string): string[] {
+  const candidates: string[] = [resolvedPrimary];
+  const { owner, repo } = extractRepoFromSourceUrl(rawSource || resolvedPrimary);
+  const isKnownGitHubSource =
+    !rawSource.trim() ||
+    /github\.io|github\.com|raw\.githubusercontent\.com/i.test(resolvedPrimary);
+
+  if (isKnownGitHubSource) {
+    const pagesUrl = `https://${owner}.github.io/${repo}/version.json`;
+    const rawUrl = `https://raw.githubusercontent.com/${owner}/${repo}/main/public/version.json`;
+    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/contents/public/version.json`;
+    for (const mirror of [pagesUrl, rawUrl, apiUrl]) {
+      if (!candidates.includes(mirror)) {
+        candidates.push(mirror);
+      }
+    }
+  }
+  return candidates;
+}
+
+function decodeBase64Utf8(b64: string): string {
+  const clean = b64.replace(/\s+/g, '');
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(clean, 'base64').toString('utf-8');
+  }
+  const binary = atob(clean);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
+function parseRemoteVersionManifest(bodyText: string): RemoteVersionManifest | null {
+  try {
+    const parsed = JSON.parse(bodyText) as Record<string, unknown> | null;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+
+    // Handle GitHub Contents API envelope ({ encoding: 'base64', content: '...' })
+    if (
+      parsed.encoding === 'base64' &&
+      typeof parsed.content === 'string' &&
+      typeof parsed.version !== 'string'
+    ) {
+      const decoded = decodeBase64Utf8(parsed.content);
+      const inner = JSON.parse(decoded) as RemoteVersionManifest | null;
+      if (inner && typeof inner === 'object' && !Array.isArray(inner) && typeof inner.version === 'string' && inner.version.trim()) {
+        return inner;
+      }
+      return null;
+    }
+
+    const direct = parsed as RemoteVersionManifest;
+    if (typeof direct.version === 'string' && direct.version.trim()) {
+      return direct;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 export interface UrlValidationResult {
@@ -567,7 +721,7 @@ export async function checkVerifiedReleaseInstallers(
   const checkedApiUrl = `https://api.github.com/repos/${repoFullName}/releases`;
   const nowIso = new Date().toISOString();
 
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     const offlineState: VerifiedReleaseInstallers = {
       status: 'offline',
       repoFullName,
@@ -594,47 +748,11 @@ export async function checkVerifiedReleaseInstallers(
     },
   });
 
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeoutId = controller ? setTimeout(() => controller.abort(), 12000) : null;
+  const fetchRes = await resilientFetchText(checkedApiUrl, {
+    Accept: 'application/vnd.github+json',
+  });
 
-  try {
-    const res = await fetch(checkedApiUrl, {
-      cache: 'no-store',
-      headers: {
-        Accept: 'application/vnd.github+json',
-      },
-      signal: controller?.signal,
-    });
-
-    if (!res.ok) {
-      const msg =
-        res.status === 403
-          ? 'محدودیت موقت تعداد درخواست‌های API گیت‌هاب (HTTP 403). چند دقیقه بعد مجدداً تلاش کنید.'
-          : res.status === 404
-            ? 'مخزن یا بخش Releases گیت‌هاب در نشانی مشخص‌شده یافت نشد (HTTP 404).'
-            : `بررسی Releases گیت‌هاب با خطای HTTP ${res.status} مواجه شد.`;
-      const errState: VerifiedReleaseInstallers = {
-        status: 'error',
-        repoFullName,
-        checkedApiUrl,
-        releaseTag: null,
-        releaseName: null,
-        publishedAt: null,
-        windowsExe: null,
-        androidApk: null,
-        message: msg,
-        lastCheckedAt: nowIso,
-      };
-      emit({ releaseInstallers: errState });
-      return errState;
-    }
-
-    const payload = (await res.json()) as unknown;
-    const parsed = extractVerifiedInstallersFromReleases(payload, repoFullName, nowIso);
-    emit({ releaseInstallers: parsed });
-    return parsed;
-  } catch (err) {
-    const isAbort = err instanceof Error && err.name === 'AbortError';
+  if (fetchRes.networkError) {
     const errState: VerifiedReleaseInstallers = {
       status: 'error',
       repoFullName,
@@ -644,15 +762,59 @@ export async function checkVerifiedReleaseInstallers(
       publishedAt: null,
       windowsExe: null,
       androidApk: null,
-      message: isAbort
-        ? 'زمان انتظار برای دریافت فهرست Releases گیت‌هاب به پایان رسید. اتصال اینترنت را بررسی کنید.'
-        : 'اتصال به سرویس Releases گیت‌هاب برقرار نشد (خطای شبکه یا محدودیت دسترسی).',
+      message:
+        fetchRes.networkError === 'timeout'
+          ? 'زمان انتظار برای دریافت فهرست Releases گیت‌هاب به پایان رسید. اتصال اینترنت را بررسی کنید.'
+          : 'اتصال به سرویس Releases گیت‌هاب برقرار نشد (خطای شبکه یا محدودیت دسترسی).',
       lastCheckedAt: nowIso,
     };
     emit({ releaseInstallers: errState });
     return errState;
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+  }
+
+  if (!fetchRes.ok) {
+    const msg =
+      fetchRes.status === 403
+        ? 'محدودیت موقت تعداد درخواست‌های API گیت‌هاب (HTTP 403). چند دقیقه بعد مجدداً تلاش کنید.'
+        : fetchRes.status === 404
+          ? 'مخزن یا بخش Releases گیت‌هاب در نشانی مشخص‌شده یافت نشد (HTTP 404).'
+          : `بررسی Releases گیت‌هاب با خطای HTTP ${fetchRes.status} مواجه شد.`;
+    const errState: VerifiedReleaseInstallers = {
+      status: 'error',
+      repoFullName,
+      checkedApiUrl,
+      releaseTag: null,
+      releaseName: null,
+      publishedAt: null,
+      windowsExe: null,
+      androidApk: null,
+      message: msg,
+      lastCheckedAt: nowIso,
+    };
+    emit({ releaseInstallers: errState });
+    return errState;
+  }
+
+  try {
+    const payload = JSON.parse(fetchRes.bodyText) as unknown;
+    const parsed = extractVerifiedInstallersFromReleases(payload, repoFullName, nowIso);
+    emit({ releaseInstallers: parsed });
+    return parsed;
+  } catch {
+    const errState: VerifiedReleaseInstallers = {
+      status: 'error',
+      repoFullName,
+      checkedApiUrl,
+      releaseTag: null,
+      releaseName: null,
+      publishedAt: null,
+      windowsExe: null,
+      androidApk: null,
+      message: 'پاسخ دریافت‌شده از سرویس Releases گیت‌هاب قالب معتبر JSON نداشت.',
+      lastCheckedAt: nowIso,
+    };
+    emit({ releaseInstallers: errState });
+    return errState;
   }
 }
 
@@ -674,7 +836,7 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
 
   const baseManifestUrl = validation.resolvedUrl;
 
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     emit({
       checkedUrl: baseManifestUrl,
       status: 'offline',
@@ -723,105 +885,114 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
     }
   }
 
-  // 2. Fetch fresh non-cached version.json independently
-  const fetchUrl = new URL(baseManifestUrl);
-  fetchUrl.searchParams.set('t', String(Date.now()));
+  // 2. Fetch fresh non-cached version.json with 3-tier automatic fallback & in-loop JSON validation
+  const candidateUrls = buildVersionFallbackCandidates(rawSource, baseManifestUrl);
+  const attemptedUrls: string[] = [];
 
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeoutId = controller ? setTimeout(() => controller.abort(), 12000) : null;
+  let activeUrl = baseManifestUrl;
+  let usedFallback = false;
+  let lastFetchRes: ResilientFetchResult = {
+    ok: false,
+    status: 0,
+    bodyText: '',
+    networkError: 'network',
+  };
+  let parsedData: RemoteVersionManifest | null = null;
+  let hadInvalidJson = false;
 
-  let res: Response;
-  try {
-    res = await fetch(fetchUrl.toString(), {
-      cache: 'no-store',
-      signal: controller?.signal,
-    });
-  } catch (err) {
-    if (timeoutId) clearTimeout(timeoutId);
-    const isAbort = err instanceof Error && err.name === 'AbortError';
-    const isCrossOrigin =
-      typeof window !== 'undefined' &&
-      (window.location.protocol === 'http:' || window.location.protocol === 'https:') &&
-      fetchUrl.origin !== window.location.origin;
+  for (let i = 0; i < candidateUrls.length; i++) {
+    const candidate = candidateUrls[i];
+    attemptedUrls.push(candidate);
+    const bustUrl = new URL(candidate);
+    // Avoid extra query params on GitHub Contents API where ref/path is sensitive
+    if (!candidate.includes('api.github.com/repos/')) {
+      bustUrl.searchParams.set('t', String(Date.now()));
+    }
+    activeUrl = candidate;
+    const res = await resilientFetchText(bustUrl.toString());
+    lastFetchRes = res;
 
-    const category: UpdateErrorCategory = isAbort
-      ? 'network'
-      : isCrossOrigin
-        ? 'cors'
-        : 'network';
-
-    emit({
-      checkedUrl: baseManifestUrl,
-      lastCheckedAt: nowIso,
-      status: 'error',
-      errorCategory: category,
-      httpStatus: null,
-      swWarning,
-      statusMessage: isAbort
-        ? 'زمان انتظار برای دریافت فایل version.json به پایان رسید. اتصال اینترنت یا فیلترشکن/فایروال را بررسی کنید.'
-        : isCrossOrigin
-          ? 'خطای شبکه یا محدودیت CORS هنگام دریافت فایل version.json از سرور مقصد. اتصال اینترنت و نشانی فایل را بررسی کنید.'
-          : 'اتصال شبکه‌ای برای دریافت فایل version.json برقرار نشد. وضعیت اتصال اینترنت یا فایروال سیستم را بررسی کنید.',
-    });
-    return currentState;
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    if (res.ok) {
+      const parsed = parseRemoteVersionManifest(res.bodyText);
+      if (parsed) {
+        parsedData = parsed;
+        usedFallback = i > 0;
+        break;
+      }
+      hadInvalidJson = true;
+    }
   }
 
-  if (!res.ok) {
+  if (!parsedData) {
+    if (hadInvalidJson && lastFetchRes.ok) {
+      emit({
+        checkedUrl: activeUrl,
+        usedFallback: false,
+        attemptedUrls,
+        lastCheckedAt: nowIso,
+        status: 'error',
+        errorCategory: 'json',
+        httpStatus: lastFetchRes.status,
+        swWarning,
+        statusMessage:
+          'پاسخ دریافت‌شده از نشانی version.json قالب معتبر JSON ندارد یا فاقد فیلد نسخه (version) است.',
+      });
+      return currentState;
+    }
+
+    if (lastFetchRes.networkError) {
+      const category: UpdateErrorCategory =
+        lastFetchRes.networkError === 'cors' ? 'cors' : 'network';
+
+      emit({
+        checkedUrl: activeUrl,
+        usedFallback: false,
+        attemptedUrls,
+        lastCheckedAt: nowIso,
+        status: 'error',
+        errorCategory: category,
+        httpStatus: null,
+        swWarning,
+        statusMessage:
+          lastFetchRes.networkError === 'timeout'
+            ? 'زمان انتظار برای دریافت فایل version.json از تمام آینه‌های رسمی به پایان رسید. اتصال اینترنت یا فیلترشکن/فایروال را بررسی کنید.'
+            : category === 'cors'
+              ? 'خطای شبکه یا محدودیت CORS هنگام دریافت فایل version.json از سرور مقصد. اتصال اینترنت و نشانی فایل را بررسی کنید.'
+              : 'اتصال شبکه‌ای به سرورهای گیت‌هاب برقرار نشد. وضعیت اتصال اینترنت، پروکسی ویندوز یا فایروال سیستم را بررسی کرده و دوباره تلاش کنید.',
+      });
+      return currentState;
+    }
+
     const statusHint =
-      res.status === 404
+      lastFetchRes.status === 404
         ? 'فایل version.json در نشانی مشخص‌شده یافت نشد (HTTP 404).'
-        : res.status === 403
-          ? 'دسترسی به نشانی version.json مجاز نبود (HTTP 403).'
-          : res.status >= 500
-            ? `سرور میزبان فایل version.json با خطای داخلی مواجه شد (HTTP ${res.status}).`
-            : `دریافت فایل version.json با پاسخ ناموفق HTTP ${res.status} مواجه شد.`;
+        : lastFetchRes.status === 403
+          ? 'دسترسی به نشانی version.json مجاز نبود یا با محدودیت موقت مواجه شد (HTTP 403).'
+          : lastFetchRes.status >= 500
+            ? `سرور میزبان فایل version.json با خطای داخلی مواجه شد (HTTP ${lastFetchRes.status}).`
+            : `دریافت فایل version.json با پاسخ ناموفق HTTP ${lastFetchRes.status} مواجه شد.`;
 
     emit({
-      checkedUrl: baseManifestUrl,
+      checkedUrl: activeUrl,
+      usedFallback: false,
+      attemptedUrls,
       lastCheckedAt: nowIso,
       status: 'error',
       errorCategory: 'http',
-      httpStatus: res.status,
+      httpStatus: lastFetchRes.status,
       swWarning,
       statusMessage: statusHint,
     });
     return currentState;
   }
 
-  let data: RemoteVersionManifest;
-  try {
-    const rawText = await res.text();
-    const parsed = JSON.parse(rawText) as unknown;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      throw new Error('Invalid JSON root');
-    }
-    data = parsed as RemoteVersionManifest;
-    if (typeof data.version !== 'string' || !data.version.trim()) {
-      throw new Error('Missing version field');
-    }
-  } catch {
-    emit({
-      checkedUrl: baseManifestUrl,
-      lastCheckedAt: nowIso,
-      status: 'error',
-      errorCategory: 'json',
-      httpStatus: res.status,
-      swWarning,
-      statusMessage:
-        'پاسخ دریافت‌شده از نشانی version.json قالب معتبر JSON ندارد یا فاقد فیلد نسخه (version) است.',
-    });
-    return currentState;
-  }
-
-  const remoteVersion = data.version.trim();
-  const remoteBuildId = typeof data.buildId === 'string' ? data.buildId.trim() : null;
-  const remoteBuiltAt = typeof data.builtAt === 'string' ? data.builtAt.trim() : null;
-  const rawNotes = Array.isArray(data.notes)
-    ? data.notes
-    : Array.isArray(data.changelog)
-      ? data.changelog
+  const remoteVersion = (parsedData.version || LOCAL_APP_VERSION).trim();
+  const remoteBuildId = typeof parsedData.buildId === 'string' ? parsedData.buildId.trim() : null;
+  const remoteBuiltAt = typeof parsedData.builtAt === 'string' ? parsedData.builtAt.trim() : null;
+  const rawNotes = Array.isArray(parsedData.notes)
+    ? parsedData.notes
+    : Array.isArray(parsedData.changelog)
+      ? parsedData.changelog
       : [];
   const remoteNotes = rawNotes.filter(
     (n): n is string => typeof n === 'string' && n.trim().length > 0
@@ -840,7 +1011,9 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
 
   if (foundUpdate || currentState.needRefresh) {
     emit({
-      checkedUrl: baseManifestUrl,
+      checkedUrl: activeUrl,
+      usedFallback,
+      attemptedUrls,
       needRefresh: true,
       remoteVersion,
       remoteBuildId,
@@ -849,13 +1022,15 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
       lastCheckedAt: nowIso,
       status: 'update-available',
       errorCategory: null,
-      httpStatus: res.status,
+      httpStatus: lastFetchRes.status,
       swWarning,
       statusMessage: `نسخه جدید (${remoteVersion}) در مخزن منتشر شده است. برای دریافت آخرین تغییرات اقدام کنید.`,
     });
   } else {
     emit({
-      checkedUrl: baseManifestUrl,
+      checkedUrl: activeUrl,
+      usedFallback,
+      attemptedUrls,
       needRefresh: false,
       remoteVersion,
       remoteBuildId,
@@ -864,7 +1039,7 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
       lastCheckedAt: nowIso,
       status: 'up-to-date',
       errorCategory: null,
-      httpStatus: res.status,
+      httpStatus: lastFetchRes.status,
       swWarning,
       statusMessage: `فایل version.json با موفقیت بررسی شد؛ نرم‌افزار هم‌اکنون روی آخرین نسخه (${remoteVersion}) قرار دارد.`,
     });

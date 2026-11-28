@@ -147,7 +147,11 @@
 }
 
 .animate-splash-logo {
-  animation: splashLogoFadeOut 6.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: splashLogoFadeOut 3.15s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.animate-splash-logo-fast {
+  animation: splashLogoFadeOut 1.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
 .animate-page-in {
@@ -156,6 +160,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-splash-logo,
+  .animate-splash-logo-fast,
   .animate-page-in {
     animation-duration: 0.01ms !important;
   }

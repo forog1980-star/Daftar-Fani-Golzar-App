@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { app, BrowserWindow, dialog, ipcMain, protocol, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } = require('electron');
 const {
   DEFAULT_WINDOWS_DATA_ROOT,
   appendLogLine,
@@ -354,6 +354,57 @@ function registerIpcHandlers() {
 
   ipcMain.handle('desktop:log', async (_event, payload) => {
     appendLogLine(activeDataRoot, payload?.level || 'info', String(payload?.message || ''));
+  });
+
+  // Native Electron main-process HTTPS JSON fetch (uses Windows proxy/certs & avoids custom-scheme CORS)
+  ipcMain.handle('desktop:fetch-json', async (_event, rawUrl) => {
+    const urlStr = String(rawUrl || '').trim();
+    let parsed;
+    try {
+      parsed = new URL(urlStr);
+    } catch {
+      return { ok: false, status: 0, errorCode: 'INVALID_URL', errorMessage: 'Invalid URL' };
+    }
+    const isHttps = parsed.protocol === 'https:';
+    const isLocalHttp =
+      parsed.protocol === 'http:' &&
+      (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1');
+    if (!isHttps && !isLocalHttp) {
+      return { ok: false, status: 0, errorCode: 'INVALID_PROTOCOL', errorMessage: 'HTTPS required' };
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    try {
+      const res = await net.fetch(parsed.toString(), {
+        method: 'GET',
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json, application/vnd.github+json',
+          'User-Agent': 'Daftar-Fani-Golzar-Desktop',
+        },
+        signal: controller.signal,
+      });
+      const bodyText = await res.text();
+      return {
+        ok: res.ok,
+        status: res.status,
+        statusText: res.statusText || '',
+        bodyText,
+      };
+    } catch (err) {
+      const isAbort = err && err.name === 'AbortError';
+      const errMsg = err && err.message ? String(err.message) : 'Network error';
+      appendLogLine(activeDataRoot, 'warn', `desktop:fetch-json failed for ${parsed.origin}${parsed.pathname}: ${errMsg}`);
+      return {
+        ok: false,
+        status: 0,
+        errorCode: isAbort ? 'TIMEOUT' : 'NETWORK_ERROR',
+        errorMessage: errMsg,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
   });
 }
 

@@ -37,6 +37,15 @@ export interface DesktopRelocateResult {
   error?: string;
 }
 
+export interface DesktopFetchJsonResult {
+  ok: boolean;
+  status: number;
+  statusText?: string;
+  bodyText?: string;
+  errorCode?: string;
+  errorMessage?: string;
+}
+
 export interface DesktopBridgeAPI {
   isDesktop: true;
   platform: string;
@@ -55,6 +64,7 @@ export interface DesktopBridgeAPI {
   }) => Promise<DesktopRelocateResult>;
   relaunchApp: () => Promise<void>;
   appendLog: (level: 'info' | 'warn' | 'error', message: string) => Promise<void>;
+  fetchJson?: (url: string) => Promise<DesktopFetchJsonResult>;
 }
 
 interface CapacitorPluginLike {

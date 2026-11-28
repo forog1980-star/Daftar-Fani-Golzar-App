@@ -117,14 +117,77 @@ jobs:
           node scripts/prepare-android-resources.mjs
           npx cap sync android
 
-      - name: Build Android APK with Gradle
+      - name: Build, Align, Sign, and Verify Android Release APK
         working-directory: android
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          set -euo pipefail
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleRelease
+
+          BUILD_TOOLS_DIR="$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/* 2>/dev/null | sort -V | tail -n 1 || true)"
+          if [ -z "$BUILD_TOOLS_DIR" ] || [ ! -x "${BUILD_TOOLS_DIR}/apksigner" ]; then
+            yes | sdkmanager "build-tools;35.0.0" > /dev/null
+            BUILD_TOOLS_DIR="$(ls -d "${ANDROID_SDK_ROOT:-$ANDROID_HOME}"/build-tools/* | sort -V | tail -n 1)"
+          fi
+          ZIPALIGN="${BUILD_TOOLS_DIR}/zipalign"
+          APKSIGNER="${BUILD_TOOLS_DIR}/apksigner"
+          echo "Using Android Build Tools: ${BUILD_TOOLS_DIR}"
+
+          UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+          if [ ! -f "$UNSIGNED_APK" ]; then
+            UNSIGNED_APK="$(find app/build/outputs/apk/release -name '*.apk' | head -n 1)"
+          fi
+          if [ -z "$UNSIGNED_APK" ] || [ ! -f "$UNSIGNED_APK" ]; then
+            echo "ERROR: Release APK output not found!"
+            exit 1
+          fi
+
           mkdir -p ../release-android
-          cp app/build/outputs/apk/debug/app-debug.apk ../release-android/Daftar-Fani-Golzar.apk
-          ls -lh ../release-android/Daftar-Fani-Golzar.apk
+          ALIGNED_APK="../release-android/Daftar-Fani-Golzar-aligned.apk"
+          FINAL_APK="../release-android/Daftar-Fani-Golzar.apk"
+          KEYSTORE_PATH="/tmp/daftar-fani-release.keystore"
+
+          if [ -n "${ANDROID_KEYSTORE_BASE64:-}" ] && [ -n "${ANDROID_KEYSTORE_PASSWORD:-}" ] && [ -n "${ANDROID_KEY_ALIAS:-}" ]; then
+            echo "Signing Release APK with permanent repository keystore secret."
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+            KS_PASS="$ANDROID_KEYSTORE_PASSWORD"
+            KEY_ALIAS="$ANDROID_KEY_ALIAS"
+            KEY_PASS="${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
+          else
+            echo "::warning::ANDROID_KEYSTORE_BASE64 secret is not configured; generating a clean non-debuggable PKCS12 release keystore for this build. Configure permanent signing secrets for seamless future in-place upgrades."
+            KS_PASS="DaftarFaniGolzarRelease2026"
+            KEY_ALIAS="daftarfani"
+            KEY_PASS="$KS_PASS"
+            keytool -genkeypair -v \
+              -storetype PKCS12 \
+              -keystore "$KEYSTORE_PATH" \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$KS_PASS" \
+              -keypass "$KEY_PASS" \
+              -dname "CN=Daftar Fani Golzar, OU=Technical Office, O=Golzar Shohada, L=Tehran, C=IR"
+          fi
+
+          "$ZIPALIGN" -v -p 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+          "$APKSIGNER" sign \
+            --ks "$KEYSTORE_PATH" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:${KS_PASS}" \
+            --key-pass "pass:${KEY_PASS}" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "$FINAL_APK" \
+            "$ALIGNED_APK"
+
+          "$APKSIGNER" verify --verbose --print-certs "$FINAL_APK"
+          rm -f "$ALIGNED_APK" "$KEYSTORE_PATH" "${FINAL_APK}.idsig"
+          ls -lh "$FINAL_APK"
 
       - name: Upload Android APK Artifact
         uses: actions/upload-artifact@v4

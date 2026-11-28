@@ -349,9 +349,52 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
             </div>
           </div>
 
+          {updater.usedFallback &&
+            (updater.status === 'up-to-date' || updater.status === 'update-available') && (
+              <div className="mr-6 rounded border border-[#C6D5C4] bg-[#FFFFFF]/80 px-2.5 py-1.5 text-[11px] text-[#3D6B59]">
+                بررسی نسخه با موفقیت از طریق آینه پشتیبان رسمی انجام شد.
+              </div>
+            )}
+
           {updater.swWarning && (
             <div className="mr-6 rounded border border-[#E2DDD2] bg-[#FFFFFF]/80 px-2.5 py-1.5 text-[11px] text-[#5B6573]">
               {updater.swWarning}
+            </div>
+          )}
+
+          {updater.status === 'error' && (
+            <div className="mr-6 space-y-2 rounded border border-[#E5C6C6] bg-[#FFFFFF]/85 px-3 py-2 text-[11px] text-[#5B6573]">
+              <div>
+                راهنمای سریع: اتصال اینترنت را بررسی کنید؛ در صورت استفاده از شبکه سازمانی یا
+                فیلترشکن/پروکسی، دسترسی به دامنه <code dir="ltr">github.io</code> یا{' '}
+                <code dir="ltr">githubusercontent.com</code> را کنترل کرده و دوباره تلاش کنید.
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={isBusy}
+                  onClick={handleCheckUpdate}
+                  className="inline-flex items-center gap-1 rounded border border-[#9E3B3B] bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-medium text-[#9E3B3B] hover:bg-[#FBF1F1] cursor-pointer"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  <span>تلاش مجدد</span>
+                </button>
+                {(updater.versionSourceUrl.trim() || sourceInput.trim()) && (
+                  <button
+                    type="button"
+                    disabled={isBusy}
+                    onClick={async () => {
+                      setSourceInput('');
+                      updater.setCustomSourceUrl('');
+                      await updater.checkForUpdate('');
+                    }}
+                    className="inline-flex items-center gap-1 rounded border border-[#243B5A] bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+                  >
+                    <Link2 className="h-3 w-3" />
+                    <span>بازگشت به نشانی رسمی پیش‌فرض</span>
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

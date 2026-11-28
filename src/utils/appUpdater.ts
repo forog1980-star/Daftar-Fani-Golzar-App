@@ -659,8 +659,9 @@ export function extractVerifiedInstallersFromReleases(
     return { release, tag, publishedAt, windowsExe, androidApk };
   });
 
-  const selected = candidates.find((candidate) => candidate.windowsExe && candidate.androidApk)
-    ?? candidates.find((candidate) => candidate.windowsExe || candidate.androidApk);
+  // Use the newest eligible release in the ordered list, even if it is partial.
+  // Never fall back to older installers when the latest release is missing one platform asset.
+  const selected = candidates.find((candidate) => candidate.windowsExe || candidate.androidApk);
 
   if (!selected) {
     const latest = orderedReleases[0];

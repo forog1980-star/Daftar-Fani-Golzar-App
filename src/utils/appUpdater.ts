@@ -134,6 +134,7 @@ export interface AppUpdateState {
   errorCategory: UpdateErrorCategory;
   httpStatus: number | null;
   lastCheckedAt: string | null;
+  lastUpdateActionAt: string | null;
   updateCompletedNotice: UpdateCompletedNotice | null;
   releaseInstallers: VerifiedReleaseInstallers;
 }
@@ -142,6 +143,8 @@ const LAST_CHECK_KEY = 'daftar-fani-last-update-check';
 const CUSTOM_VERSION_URL_KEY = 'daftar-fani-github-version-url';
 const UPDATE_COMPLETED_NOTICE_KEY = 'daftar-fani-update-completed-notice-v1';
 const LAST_SEEN_VERSION_KEY = 'daftar-fani-last-seen-version-v1';
+const LAST_UPDATE_ACTION_KEY = 'daftar-fani-last-update-action-at-v1';
+export const DUPLICATE_UPDATE_GUARD_MS = 5 * 60 * 1000;
 
 export const DEFAULT_GITHUB_OWNER = 'forog1980-star';
 export const DEFAULT_GITHUB_REPO = 'Daftar-Fani-Golzar-App';
@@ -406,14 +409,40 @@ export function recordCompletedUpdateNotice(
   version: string,
   buildId?: string
 ): UpdateCompletedNotice {
+  const nowIso = new Date().toISOString();
   const notice: UpdateCompletedNotice = {
     version: version || LOCAL_APP_VERSION,
     buildId: buildId || LOCAL_BUILD_ID,
-    updatedAt: new Date().toISOString(),
+    updatedAt: nowIso,
   };
   safeWriteStorage(UPDATE_COMPLETED_NOTICE_KEY, JSON.stringify(notice));
   safeWriteStorage(LAST_SEEN_VERSION_KEY, notice.version);
+  safeWriteStorage(LAST_UPDATE_ACTION_KEY, nowIso);
   return notice;
+}
+
+export function getRecentUpdateElapsedMs(): {
+  isRecent: boolean;
+  elapsedMs: number;
+  lastUpdatedAt: string | null;
+} {
+  const candidate =
+    safeReadStorage(LAST_UPDATE_ACTION_KEY) ||
+    currentState.lastUpdateActionAt ||
+    currentState.updateCompletedNotice?.updatedAt ||
+    null;
+  if (!candidate) {
+    return { isRecent: false, elapsedMs: Infinity, lastUpdatedAt: null };
+  }
+  const parsedMs = Date.parse(candidate);
+  if (!Number.isFinite(parsedMs)) {
+    return { isRecent: false, elapsedMs: Infinity, lastUpdatedAt: null };
+  }
+  const elapsedMs = Date.now() - parsedMs;
+  if (elapsedMs >= 0 && elapsedMs < DUPLICATE_UPDATE_GUARD_MS) {
+    return { isRecent: true, elapsedMs, lastUpdatedAt: candidate };
+  }
+  return { isRecent: false, elapsedMs, lastUpdatedAt: candidate };
 }
 
 function loadInitialUpdateCompletedNotice(): UpdateCompletedNotice | null {
@@ -471,6 +500,8 @@ export function dismissUpdateCompletedNotice(): void {
 
 const initialSavedUrl = loadSavedVersionUrl();
 const initialUpdateCompletedNotice = loadInitialUpdateCompletedNotice();
+const initialLastUpdateActionAt =
+  safeReadStorage(LAST_UPDATE_ACTION_KEY) || initialUpdateCompletedNotice?.updatedAt || null;
 
 let currentState: AppUpdateState = {
   currentVersion: LOCAL_APP_VERSION,
@@ -504,6 +535,7 @@ let currentState: AppUpdateState = {
   errorCategory: null,
   httpStatus: null,
   lastCheckedAt: safeReadStorage(LAST_CHECK_KEY),
+  lastUpdateActionAt: initialLastUpdateActionAt,
   updateCompletedNotice: initialUpdateCompletedNotice,
   releaseInstallers: createInitialReleaseInstallers(initialSavedUrl),
 };
@@ -1924,10 +1956,13 @@ export async function applyAppUpdate(forceHardRefresh = false): Promise<void> {
 
   try {
     const notice = recordCompletedUpdateNotice(
-      currentState.remoteVersion || LOCAL_APP_VERSION,
-      currentState.remoteBuildId || LOCAL_BUILD_ID
+      currentState.remoteVersion || currentState.currentVersion || LOCAL_APP_VERSION,
+      currentState.remoteBuildId || currentState.currentBuildId || LOCAL_BUILD_ID
     );
-    emit({ updateCompletedNotice: notice });
+    emit({
+      updateCompletedNotice: notice,
+      lastUpdateActionAt: notice.updatedAt,
+    });
 
     if (!forceHardRefresh && triggerSwReload && swRegistration?.waiting) {
       await triggerSwReload(true);
@@ -2126,10 +2161,22 @@ export async function applyAndroidNativeBundleUpdate(
     updateProgressText: 'در حال فعال‌سازی نسخه جدید روی حافظه داخلی اپلیکیشن...',
   });
 
+  const prevNoticeRaw = safeReadStorage(UPDATE_COMPLETED_NOTICE_KEY);
+  const prevActionAtRaw = safeReadStorage(LAST_UPDATE_ACTION_KEY);
+  // Persist the post-update notice BEFORE switching serverBasePath because Capacitor reloads the WebView immediately
+  recordCompletedUpdateNotice(
+    manifest.version || LOCAL_APP_VERSION,
+    manifest.buildId || safeTag
+  );
+
   const switched = await invokeCapacitorPlugin('WebView', 'setServerBasePath', {
     path: nativePath,
   });
   if (switched === null) {
+    if (prevNoticeRaw) safeWriteStorage(UPDATE_COMPLETED_NOTICE_KEY, prevNoticeRaw);
+    else safeRemoveStorage(UPDATE_COMPLETED_NOTICE_KEY);
+    if (prevActionAtRaw) safeWriteStorage(LAST_UPDATE_ACTION_KEY, prevActionAtRaw);
+    else safeRemoveStorage(LAST_UPDATE_ACTION_KEY);
     return { ok: false, error: 'پل WebView اندروید برای تغییر مسیر نسخه محلی در دسترس نیست.' };
   }
   await invokeCapacitorPlugin('WebView', 'persistServerBasePath', {});
@@ -2206,6 +2253,7 @@ export async function syncNativeUpdateManifestNow(overrideUrl?: string): Promise
           localBundleSource: 'electron-ota',
           needRefresh: false,
           lastCheckedAt: notice.updatedAt,
+          lastUpdateActionAt: notice.updatedAt,
           updateCompletedNotice: notice,
           updateProgressText: null,
           statusMessage: `فایل‌های نسخه ${nextVersion} مستقیماً در دایرکتوری محلی ویندوز جایگزین شد؛ در حال بارگذاری مجدد...`,
@@ -2258,6 +2306,7 @@ export async function syncNativeUpdateManifestNow(overrideUrl?: string): Promise
       localBundleSource: 'android-ota',
       needRefresh: false,
       lastCheckedAt: notice.updatedAt,
+      lastUpdateActionAt: notice.updatedAt,
       updateCompletedNotice: notice,
       updateProgressText: null,
       statusMessage: `فایل‌های نسخه ${nextVersion} مستقیماً در دایرکتوری داخلی اندروید جایگزین شد؛ در حال بارگذاری مجدد...`,
@@ -2304,11 +2353,6 @@ export async function applyUnifiedAppUpdate(overrideUrl?: string): Promise<AppUp
     return checked;
   }
 
-  const hasUpdate = checked.status === 'update-available' || checked.needRefresh;
-  if (!hasUpdate) {
-    return checked;
-  }
-
   await applyAppUpdate(true);
   return currentState;
 }
@@ -2323,7 +2367,11 @@ export function useAppUpdater() {
     if (typeof window !== 'undefined' && window.location.search.includes('updated=')) {
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete('updated');
-      window.history.replaceState({}, '', cleanUrl.toString());
+      const preservedState =
+        window.history.state && typeof window.history.state === 'object'
+          ? window.history.state
+          : {};
+      window.history.replaceState(preservedState, '', cleanUrl.toString());
     }
     return () => {
       listeners.delete(onChange);
@@ -2339,6 +2387,7 @@ export function useAppUpdater() {
     runUnifiedUpdate: applyUnifiedAppUpdate,
     refreshLocalVersion: refreshNativeLocalVersionInfo,
     dismissUpdateNotice: dismissUpdateCompletedNotice,
+    getRecentUpdateInfo: getRecentUpdateElapsedMs,
     setCustomSourceUrl: setCustomVersionSourceUrl,
   };
 }

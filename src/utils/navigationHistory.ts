@@ -79,7 +79,7 @@ export function createInitialHistoryStack(): HistoryStack {
   return [{ route: 'dashboard', parentRoute: null }];
 }
 
-function normalizeRoute(route: AppRoute): AppRoute {
+export function normalizeAppRoute(route: AppRoute): AppRoute {
   return route === 'home' ? 'dashboard' : route;
 }
 
@@ -88,7 +88,7 @@ function buildEntry(
   parentRoute: AppRoute | null,
   options?: NavigateOptions
 ): HistoryEntry {
-  const normalized = normalizeRoute(route);
+  const normalized = normalizeAppRoute(route);
   return {
     route: normalized,
     parentRoute: normalized === 'dashboard' ? null : parentRoute,
@@ -102,9 +102,9 @@ function buildEntry(
   };
 }
 
-function isSameScreen(a: HistoryEntry, b: HistoryEntry): boolean {
-  const routeA = normalizeRoute(a.route);
-  const routeB = normalizeRoute(b.route);
+export function isSameHistoryScreen(a: HistoryEntry, b: HistoryEntry): boolean {
+  const routeA = normalizeAppRoute(a.route);
+  const routeB = normalizeAppRoute(b.route);
   if (routeA !== routeB) return false;
   if (routeA === 'project-detail') {
     return a.projectId === b.projectId && (a.subTab ?? 'overview') === (b.subTab ?? 'overview');
@@ -140,11 +140,11 @@ export function pushNavigationHistory(
   route: AppRoute,
   options?: NavigateOptions
 ): HistoryStack {
-  const normalized = normalizeRoute(route);
+  const normalized = normalizeAppRoute(route);
   const mode: NavigationMode = options?.mode ?? 'drill';
   const safeStack = stack.length > 0 ? stack : createInitialHistoryStack();
   const top = safeStack[safeStack.length - 1];
-  const topRoute = normalizeRoute(top.route);
+  const topRoute = normalizeAppRoute(top.route);
 
   // Navigating explicitly to root dashboard resets to a clean root stack
   if (normalized === 'dashboard') {
@@ -157,7 +157,7 @@ export function pushNavigationHistory(
   const nextEntry = buildEntry(normalized, resolvedParent, options);
 
   // In-place updates or re-selecting the exact active screen/tab replace top in-place
-  if (mode === 'replace' || isSameScreen(top, nextEntry)) {
+  if (mode === 'replace' || isSameHistoryScreen(top, nextEntry)) {
     return [
       ...safeStack.slice(0, -1),
       { ...top, ...nextEntry, parentRoute: top.parentRoute },
@@ -186,14 +186,14 @@ export function resolveLogicalBackHistory(stack: HistoryStack): HistoryStack {
   }
 
   const current = stack[0];
-  const currentRoute = normalizeRoute(current.route);
+  const currentRoute = normalizeAppRoute(current.route);
   if (currentRoute === 'dashboard') {
     return stack;
   }
 
   const fallbackParent =
     current.parentRoute ?? PAGE_PARENT_MAP[currentRoute]?.defaultParent ?? 'dashboard';
-  const normalizedParent = normalizeRoute(fallbackParent);
+  const normalizedParent = normalizeAppRoute(fallbackParent);
 
   if (normalizedParent === 'dashboard') {
     return createInitialHistoryStack();
@@ -215,9 +215,9 @@ export function getParentLabel(stack: HistoryStack): string {
   if (!target) return 'داشبورد';
 
   const current = stack[stack.length - 1];
-  const sameRoute = current && normalizeRoute(current.route) === normalizeRoute(target.route);
+  const sameRoute = current && normalizeAppRoute(current.route) === normalizeAppRoute(target.route);
 
-  switch (normalizeRoute(target.route)) {
+  switch (normalizeAppRoute(target.route)) {
     case 'dashboard':
       return 'داشبورد';
     case 'projects':

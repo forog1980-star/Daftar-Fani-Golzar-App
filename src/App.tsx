@@ -24,7 +24,9 @@ import {
   createInitialHistoryStack,
   getParentLabel,
   HistoryStack,
+  isSameHistoryScreen,
   NavigateOptions,
+  normalizeAppRoute,
   pushNavigationHistory,
   resolveLogicalBackHistory,
 } from './utils/navigationHistory';
@@ -49,11 +51,19 @@ export default function App() {
   const [authUnlocked, setAuthUnlocked] = useState(false);
   const [confirmExitOpen, setConfirmExitOpen] = useState(false);
   const [dismissUpdateBanner, setDismissUpdateBanner] = useState(false);
+  const [recentBannerUpdateWarning, setRecentBannerUpdateWarning] = useState<{
+    open: boolean;
+    minutesAgo: number;
+    lastUpdatedAt: string;
+  } | null>(null);
 
   const historyStackRef = useRef<HistoryStack>(historyStack);
   historyStackRef.current = historyStack;
-  const browserHistoryDepthRef = useRef(0);
-  const ignoreNextPopstateRef = useRef(0);
+  const navSessionIdRef = useRef(`df-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+  const nextStepIdRef = useRef(1);
+  const activeStepIdRef = useRef(1);
+  const browserStepIndexRef = useRef(0);
+  const pendingUiBackCountRef = useRef(0);
   const showSplashRef = useRef(showSplash);
   showSplashRef.current = showSplash;
   const sessionStateRef = useRef(sessionState);
@@ -63,33 +73,89 @@ export default function App() {
 
   const current = historyStack[historyStack.length - 1];
 
-  const navigate = useCallback((route: AppRoute, options?: NavigateOptions) => {
-    const prevStack = historyStackRef.current;
-    const nextStack = pushNavigationHistory(prevStack, route, options);
-    historyStackRef.current = nextStack;
-    setHistoryStack(nextStack);
-
-    if (typeof window !== 'undefined' && nextStack.length > prevStack.length) {
+  const syncBrowserHistoryEntry = useCallback(
+    (kind: 'push' | 'replace', stepId: number, index: number, stack: HistoryStack) => {
+      if (typeof window === 'undefined') return;
       try {
-        window.history.pushState(
-          { ...(window.history.state || {}), daftarFaniNav: true, depth: nextStack.length },
-          ''
-        );
-        browserHistoryDepthRef.current += nextStack.length - prevStack.length;
+        const existingState =
+          kind === 'replace' &&
+          window.history.state &&
+          typeof window.history.state === 'object'
+            ? (window.history.state as Record<string, unknown>)
+            : {};
+        const payload = {
+          ...existingState,
+          daftarFaniNav: true,
+          daftarFaniSessionId: navSessionIdRef.current,
+          daftarFaniStepId: stepId,
+          daftarFaniIndex: index,
+          stack,
+        };
+        if (kind === 'push') {
+          window.history.pushState(payload, '');
+        } else {
+          window.history.replaceState(payload, '');
+        }
       } catch {
         // Ignore restricted history environments
       }
-    }
+    },
+    []
+  );
 
-    if (options?.scrollToTop !== false) {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  }, []);
+  useEffect(() => {
+    syncBrowserHistoryEntry('replace', activeStepIdRef.current, 0, historyStackRef.current);
+  }, [syncBrowserHistoryEntry]);
 
-  // Steps back one screen in HistoryStack and keeps browser/Android Back history synchronized
+  const navigate = useCallback(
+    (route: AppRoute, options?: NavigateOptions) => {
+      const prevStack = historyStackRef.current;
+      const nextStack = pushNavigationHistory(prevStack, route, options);
+      const prevTop = prevStack[prevStack.length - 1];
+      const nextTop = nextStack[nextStack.length - 1];
+
+      const normalizedTarget = normalizeAppRoute(route);
+      const prevTopRoute = prevTop ? normalizeAppRoute(prevTop.route) : 'dashboard';
+      const isRootResetFromInner = normalizedTarget === 'dashboard' && prevTopRoute !== 'dashboard';
+      const isInPlaceSameRoot = normalizedTarget === 'dashboard' && prevTopRoute === 'dashboard';
+      const isSameTopScreen =
+        Boolean(prevTop && nextTop) && isSameHistoryScreen(prevTop, nextTop);
+
+      historyStackRef.current = nextStack;
+      setHistoryStack(nextStack);
+
+      const shouldPushBrowserEntry =
+        options?.mode !== 'replace' &&
+        !isInPlaceSameRoot &&
+        (isRootResetFromInner || !isSameTopScreen);
+
+      if (shouldPushBrowserEntry) {
+        const nextStepId = ++nextStepIdRef.current;
+        const nextIndex = browserStepIndexRef.current + 1;
+        activeStepIdRef.current = nextStepId;
+        browserStepIndexRef.current = nextIndex;
+        syncBrowserHistoryEntry('push', nextStepId, nextIndex, nextStack);
+      } else {
+        syncBrowserHistoryEntry(
+          'replace',
+          activeStepIdRef.current,
+          browserStepIndexRef.current,
+          nextStack
+        );
+      }
+
+      if (options?.scrollToTop !== false) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    },
+    [syncBrowserHistoryEntry]
+  );
+
+  // Steps back exactly one screen in HistoryStack and keeps browser/Android history synchronized
   const handleBack = useCallback(() => {
     const prevStack = historyStackRef.current;
-    if (prevStack.length <= 1 && prevStack[0]?.route === 'dashboard') {
+    const topRoute = prevStack[0] ? normalizeAppRoute(prevStack[0].route) : 'dashboard';
+    if (prevStack.length <= 1 && topRoute === 'dashboard') {
       return;
     }
 
@@ -98,33 +164,47 @@ export default function App() {
     setHistoryStack(nextStack);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
-    if (typeof window !== 'undefined' && browserHistoryDepthRef.current > 0) {
-      browserHistoryDepthRef.current -= 1;
-      ignoreNextPopstateRef.current += 1;
-      window.setTimeout(() => {
-        if (ignoreNextPopstateRef.current > 0) {
-          ignoreNextPopstateRef.current = 0;
+    if (typeof window !== 'undefined') {
+      if (browserStepIndexRef.current > 0) {
+        browserStepIndexRef.current -= 1;
+        pendingUiBackCountRef.current += 1;
+        try {
+          window.history.back();
+        } catch {
+          pendingUiBackCountRef.current = Math.max(0, pendingUiBackCountRef.current - 1);
         }
-      }, 300);
-      try {
-        window.history.back();
-      } catch {
-        ignoreNextPopstateRef.current = Math.max(0, ignoreNextPopstateRef.current - 1);
+      } else {
+        syncBrowserHistoryEntry('replace', activeStepIdRef.current, 0, nextStack);
       }
     }
-  }, []);
+  }, [syncBrowserHistoryEntry]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    const handlePopState = () => {
-      if (ignoreNextPopstateRef.current > 0) {
-        ignoreNextPopstateRef.current -= 1;
-        return;
-      }
+    const handlePopState = (event: PopStateEvent) => {
+      const eventState =
+        event.state && typeof event.state === 'object'
+          ? (event.state as {
+              daftarFaniNav?: boolean;
+              daftarFaniSessionId?: string;
+              daftarFaniStepId?: number;
+              daftarFaniIndex?: number;
+              stack?: HistoryStack;
+            })
+          : null;
 
-      if (browserHistoryDepthRef.current > 0) {
-        browserHistoryDepthRef.current -= 1;
+      if (pendingUiBackCountRef.current > 0) {
+        pendingUiBackCountRef.current -= 1;
+        if (eventState && eventState.daftarFaniSessionId === navSessionIdRef.current) {
+          if (typeof eventState.daftarFaniStepId === 'number') {
+            activeStepIdRef.current = eventState.daftarFaniStepId;
+          }
+          if (typeof eventState.daftarFaniIndex === 'number') {
+            browserStepIndexRef.current = Math.max(0, eventState.daftarFaniIndex);
+          }
+        }
+        return;
       }
 
       if (showSplashRef.current || sessionStateRef.current === 'exited') {
@@ -135,9 +215,25 @@ export default function App() {
         setMobileMenuOpen(false);
       }
 
+      if (
+        eventState &&
+        eventState.daftarFaniNav &&
+        eventState.daftarFaniSessionId === navSessionIdRef.current &&
+        Array.isArray(eventState.stack) &&
+        eventState.stack.length > 0
+      ) {
+        activeStepIdRef.current = eventState.daftarFaniStepId ?? activeStepIdRef.current;
+        browserStepIndexRef.current = Math.max(0, eventState.daftarFaniIndex ?? 0);
+        historyStackRef.current = eventState.stack;
+        setHistoryStack(eventState.stack);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
       const prevStack = historyStackRef.current;
       if (prevStack.length > 1) {
         const nextStack = resolveLogicalBackHistory(prevStack);
+        browserStepIndexRef.current = Math.max(0, browserStepIndexRef.current - 1);
         historyStackRef.current = nextStack;
         setHistoryStack(nextStack);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -271,8 +367,13 @@ export default function App() {
         onEnterApp={() => {
           setSessionState('active');
           const initial = createInitialHistoryStack();
+          const nextStepId = ++nextStepIdRef.current;
+          activeStepIdRef.current = nextStepId;
+          browserStepIndexRef.current = 0;
+          pendingUiBackCountRef.current = 0;
           historyStackRef.current = initial;
           setHistoryStack(initial);
+          syncBrowserHistoryEntry('replace', nextStepId, 0, initial);
         }}
       />
     );
@@ -319,48 +420,6 @@ export default function App() {
         />
 
         <main className="min-w-0 flex-1 pb-10">
-          {/* Palette-Matched Post-Update Confirmation Banner — positioned slightly below the top header bar */}
-          {updater.updateCompletedNotice && (
-            <div className="mx-auto max-w-[1280px] px-4 pt-4 sm:px-6">
-              <div
-                role="status"
-                aria-live="polite"
-                className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--app-radius)] border border-[#D5C39E] bg-[#E5EBF2] px-4 py-3 text-xs text-[#243B5A]"
-              >
-                <div className="flex items-start gap-3 min-w-0">
-                  <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#243B5A] text-[#FAF8F3]">
-                    <CheckCircle2 className="h-4 w-4" />
-                  </span>
-                  <div className="min-w-0 space-y-0.5">
-                    <div className="text-sm font-bold text-[#243B5A]">
-                      نرم‌افزار شما با موفقیت به‌روزرسانی شد
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[#354F73]">
-                      <span className="font-semibold tabular-nums">
-                        نسخه {toPersianDigits(updater.updateCompletedNotice.version)}
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span className="tabular-nums">
-                        تاریخ و ساعت به‌روزرسانی:{' '}
-                        {formatJalaliDateTime(updater.updateCompletedNotice.updatedAt)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => updater.dismissUpdateNotice()}
-                  className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg border border-[#243B5A]/30 bg-[#FFFFFF] px-3 py-1.5 text-xs font-medium text-[#243B5A] transition-colors hover:bg-[#243B5A] hover:text-[#FAF8F3] whitespace-nowrap cursor-pointer"
-                  aria-label="بستن پیام انجام به‌روزرسانی"
-                >
-                  <span>متوجه شدم</span>
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Palette-Matched Update Available Notice — positioned slightly below the top header bar */}
           {updater.needRefresh && !dismissUpdateBanner && (
             <div className="mx-auto max-w-[1280px] px-4 pt-4 sm:px-6">
@@ -383,7 +442,18 @@ export default function App() {
                   <button
                     type="button"
                     disabled={updater.status === 'updating'}
-                    onClick={() => void updater.runUnifiedUpdate()}
+                    onClick={() => {
+                      const recent = updater.getRecentUpdateInfo();
+                      if (recent.isRecent && recent.lastUpdatedAt) {
+                        setRecentBannerUpdateWarning({
+                          open: true,
+                          minutesAgo: Math.max(0, Math.floor(recent.elapsedMs / 60000)),
+                          lastUpdatedAt: recent.lastUpdatedAt,
+                        });
+                        return;
+                      }
+                      void updater.runUnifiedUpdate();
+                    }}
                     className="inline-flex min-h-[36px] items-center rounded-lg border border-[#243B5A] bg-[#243B5A] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] transition-colors hover:bg-[#354F73] disabled:opacity-60 whitespace-nowrap cursor-pointer"
                   >
                     {updater.status === 'updating' ? 'در حال به‌روزرسانی...' : 'اعمال به‌روزرسانی'}
@@ -433,14 +503,15 @@ export default function App() {
               projectId={current.projectId}
               store={store}
               activeTab={(current.subTab as ProjectDetailTab) ?? 'overview'}
-              onTabChange={(tab) =>
+              onTabChange={(tab) => {
+                const latest = historyStackRef.current[historyStackRef.current.length - 1];
                 navigate('project-detail', {
-                  projectId: current.projectId,
+                  projectId: latest?.projectId ?? current.projectId,
                   subTab: tab,
                   mode: 'drill',
                   scrollToTop: false,
-                })
-              }
+                });
+              }}
               onNavigate={(r) => navigate(r, { mode: 'drill' })}
             />
           )}
@@ -485,22 +556,24 @@ export default function App() {
               store={store}
               initialReportType={current.reportType ?? 'projects'}
               initialDisplayMode={current.reportDisplayMode ?? 'table'}
-              onReportTypeChange={(rt) =>
+              onReportTypeChange={(rt) => {
+                const latest = historyStackRef.current[historyStackRef.current.length - 1];
                 navigate('reports', {
                   reportType: rt,
-                  reportDisplayMode: current.reportDisplayMode ?? 'table',
+                  reportDisplayMode: latest?.reportDisplayMode ?? 'table',
                   mode: 'drill',
                   scrollToTop: false,
-                })
-              }
-              onDisplayModeChange={(mode) =>
+                });
+              }}
+              onDisplayModeChange={(mode) => {
+                const latest = historyStackRef.current[historyStackRef.current.length - 1];
                 navigate('reports', {
-                  reportType: current.reportType ?? 'projects',
+                  reportType: latest?.reportType ?? 'projects',
                   reportDisplayMode: mode,
                   mode: 'drill',
                   scrollToTop: false,
-                })
-              }
+                });
+              }}
               onOpenHelp={handleOpenHelp}
             />
           )}
@@ -511,10 +584,11 @@ export default function App() {
               initialTab={current.supportTab ?? 'settings'}
               initialHelpSection={current.helpSection ?? null}
               onTabChange={(tab) => {
-                const isGuideTransition = tab === 'guide' || current.supportTab === 'guide';
+                const latest = historyStackRef.current[historyStackRef.current.length - 1];
+                const isGuideTransition = tab === 'guide' || latest?.supportTab === 'guide';
                 navigate('support', {
                   supportTab: tab,
-                  helpSection: tab === 'guide' ? current.helpSection ?? null : null,
+                  helpSection: tab === 'guide' ? latest?.helpSection ?? null : null,
                   mode: 'drill',
                   scrollToTop: isGuideTransition,
                 });
@@ -567,6 +641,85 @@ export default function App() {
           </button>
         </div>
       )}
+
+      {/* Post-Update Confirmation Window — stays open on main screen until user clicks «متوجه شدم» */}
+      {updater.updateCompletedNotice && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="post-update-notice-title"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#243B5A]/35 p-4"
+        >
+          <div className="w-full max-w-md rounded-[var(--app-radius)] border border-[#D5C39E] bg-[#FFFFFF] p-6 space-y-4 shadow-lg">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#243B5A] text-[#FAF8F3]">
+                <CheckCircle2 className="h-5 w-5" />
+              </span>
+              <div className="min-w-0 space-y-1">
+                <div className="text-[11px] font-semibold text-[#9A742B]">
+                  توجه به به‌روزرسانی نرم‌افزار
+                </div>
+                <h3
+                  id="post-update-notice-title"
+                  className="text-base font-bold text-[#243B5A]"
+                >
+                  نرم‌افزار شما با موفقیت به‌روزرسانی شد
+                </h3>
+              </div>
+            </div>
+
+            <div className="space-y-2 rounded-xl border border-[#E5E0D5] bg-[#FAF8F3] px-4 py-3 text-xs text-[#263448]">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[#5B6573]">نسخه فعال:</span>
+                <span className="font-bold tabular-nums text-[#243B5A]">
+                  {toPersianDigits(updater.updateCompletedNotice.version)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[#5B6573]">تاریخ و ساعت به‌روزرسانی:</span>
+                <span className="font-semibold tabular-nums text-[#243B5A]">
+                  {formatJalaliDateTime(updater.updateCompletedNotice.updatedAt)}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs leading-6 text-[#5B6573]">
+              تمامی پرونده‌ها، صورت‌وضعیت‌ها، بودجه‌ها، تصاویر و اطلاعات محلی شما بدون تغییر حفظ شده‌اند.
+            </p>
+
+            <div className="flex items-center justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => updater.dismissUpdateNotice()}
+                className="inline-flex min-h-[40px] items-center justify-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#243B5A] px-5 py-2 text-xs font-medium text-[#FAF8F3] transition-colors hover:bg-[#354F73] cursor-pointer"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                <span>متوجه شدم</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5-Minute Duplicate Update Guard for Banner Button */}
+      <ConfirmDialog
+        open={Boolean(recentBannerUpdateWarning?.open)}
+        title="هشدار به‌روزرسانی مجدد نرم‌افزار"
+        message={
+          recentBannerUpdateWarning
+            ? recentBannerUpdateWarning.minutesAgo < 1
+              ? `شما کمتر از ۱ دقیقه پیش (در تاریخ ${formatJalaliDateTime(recentBannerUpdateWarning.lastUpdatedAt)}) کلید به‌روزرسانی را زده‌اید و برنامه هم‌اکنون به‌روز است. آیا مطمئن هستید که می‌خواهید بار دیگر به‌روزرسانی را انجام دهید؟`
+              : `شما حدود ${toPersianDigits(recentBannerUpdateWarning.minutesAgo)} دقیقه پیش (در تاریخ ${formatJalaliDateTime(recentBannerUpdateWarning.lastUpdatedAt)}) کلید به‌روزرسانی را زده‌اید و برنامه هم‌اکنون به‌روز است. آیا مطمئن هستید که می‌خواهید بار دیگر به‌روزرسانی را انجام دهید؟`
+            : ''
+        }
+        confirmLabel="بله، دوباره به‌روزرسانی کن"
+        cancelLabel="انصراف"
+        onCancel={() => setRecentBannerUpdateWarning(null)}
+        onConfirm={() => {
+          setRecentBannerUpdateWarning(null);
+          void updater.runUnifiedUpdate();
+        }}
+      />
 
       {/* Controlled Workspace Exit Dialog (Section 10) */}
       <ConfirmDialog

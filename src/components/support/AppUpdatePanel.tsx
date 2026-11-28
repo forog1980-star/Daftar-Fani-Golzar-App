@@ -27,6 +27,7 @@ import {
   isNativeInstalledRuntime,
 } from '../../utils/platformBridge';
 import { PWAInstallButton } from '../layout/PWAInstallButton';
+import { ConfirmDialog } from '../layout/ConfirmDialog';
 
 interface AppUpdatePanelProps {
   compact?: boolean;
@@ -77,6 +78,12 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
   const [showSourceConfig, setShowSourceConfig] = useState(false);
   const [sourceInput, setSourceInput] = useState(updater.versionSourceUrl);
   const [runningUpdate, setRunningUpdate] = useState(false);
+  const [recentWarning, setRecentWarning] = useState<{
+    open: boolean;
+    minutesAgo: number;
+    lastUpdatedAt: string;
+    overrideSource?: string;
+  } | null>(null);
 
   const isBusy =
     updater.status === 'checking' || updater.status === 'updating' || runningUpdate;
@@ -85,7 +92,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
     updater.checkedUrl ||
     (typeof window !== 'undefined' ? resolveVersionManifestUrl(sourceInput) : './version.json');
 
-  const handleOneClickUpdate = async (overrideSource?: string) => {
+  const executeUpdate = async (overrideSource?: string) => {
     const cleaned = (overrideSource !== undefined ? overrideSource : sourceInput).trim();
     if (cleaned !== updater.versionSourceUrl) {
       updater.setCustomSourceUrl(cleaned);
@@ -101,6 +108,26 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
     } finally {
       setRunningUpdate(false);
     }
+  };
+
+  const handleOneClickUpdate = async (
+    overrideSource?: string,
+    options?: { skipDuplicateGuard?: boolean }
+  ) => {
+    if (!options?.skipDuplicateGuard) {
+      const recent = updater.getRecentUpdateInfo();
+      if (recent.isRecent && recent.lastUpdatedAt) {
+        const minutesAgo = Math.max(0, Math.floor(recent.elapsedMs / 60000));
+        setRecentWarning({
+          open: true,
+          minutesAgo,
+          lastUpdatedAt: recent.lastUpdatedAt,
+          overrideSource,
+        });
+        return;
+      }
+    }
+    await executeUpdate(overrideSource);
   };
 
   return (
@@ -158,6 +185,14 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
                   <span aria-hidden="true">·</span>
                   <span className="tabular-nums text-[#788290]">
                     آخرین بررسی: {formatJalaliDateTime(updater.lastCheckedAt)}
+                  </span>
+                </>
+              )}
+              {updater.lastUpdateActionAt && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="tabular-nums text-[#3D6B59]">
+                    آخرین به‌روزرسانی: {formatJalaliDateTime(updater.lastUpdateActionAt)}
                   </span>
                 </>
               )}
@@ -346,7 +381,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
                 <button
                   type="button"
                   disabled={isBusy}
-                  onClick={() => void handleOneClickUpdate()}
+                  onClick={() => void handleOneClickUpdate(undefined, { skipDuplicateGuard: true })}
                   className="inline-flex items-center gap-1 rounded border border-[#9E3B3B] bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-medium text-[#9E3B3B] hover:bg-[#FBF1F1] cursor-pointer"
                 >
                   <RefreshCw className="h-3 w-3" />
@@ -359,7 +394,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
                     onClick={async () => {
                       setSourceInput('');
                       updater.setCustomSourceUrl('');
-                      await handleOneClickUpdate('');
+                      await handleOneClickUpdate('', { skipDuplicateGuard: true });
                     }}
                     className="inline-flex items-center gap-1 rounded border border-[#243B5A] bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
                   >
@@ -466,6 +501,26 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
               : 'تمامی پرونده‌ها، صورت‌وضعیت‌ها، بودجه‌ها، تصاویر و پیوست‌های ذخیره‌شده در حافظه محلی مرورگر (IndexedDB) کاملاً محفوظ می‌مانند.'}
         </span>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(recentWarning?.open)}
+        title="هشدار به‌روزرسانی مجدد نرم‌افزار"
+        message={
+          recentWarning
+            ? recentWarning.minutesAgo < 1
+              ? `شما کمتر از ۱ دقیقه پیش (در تاریخ ${formatJalaliDateTime(recentWarning.lastUpdatedAt)}) کلید به‌روزرسانی را زده‌اید و برنامه هم‌اکنون به‌روز است. آیا مطمئن هستید که می‌خواهید بار دیگر به‌روزرسانی را انجام دهید؟`
+              : `شما حدود ${toPersianDigits(recentWarning.minutesAgo)} دقیقه پیش (در تاریخ ${formatJalaliDateTime(recentWarning.lastUpdatedAt)}) کلید به‌روزرسانی را زده‌اید و برنامه هم‌اکنون به‌روز است. آیا مطمئن هستید که می‌خواهید بار دیگر به‌روزرسانی را انجام دهید؟`
+            : ''
+        }
+        confirmLabel="بله، دوباره به‌روزرسانی کن"
+        cancelLabel="انصراف"
+        onCancel={() => setRecentWarning(null)}
+        onConfirm={() => {
+          const override = recentWarning?.overrideSource;
+          setRecentWarning(null);
+          void executeUpdate(override);
+        }}
+      />
     </div>
   );
 };

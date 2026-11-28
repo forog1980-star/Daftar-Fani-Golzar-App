@@ -6,7 +6,7 @@ on:
       release_tag:
         description: 'برچسب نسخه انتشار (مثال: v1.4.1)'
         required: true
-        default: 'v1.4.1'
+        default: 'v1.4.2'
       publish_release:
         description: 'انتشار خروجی‌ها در صفحه GitHub Releases'
         type: boolean

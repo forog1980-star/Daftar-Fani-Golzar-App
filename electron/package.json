@@ -1,6 +1,6 @@
 {
   "name": "daftar-fani-golzar-desktop",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "نرم‌افزار مستقل دسکتاپ مدیریت امور دفتر فنی اداره گلزار شهدا",
   "main": "main.cjs",
   "private": true,

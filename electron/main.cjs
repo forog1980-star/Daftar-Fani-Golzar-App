@@ -406,6 +406,76 @@ function registerIpcHandlers() {
       clearTimeout(timer);
     }
   });
+
+  // One-click verified Windows EXE installer download & launch (strictly limited to official GitHub Release .exe)
+  ipcMain.handle('desktop:download-and-run-installer', async (_event, payload) => {
+    const rawUrl = String(payload?.downloadUrl || '').trim();
+    const fileNameRaw = String(payload?.fileName || 'Daftar-Fani-Golzar-Setup.exe').trim();
+    const safeName = fileNameRaw.replace(/[^a-zA-Z0-9._-]/g, '_');
+    if (!safeName.toLowerCase().endsWith('.exe')) {
+      return { ok: false, error: 'فایل انتخاب‌شده قالب نصاب ویندوز (.exe) ندارد.' };
+    }
+
+    let parsed;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      return { ok: false, error: 'نشانی فایل نصبی معتبر نیست.' };
+    }
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.hostname !== 'github.com' ||
+      !parsed.pathname.toLowerCase().includes('/releases/download/') ||
+      !parsed.pathname.toLowerCase().endsWith('.exe')
+    ) {
+      return { ok: false, error: 'دانلود خودکار صرفاً از نشانی رسمی GitHub Releases مجاز است.' };
+    }
+
+    const updatesDir = path.join(activeDataRoot, 'Backups', 'Updates');
+    try {
+      fs.mkdirSync(updatesDir, { recursive: true });
+      const targetPath = path.join(updatesDir, safeName);
+      appendLogLine(activeDataRoot, 'info', `Downloading Windows update from ${rawUrl}`);
+
+      const res = await net.fetch(parsed.toString(), {
+        method: 'GET',
+        redirect: 'follow',
+        headers: { 'User-Agent': 'Daftar-Fani-Golzar-Desktop' },
+      });
+      if (!res.ok) {
+        return { ok: false, error: `دانلود نصاب جدید با خطای HTTP ${res.status} متوقف شد.` };
+      }
+      const arrBuf = await res.arrayBuffer();
+      const buffer = Buffer.from(arrBuf);
+
+      // Verify genuine Windows PE executable header ("MZ") and minimum plausible installer size
+      if (buffer.length < 1024 * 1024 || buffer[0] !== 0x4d || buffer[1] !== 0x5a) {
+        appendLogLine(activeDataRoot, 'error', `Downloaded file failed PE/size validation (${buffer.length} bytes).`);
+        return {
+          ok: false,
+          error: 'فایل دانلودشده یک نصاب معتبر ویندوز (EXE) نبود و اجرا نشد. لطفاً دوباره تلاش کنید.',
+        };
+      }
+
+      fs.writeFileSync(targetPath, buffer);
+      appendLogLine(activeDataRoot, 'info', `Verified update installer saved: ${targetPath} (${buffer.length} bytes)`);
+
+      const openErr = await shell.openPath(targetPath);
+      if (openErr) {
+        return { ok: false, error: `فایل نصاب ذخیره شد اما اجرای خودکار ناموفق بود: ${openErr}`, savedPath: targetPath };
+      }
+
+      setTimeout(() => {
+        app.quit();
+      }, 700);
+
+      return { ok: true, savedPath: targetPath };
+    } catch (err) {
+      const errMsg = err && err.message ? String(err.message) : 'خطا در دانلود فایل نصاب';
+      appendLogLine(activeDataRoot, 'error', `Windows auto-update download failed: ${errMsg}`);
+      return { ok: false, error: `خطا در دریافت فایل نصاب ویندوز: ${errMsg}` };
+    }
+  });
 }
 
 // Single-instance lock so two desktop windows never contend on the same IndexedDB directory

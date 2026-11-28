@@ -53,6 +53,8 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
 
   const [showSourceConfig, setShowSourceConfig] = useState(false);
   const [sourceInput, setSourceInput] = useState(updater.versionSourceUrl);
+  const [installingDesktopUpdate, setInstallingDesktopUpdate] = useState(false);
+  const [desktopInstallError, setDesktopInstallError] = useState('');
 
   const effectiveVersionUrl =
     updater.checkedUrl ||
@@ -71,12 +73,38 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
   }, [compact, isOnline, releaseInfo.status, updater]);
 
   const handleCheckUpdate = async () => {
+    setDesktopInstallError('');
     const cleaned = sourceInput.trim();
     if (cleaned !== updater.versionSourceUrl) {
       updater.setCustomSourceUrl(cleaned);
     }
     await updater.checkForUpdate(cleaned);
   };
+
+  const handleAutoInstallWindows = async () => {
+    if (!windowsExe || !window.desktopBridge?.downloadAndRunInstaller) return;
+    setInstallingDesktopUpdate(true);
+    setDesktopInstallError('');
+    try {
+      const res = await window.desktopBridge.downloadAndRunInstaller({
+        downloadUrl: windowsExe.downloadUrl,
+        fileName: windowsExe.name,
+      });
+      if (!res.ok) {
+        setDesktopInstallError(res.error || 'خطا در دانلود و اجرای خودکار نصاب جدید ویندوز');
+      }
+    } catch {
+      setDesktopInstallError('خطای غیرمنتظره در دانلود و اجرای نصاب جدید ویندوز رخ داد.');
+    } finally {
+      setInstallingDesktopUpdate(false);
+    }
+  };
+
+  const canAutoInstallWindows =
+    runtimePlatform === 'electron' &&
+    Boolean(windowsExe) &&
+    typeof window !== 'undefined' &&
+    typeof window.desktopBridge?.downloadAndRunInstaller === 'function';
 
   const nativeDirectAsset = runtimePlatform === 'electron' ? windowsExe : androidApk;
 
@@ -448,19 +476,41 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
         )}
 
         {isNativeRuntime && updater.status === 'update-available' && nativeDirectAsset && (
-          <a
-            href={nativeDirectAsset.downloadUrl}
-            download={nativeDirectAsset.name}
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-4 py-2.5 text-xs font-medium text-[#FFFFFF] transition-colors hover:opacity-90 whitespace-nowrap"
-          >
-            <Download className="h-3.5 w-3.5" />
-            <span>
-              {runtimePlatform === 'electron'
-                ? `دانلود مستقیم نسخه جدید ویندوز (${nativeDirectAsset.releaseTag})`
-                : `دانلود مستقیم نسخه جدید اندروید (${nativeDirectAsset.releaseTag})`}
-            </span>
-          </a>
+          canAutoInstallWindows ? (
+            <button
+              type="button"
+              disabled={installingDesktopUpdate}
+              onClick={() => void handleAutoInstallWindows()}
+              className="inline-flex items-center gap-2 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-4 py-2.5 text-xs font-medium text-[#FFFFFF] transition-colors hover:opacity-90 disabled:opacity-60 cursor-pointer whitespace-nowrap"
+            >
+              <Download className={`h-3.5 w-3.5 ${installingDesktopUpdate ? 'animate-bounce' : ''}`} />
+              <span>
+                {installingDesktopUpdate
+                  ? 'در حال دانلود و اجرای نصاب جدید ویندوز...'
+                  : `دانلود و نصب خودکار نسخه جدید ویندوز (${nativeDirectAsset.releaseTag})`}
+              </span>
+            </button>
+          ) : (
+            <a
+              href={nativeDirectAsset.downloadUrl}
+              download={nativeDirectAsset.name}
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-4 py-2.5 text-xs font-medium text-[#FFFFFF] transition-colors hover:opacity-90 whitespace-nowrap"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>
+                {runtimePlatform === 'electron'
+                  ? `دانلود مستقیم نسخه جدید ویندوز (${nativeDirectAsset.releaseTag})`
+                  : `دانلود مستقیم نسخه جدید اندروید (${nativeDirectAsset.releaseTag})`}
+              </span>
+            </a>
+          )
+        )}
+
+        {desktopInstallError && (
+          <div className="w-full rounded-lg border border-[#D8B4B4] bg-[#FBF1F1] px-3 py-2 text-xs text-[#9E3B3B]">
+            {desktopInstallError}
+          </div>
         )}
 
         {!compact && (

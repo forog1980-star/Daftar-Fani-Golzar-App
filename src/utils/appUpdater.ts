@@ -159,7 +159,7 @@ async function resilientFetchText(
 }
 
 export const LOCAL_APP_VERSION =
-  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.4.0';
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.4.1';
 export const LOCAL_BUILD_ID =
   typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'dev-local';
 
@@ -583,7 +583,7 @@ export function extractVerifiedInstallersFromReleases(
       windowsExe: null,
       androidApk: null,
       message:
-        'تا این لحظه هیچ نسخه منتشرشده‌ای (Release) شامل فایل نصبی EXE یا APK در مخزن گیت‌هاب ثبت نشده است.',
+        'تا این لحظه هیچ نسخه منتشرشده‌ای (Release) شامل فایل نصبی EXE یا APK در گیت‌هاب ثبت نشده است. برای فعال شدن دانلود مستقیم، در بخش GitHub Actions گردش‌کار «Build Standalone Installers» را با گزینه publish_release فعال اجرا کنید.',
       lastCheckedAt: checkedAt,
     };
   }

@@ -65,6 +65,10 @@ export interface DesktopBridgeAPI {
   relaunchApp: () => Promise<void>;
   appendLog: (level: 'info' | 'warn' | 'error', message: string) => Promise<void>;
   fetchJson?: (url: string) => Promise<DesktopFetchJsonResult>;
+  downloadAndRunInstaller?: (payload: {
+    downloadUrl: string;
+    fileName: string;
+  }) => Promise<{ ok: boolean; savedPath?: string; error?: string }>;
 }
 
 interface CapacitorPluginLike {

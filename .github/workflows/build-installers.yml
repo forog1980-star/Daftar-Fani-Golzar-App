@@ -4,17 +4,17 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'برچسب نسخه آزمایشی یا نهایی (مثال: v1.4.0-test.1 یا v1.4.0)'
+        description: 'برچسب نسخه انتشار (مثال: v1.4.1)'
         required: true
-        default: 'v1.4.0-test.1'
+        default: 'v1.4.1'
       publish_release:
         description: 'انتشار خروجی‌ها در صفحه GitHub Releases'
         type: boolean
         default: true
       is_prerelease:
-        description: 'ثبت به‌عنوان نسخه آزمایشی (Pre-release) پیش از تأیید نهایی'
+        description: 'ثبت به‌عنوان نسخه آزمایشی (Pre-release)'
         type: boolean
-        default: true
+        default: false
   push:
     tags:
       - 'v*'

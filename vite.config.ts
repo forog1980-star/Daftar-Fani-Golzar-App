@@ -12,7 +12,7 @@ export default defineConfig(() => {
     : process.env.GITHUB_PAGES === 'true'
       ? '/Daftar-Fani-Golzar-App/'
       : '/';
-  const appVersion = '1.4.0';
+  const appVersion = '1.4.1';
   const buildTimestamp = new Date().toISOString();
   const buildId = `${appVersion}-${buildTimestamp.replace(/[-:TZ.]/g, '').slice(0, 14)}`;
 

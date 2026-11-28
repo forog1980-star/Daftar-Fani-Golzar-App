@@ -18,6 +18,7 @@ import {
 import {
   addActivity,
   clearSampleRecords,
+  clearSampleRecordsSafe,
   deleteEntity,
   initializeDatabase,
   loadAllData,
@@ -25,10 +26,12 @@ import {
   restoreFromSnapshot,
   RollbackSnapshot,
   seedSampleRecords,
+  wipeAllUserDataSafe,
 } from '../db/database';
 import { createDefaultSettings } from '../db/seedData';
 import { generateId } from '../utils/format';
 import { applyAppearanceToDocument } from '../utils/themeEngine';
+import { syncAttachmentToDesktopDisk } from '../utils/platformBridge';
 
 export interface SaveToast {
   id: string;
@@ -578,6 +581,7 @@ export function useAppStore() {
         notifySave('ذخیره فایل پیوست ناموفق بود.', false);
         throw new Error('Attachment save failed');
       }
+      await syncAttachmentToDesktopDisk(record.id, file.name, file);
       await addActivity({
         entityType: 'document',
         entityId: record.id,
@@ -767,6 +771,24 @@ export function useAppStore() {
     return count;
   }, [deviceId, refresh]);
 
+  const removeSampleDataSafeNow = useCallback(
+    async (includeLinkedAttachments = true) => {
+      const res = await clearSampleRecordsSafe(deviceId, { includeLinkedAttachments });
+      await refresh();
+      return res;
+    },
+    [deviceId, refresh]
+  );
+
+  const wipeAllDataSafeNow = useCallback(
+    async (preserveReferenceTemplates = true) => {
+      const res = await wipeAllUserDataSafe(deviceId, { preserveReferenceTemplates });
+      await refresh();
+      return res;
+    },
+    [deviceId, refresh]
+  );
+
   const rollbackToSnapshot = useCallback(
     async (snapshotId: string) => {
       const ok = await restoreFromSnapshot(snapshotId, deviceId);
@@ -779,8 +801,13 @@ export function useAppStore() {
 
   const hasSampleData =
     state.projects.some((p) => p.isSample) ||
+    state.budgets.some((b) => b.isSample) ||
+    state.payments.some((p) => p.isSample) ||
+    state.proposals.some((p) => p.isSample) ||
     state.actions.some((a) => a.isSample) ||
-    state.documents.some((d) => d.isSample);
+    state.documents.some((d) => d.isSample) ||
+    state.people.some((p) => p.isSample) ||
+    state.formSubmissions.some((s) => s.isSample);
 
   return {
     ...state,
@@ -816,6 +843,8 @@ export function useAppStore() {
     recordImportActivity,
     loadSampleDataNow,
     removeSampleDataNow,
+    removeSampleDataSafeNow,
+    wipeAllDataSafeNow,
     rollbackToSnapshot,
   };
 }

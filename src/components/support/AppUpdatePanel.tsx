@@ -5,16 +5,22 @@ import {
   ChevronDown,
   ChevronUp,
   CloudDownload,
+  Download,
   Link2,
+  Monitor,
   RefreshCw,
   ShieldCheck,
+  Smartphone,
   Wifi,
   WifiOff,
 } from 'lucide-react';
 import { resolveVersionManifestUrl, useAppUpdater } from '../../utils/appUpdater';
 import { useOnlineStatus } from '../../hooks/usePWAInstall';
 import { formatJalaliDateTime, toPersianDigits } from '../../utils/format';
+import { getPlatformDisplayLabel } from '../../utils/platformBridge';
 import { PWAInstallButton } from '../layout/PWAInstallButton';
+
+const GITHUB_RELEASES_URL = 'https://github.com/forog1980-star/Daftar-Fani-Golzar-App/releases';
 
 interface AppUpdatePanelProps {
   compact?: boolean;
@@ -24,6 +30,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
   const updater = useAppUpdater();
   const isOnline = useOnlineStatus();
   const isBusy = updater.status === 'checking' || updater.status === 'updating';
+  const platformLabel = getPlatformDisplayLabel();
 
   const [showSourceConfig, setShowSourceConfig] = useState(false);
   const [sourceInput, setSourceInput] = useState(updater.versionSourceUrl);
@@ -37,21 +44,23 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
 
   return (
     <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-4">
-      {/* Header with App Icon Preview */}
+      {/* Header with New Official App Icon Preview */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E8E5DE] pb-4">
         <div className="flex items-center gap-3.5 min-w-0">
-          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[#D5C39E] bg-[#FBEFD7]">
+          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-[#D5C39E] bg-[#F7F3E9]">
             <img
               src="./app-icon.png"
-              alt="آیکون رسمی نرم‌افزار دفتر فنی"
-              className="h-full w-full object-cover"
+              alt="آیکون رسمی نرم‌افزار دفتر فنی اداره گلزار شهدا"
+              className="h-full w-full object-contain"
             />
           </div>
           <div className="min-w-0 space-y-0.5">
             <h3 className="text-sm font-bold text-[#243B5A]">
-              به‌روزرسانی نرم‌افزار و نصب آفلاین (PWA)
+              نسخه‌های نصبی مستقل (ویندوز و اندروید) و به‌روزرسانی
             </h3>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#5B6573]">
+              <span className="font-medium text-[#243B5A]">{platformLabel}</span>
+              <span aria-hidden="true">·</span>
               <span className="tabular-nums font-medium text-[#263448]">
                 نسخه فعلی: {toPersianDigits(updater.currentVersion)}
               </span>
@@ -93,6 +102,42 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
           <PWAInstallButton />
         </div>
       </div>
+
+      {/* Direct Installer Downloads (Windows EXE & Android APK from GitHub Releases) */}
+      {!compact && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#ECE7DC] bg-[#FAF8F3] px-4 py-3">
+          <div className="space-y-0.5 text-xs">
+            <div className="font-semibold text-[#243B5A]">
+              دریافت فایل‌های نصبی مستقل (بدون نیاز به Google Chrome)
+            </div>
+            <div className="text-[11px] text-[#5B6573]">
+              نسخه دسکتاپ ویندوز (ذخیره روی D:\Daftar-Fani-Golzar) و اپلیکیشن اندروید از صفحه Releases گیت‌هاب
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={GITHUB_RELEASES_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#FFFFFF] px-3 text-xs font-medium text-[#243B5A] hover:bg-[#E5EBF2] whitespace-nowrap"
+            >
+              <Monitor className="h-3.5 w-3.5" />
+              <span>دانلود نصاب ویندوز (EXE)</span>
+              <Download className="h-3 w-3 opacity-75" />
+            </a>
+            <a
+              href={GITHUB_RELEASES_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#3D6B59] bg-[#FFFFFF] px-3 text-xs font-medium text-[#3D6B59] hover:bg-[#E7ECE6] whitespace-nowrap"
+            >
+              <Smartphone className="h-3.5 w-3.5" />
+              <span>دانلود اپ اندروید (APK)</span>
+              <Download className="h-3 w-3 opacity-75" />
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Clear User-Friendly Guidance */}
       {!compact && (

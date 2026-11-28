@@ -179,41 +179,346 @@ export async function seedSampleRecords(deviceId: string): Promise<void> {
   await tx.done;
 }
 
-export async function clearSampleRecords(deviceId: string): Promise<number> {
+export interface SampleCleanupInspection {
+  counts: {
+    projects: number;
+    budgets: number;
+    payments: number;
+    proposals: number;
+    actions: number;
+    documents: number;
+    people: number;
+    formSubmissions: number;
+    attachments: number;
+    projectImages: number;
+  };
+  totalRecords: number;
+  sampleAttachmentIds: string[];
+  sampleProjectImageIds: string[];
+  preservedCounts: {
+    realProjects: number;
+    referenceFormTemplates: number;
+    golzarImages: number;
+  };
+}
+
+export interface FullWipeInspection {
+  counts: {
+    projects: number;
+    budgets: number;
+    payments: number;
+    proposals: number;
+    actions: number;
+    documents: number;
+    attachments: number;
+    people: number;
+    formSubmissions: number;
+    projectImages: number;
+    activities: number;
+  };
+  totalRecords: number;
+  referenceFormTemplatesCount: number;
+}
+
+export async function inspectSampleDataCleanup(): Promise<SampleCleanupInspection> {
   const db = await getDB();
-  const entityStores: SyncEntityStore[] = [
-    'projects',
-    'budgets',
-    'payments',
-    'proposals',
-    'actions',
-    'documents',
-    'people',
-    'formSubmissions',
-  ];
+  const [
+    projects,
+    budgets,
+    payments,
+    proposals,
+    actions,
+    documents,
+    people,
+    formSubmissions,
+    attachments,
+    projectImages,
+    formTemplates,
+    golzarImages,
+  ] = await Promise.all([
+    db.getAll('projects'),
+    db.getAll('budgets'),
+    db.getAll('payments'),
+    db.getAll('proposals'),
+    db.getAll('actions'),
+    db.getAll('documents'),
+    db.getAll('people'),
+    db.getAll('formSubmissions'),
+    db.getAll('attachments'),
+    db.getAll('projectImages'),
+    db.getAll('formTemplates'),
+    db.getAll('golzarImages'),
+  ]);
+
+  const sampleProjects = projects.filter((p) => p.isSample);
+  const sampleProjectIds = new Set(sampleProjects.map((p) => p.id));
+  const sampleBudgets = budgets.filter((b) => b.isSample || sampleProjectIds.has(b.projectId));
+  const samplePayments = payments.filter((p) => p.isSample || sampleProjectIds.has(p.projectId));
+  const sampleProposals = proposals.filter((p) => p.isSample);
+  const sampleActions = actions.filter(
+    (a) => a.isSample || (a.projectId ? sampleProjectIds.has(a.projectId) : false)
+  );
+  const sampleActionIds = new Set(sampleActions.map((a) => a.id));
+  const sampleDocuments = documents.filter(
+    (d) => d.isSample || (d.projectId ? sampleProjectIds.has(d.projectId) : false)
+  );
+  const sampleDocIds = new Set(sampleDocuments.map((d) => d.id));
+  const samplePeople = people.filter((p) => p.isSample);
+  const sampleFormSubs = formSubmissions.filter((s) => s.isSample);
+
+  const linkedAttachments = attachments.filter(
+    (att) =>
+      (att.projectId && sampleProjectIds.has(att.projectId)) ||
+      (att.documentId && sampleDocIds.has(att.documentId)) ||
+      (att.actionId && sampleActionIds.has(att.actionId))
+  );
+  const linkedProjectImages = projectImages.filter((img) => sampleProjectIds.has(img.projectId));
+
+  const counts = {
+    projects: sampleProjects.length,
+    budgets: sampleBudgets.length,
+    payments: samplePayments.length,
+    proposals: sampleProposals.length,
+    actions: sampleActions.length,
+    documents: sampleDocuments.length,
+    people: samplePeople.length,
+    formSubmissions: sampleFormSubs.length,
+    attachments: linkedAttachments.length,
+    projectImages: linkedProjectImages.length,
+  };
+
+  const totalRecords =
+    counts.projects +
+    counts.budgets +
+    counts.payments +
+    counts.proposals +
+    counts.actions +
+    counts.documents +
+    counts.people +
+    counts.formSubmissions +
+    counts.attachments +
+    counts.projectImages;
+
+  return {
+    counts,
+    totalRecords,
+    sampleAttachmentIds: linkedAttachments.map((a) => a.id),
+    sampleProjectImageIds: linkedProjectImages.map((i) => i.id),
+    preservedCounts: {
+      realProjects: projects.length - sampleProjects.length,
+      referenceFormTemplates: formTemplates.filter((t) => t.isReferenceForm).length,
+      golzarImages: golzarImages.length,
+    },
+  };
+}
+
+export async function clearSampleRecordsSafe(
+  deviceId: string,
+  options: { includeLinkedAttachments?: boolean } = {}
+): Promise<{ removed: number; removedAttachments: number; snapshotId: string }> {
+  const includeLinkedAttachments = options.includeLinkedAttachments !== false;
+  const inspection = await inspectSampleDataCleanup();
+  const snap = await createRollbackSnapshot('نقطه بازگشت خودکار پیش از پاکسازی اطلاعات آزمایشی');
+
+  const db = await getDB();
+  const sampleProjects = (await db.getAll('projects')).filter((p) => p.isSample);
+  const sampleProjectIds = new Set(sampleProjects.map((p) => p.id));
+
   let removed = 0;
 
-  for (const storeName of entityStores) {
+  const deleteByPredicate = async (
+    storeName: SyncEntityStore,
+    predicate: (rec: Record<string, unknown>) => boolean
+  ) => {
     const all = await db.getAll(storeName);
     const tx = db.transaction(storeName, 'readwrite');
     for (const rec of all) {
-      if ((rec as { isSample?: boolean }).isSample) {
+      if (predicate(rec as unknown as Record<string, unknown>)) {
         await tx.store.delete(rec.id);
         removed++;
       }
     }
     await tx.done;
+  };
+
+  await deleteByPredicate('projects', (r) => Boolean(r.isSample));
+  await deleteByPredicate(
+    'budgets',
+    (r) => Boolean(r.isSample) || (typeof r.projectId === 'string' && sampleProjectIds.has(r.projectId))
+  );
+  await deleteByPredicate(
+    'payments',
+    (r) => Boolean(r.isSample) || (typeof r.projectId === 'string' && sampleProjectIds.has(r.projectId))
+  );
+  await deleteByPredicate('proposals', (r) => Boolean(r.isSample));
+  await deleteByPredicate(
+    'actions',
+    (r) => Boolean(r.isSample) || (typeof r.projectId === 'string' && sampleProjectIds.has(r.projectId))
+  );
+  await deleteByPredicate(
+    'documents',
+    (r) => Boolean(r.isSample) || (typeof r.projectId === 'string' && sampleProjectIds.has(r.projectId))
+  );
+  await deleteByPredicate('people', (r) => Boolean(r.isSample));
+  await deleteByPredicate('formSubmissions', (r) => Boolean(r.isSample));
+
+  let removedAttachments = 0;
+  if (includeLinkedAttachments && inspection.sampleAttachmentIds.length > 0) {
+    const tx = db.transaction('attachments', 'readwrite');
+    for (const id of inspection.sampleAttachmentIds) {
+      await tx.store.delete(id);
+      removedAttachments++;
+    }
+    await tx.done;
+  }
+
+  if (includeLinkedAttachments && inspection.sampleProjectImageIds.length > 0) {
+    const tx = db.transaction('projectImages', 'readwrite');
+    for (const id of inspection.sampleProjectImageIds) {
+      await tx.store.delete(id);
+      removedAttachments++;
+    }
+    await tx.done;
+  }
+
+  // Ensure sample data is marked initialized so it never re-seeds automatically on next launch
+  const curSettings = await db.get('settings', 'app-settings');
+  if (curSettings) {
+    await db.put('settings', {
+      ...curSettings,
+      sampleDataInitialized: true,
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   await addActivity({
     entityType: 'backup',
     entityId: 'sample_clear',
     action: 'حذف',
-    summary: `حذف ${removed} رکورد آزمایشی نمونه`,
+    summary: `پاکسازی ${removed} رکورد آزمایشی و ${removedAttachments} پیوست/تصویر مرتبط (با حفظ تنظیمات و فرم‌های مرجع)`,
     deviceId,
   });
 
-  return removed;
+  return { removed, removedAttachments, snapshotId: snap.id };
+}
+
+export async function clearSampleRecords(deviceId: string): Promise<number> {
+  const res = await clearSampleRecordsSafe(deviceId, { includeLinkedAttachments: true });
+  return res.removed + res.removedAttachments;
+}
+
+export async function inspectFullDataWipe(): Promise<FullWipeInspection> {
+  const db = await getDB();
+  const [
+    projects,
+    budgets,
+    payments,
+    proposals,
+    actions,
+    documents,
+    attachments,
+    people,
+    formSubmissions,
+    projectImages,
+    activities,
+    formTemplates,
+  ] = await Promise.all([
+    db.getAll('projects'),
+    db.getAll('budgets'),
+    db.getAll('payments'),
+    db.getAll('proposals'),
+    db.getAll('actions'),
+    db.getAll('documents'),
+    db.getAll('attachments'),
+    db.getAll('people'),
+    db.getAll('formSubmissions'),
+    db.getAll('projectImages'),
+    db.getAll('activities'),
+    db.getAll('formTemplates'),
+  ]);
+
+  const counts = {
+    projects: projects.length,
+    budgets: budgets.length,
+    payments: payments.length,
+    proposals: proposals.length,
+    actions: actions.length,
+    documents: documents.length,
+    attachments: attachments.length,
+    people: people.length,
+    formSubmissions: formSubmissions.length,
+    projectImages: projectImages.length,
+    activities: activities.length,
+  };
+
+  const totalRecords = Object.values(counts).reduce((s, n) => s + n, 0);
+
+  return {
+    counts,
+    totalRecords,
+    referenceFormTemplatesCount: formTemplates.filter((t) => t.isReferenceForm).length,
+  };
+}
+
+export async function wipeAllUserDataSafe(
+  deviceId: string,
+  options: { preserveReferenceTemplates?: boolean } = {}
+): Promise<{ removedTotal: number; snapshotId: string }> {
+  const preserveReferenceTemplates = options.preserveReferenceTemplates !== false;
+  const before = await inspectFullDataWipe();
+  const snap = await createRollbackSnapshot('نقطه بازگشت خودکار پیش از پاکسازی کامل اطلاعات');
+
+  const db = await getDB();
+  const storesToClear: Array<StoreNames<DaftarFaniDB>> = [
+    'projects',
+    'budgets',
+    'payments',
+    'proposals',
+    'actions',
+    'documents',
+    'attachments',
+    'people',
+    'formSubmissions',
+    'projectImages',
+    'activities',
+  ];
+
+  const tx = db.transaction(storesToClear, 'readwrite');
+  for (const s of storesToClear) {
+    await tx.objectStore(s).clear();
+  }
+  await tx.done;
+
+  if (!preserveReferenceTemplates) {
+    const allTemplates = await db.getAll('formTemplates');
+    const tTx = db.transaction('formTemplates', 'readwrite');
+    for (const t of allTemplates) {
+      if (!t.isReferenceForm) {
+        await tTx.store.delete(t.id);
+      }
+    }
+    await tTx.done;
+  }
+
+  // Keep settings, auth config, appearance, letterhead, and mark sampleDataInitialized = true so app starts completely clean
+  const curSettings = await db.get('settings', 'app-settings');
+  if (curSettings) {
+    await db.put('settings', {
+      ...curSettings,
+      sampleDataInitialized: true,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  await addActivity({
+    entityType: 'backup',
+    entityId: 'full_wipe',
+    action: 'حذف',
+    summary: `پاکسازی کامل ${before.totalRecords} رکورد عملیاتی (تنظیمات و قالب‌های مرجع حفظ شدند)`,
+    deviceId,
+  });
+
+  return { removedTotal: before.totalRecords, snapshotId: snap.id };
 }
 
 export async function addActivity(

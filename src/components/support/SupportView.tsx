@@ -24,6 +24,8 @@ import { HelpCenterView } from '../help/HelpCenterView';
 import { HelpSectionId } from '../help/helpContent';
 import { AppearanceSettingsPanel } from './AppearanceSettingsPanel';
 import { AppUpdatePanel } from './AppUpdatePanel';
+import { StorageLocationPanel } from './StorageLocationPanel';
+import { DataCleanupPanel } from './DataCleanupPanel';
 
 export type SupportTab = 'settings' | 'media' | 'transfer' | 'backup' | 'people' | 'guide';
 
@@ -136,13 +138,15 @@ export const SupportView: React.FC<SupportViewProps> = ({
 
   const handleFullBackup = async () => {
     setError('');
-    await createFullZipBackup(store.settings.deviceId, store.settings.deviceName);
+    const outcome = await createFullZipBackup(store.settings.deviceId, store.settings.deviceName);
     await store.saveSettings({
       ...store.settings,
       lastBackupAt: new Date().toISOString(),
     });
     setNotice(
-      'فایل پشتیبان کامل (.zip شامل اطلاعات، تصاویر گلزار، تصاویر پروژه‌ها و پیوست‌ها) تولید و بارگیری شد.'
+      outcome.savedPath
+        ? `فایل پشتیبان کامل (.zip) با موفقیت در مسیر «${outcome.savedPath}» ذخیره شد.`
+        : 'فایل پشتیبان کامل (.zip شامل اطلاعات، تصاویر گلزار، تصاویر پروژه‌ها و پیوست‌ها) تولید و بارگیری شد.'
     );
   };
 
@@ -210,11 +214,37 @@ export const SupportView: React.FC<SupportViewProps> = ({
         </div>
       )}
 
-      {/* Tab 1: Software Update (GitHub/PWA), Multi-Palette Appearance & Org Settings */}
+      {/* Tab 1: Software Update, Storage Location, Data Cleanup, Multi-Palette Appearance & Org Settings */}
       {tab === 'settings' && (
         <form onSubmit={handleSaveSettings} className="space-y-5">
-          {/* Software Update & Installable PWA Icon Card */}
+          {/* Software Update & Installers Card */}
           <AppUpdatePanel />
+
+          {/* Storage Location Manager (Windows D:\Daftar-Fani-Golzar / Android / Web Chrome Transparency) */}
+          <StorageLocationPanel
+            store={store}
+            onNotice={(msg) => {
+              setNotice(msg);
+              if (msg) setError('');
+            }}
+            onError={(msg) => {
+              setError(msg);
+              if (msg) setNotice('');
+            }}
+          />
+
+          {/* Independent Two-Tier Data Cleanup Section (Sample Cleanup + Full Wipe with Backup & Multi-Step Confirm) */}
+          <DataCleanupPanel
+            store={store}
+            onNotice={(msg) => {
+              setNotice(msg);
+              if (msg) setError('');
+            }}
+            onError={(msg) => {
+              setError(msg);
+              if (msg) setNotice('');
+            }}
+          />
 
           {/* Redesigned Multi-Palette Appearance Customizer */}
           <AppearanceSettingsPanel

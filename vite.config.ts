@@ -6,8 +6,13 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig(() => {
-  const base = process.env.GITHUB_PAGES === 'true' ? '/Daftar-Fani-Golzar-App/' : '/';
-  const appVersion = '1.3.4';
+  const isNativeBuild = process.env.NATIVE_BUILD === 'true';
+  const base = isNativeBuild
+    ? './'
+    : process.env.GITHUB_PAGES === 'true'
+      ? '/Daftar-Fani-Golzar-App/'
+      : '/';
+  const appVersion = '1.4.0';
   const buildTimestamp = new Date().toISOString();
   const buildId = `${appVersion}-${buildTimestamp.replace(/[-:TZ.]/g, '').slice(0, 14)}`;
 
@@ -21,6 +26,7 @@ export default defineConfig(() => {
       react(),
       tailwindcss(),
       VitePWA({
+        disable: isNativeBuild,
         registerType: 'autoUpdate',
         includeAssets: [
           'favicon.ico',
@@ -38,8 +44,8 @@ export default defineConfig(() => {
           description: 'نرم‌افزار مدیریت امور دفتر فنی اداره گلزار شهدا با معماری Local-First و قابلیت آفلاین',
           lang: 'fa',
           dir: 'rtl',
-          theme_color: '#FAF8F3',
-          background_color: '#FBEFD7',
+          theme_color: '#F7F3E9',
+          background_color: '#F7F3E9',
           display: 'standalone',
           start_url: base,
           scope: base,

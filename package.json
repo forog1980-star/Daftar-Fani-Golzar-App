@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
+    "build:native": "NATIVE_BUILD=true vite build",
+    "desktop:build:win": "npm run build:native && npm --prefix electron install && npm --prefix electron run dist:win",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"

@@ -1,0 +1,20 @@
+{
+  "appId": "ir.golzar.daftarfani",
+  "appName": "دفتر فنی گلزار",
+  "webDir": "dist",
+  "backgroundColor": "#F7F3E9",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#F7F3E9",
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#F7F3E9",
+      "androidScaleType": "CENTER_INSIDE",
+      "showSpinner": false
+    }
+  }
+}

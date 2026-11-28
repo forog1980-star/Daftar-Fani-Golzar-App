@@ -1,10 +1,22 @@
 import React, { useState } from 'react';
 import { Download, Smartphone, WifiOff } from 'lucide-react';
 import { useOnlineStatus, usePWAInstall } from '../../hooks/usePWAInstall';
+import { detectRuntimePlatform, isNativeInstalledRuntime } from '../../utils/platformBridge';
 
 export const PWAInstallButton: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showGuide, setShowGuide] = useState(false);
+
+  if (isNativeInstalledRuntime()) {
+    const platform = detectRuntimePlatform();
+    return compact ? null : (
+      <div className="rounded-lg border border-[#D5DEC8] bg-[#F2F6EE] px-3.5 py-2 text-xs text-[#2D6A4F]">
+        {platform === 'electron'
+          ? 'نسخه مستقل دسکتاپ ویندوز نصب و فعال است.'
+          : 'اپلیکیشن مستقل اندروید نصب و فعال است.'}
+      </div>
+    );
+  }
 
   if (isInstalled) {
     return compact ? null : (

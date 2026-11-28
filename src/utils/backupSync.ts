@@ -9,6 +9,7 @@ import {
 } from '../types';
 import { getDB, replaceAllDataFromBackup, RollbackSnapshot } from '../db/database';
 import { computeRecordFingerprint, generateId, todayIsoDate } from './format';
+import { saveBinaryFile, SaveFileOutcome } from './platformBridge';
 
 const SYNC_STORES: SyncEntityStore[] = [
   'projects',
@@ -44,7 +45,10 @@ function base64ToBlob(base64: string, mimeType: string): Blob {
   return new Blob([bytes], { type: mimeType || 'application/octet-stream' });
 }
 
-export async function createFullZipBackup(deviceId: string, deviceName: string): Promise<void> {
+export async function buildFullZipBackupBlob(
+  deviceId: string,
+  deviceName: string
+): Promise<{ blob: Blob; filename: string }> {
   const db = await getDB();
   const zip = new JSZip();
 
@@ -96,16 +100,16 @@ export async function createFullZipBackup(deviceId: string, deviceName: string):
   zip.file('backup-data.json', JSON.stringify(manifest, null, 2));
 
   const blob = await zip.generateAsync({ type: 'blob' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `daftar-fani-backup-${todayIsoDate()}.zip`;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 300);
+  const filename = `daftar-fani-backup-${todayIsoDate()}.zip`;
+  return { blob, filename };
+}
+
+export async function createFullZipBackup(
+  deviceId: string,
+  deviceName: string
+): Promise<SaveFileOutcome> {
+  const { blob, filename } = await buildFullZipBackupBlob(deviceId, deviceName);
+  return saveBinaryFile(blob, filename, 'backups', 'application/zip');
 }
 
 export async function restoreFullZipBackup(

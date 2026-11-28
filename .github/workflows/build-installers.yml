@@ -1,0 +1,176 @@
+name: Build Standalone Installers (Windows EXE & Android APK)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'برچسب نسخه آزمایشی یا نهایی (مثال: v1.4.0-test.1 یا v1.4.0)'
+        required: true
+        default: 'v1.4.0-test.1'
+      publish_release:
+        description: 'انتشار خروجی‌ها در صفحه GitHub Releases'
+        type: boolean
+        default: true
+      is_prerelease:
+        description: 'ثبت به‌عنوان نسخه آزمایشی (Pre-release) پیش از تأیید نهایی'
+        type: boolean
+        default: true
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows-exe:
+    name: Build Windows Installer (Daftar-Fani-Golzar-Setup.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install root web dependencies
+        run: npm install
+
+      - name: Build production web bundle for Desktop (relative base)
+        shell: pwsh
+        env:
+          NATIVE_BUILD: 'true'
+        run: npm run build
+
+      - name: Install Electron builder workspace dependencies
+        working-directory: electron
+        run: npm install
+
+      - name: Build Windows Per-User NSIS Setup EXE
+        working-directory: electron
+        run: npm run dist:win
+
+      - name: Verify Daftar-Fani-Golzar-Setup.exe output
+        shell: pwsh
+        run: |
+          if (!(Test-Path "release-desktop/Daftar-Fani-Golzar-Setup.exe")) {
+            Write-Error "Daftar-Fani-Golzar-Setup.exe was not generated!"
+            exit 1
+          }
+          Get-Item "release-desktop/Daftar-Fani-Golzar-Setup.exe" | Select-Object Name, Length
+
+      - name: Upload Windows EXE Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Daftar-Fani-Golzar-Windows-EXE
+          path: release-desktop/Daftar-Fani-Golzar-Setup.exe
+          if-no-files-found: error
+
+  build-android-apk:
+    name: Build Android Installer (Daftar-Fani-Golzar.apk)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Java 21 (for Android Gradle)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Install root web dependencies
+        run: npm install
+
+      - name: Build production web bundle for Android (relative base)
+        env:
+          NATIVE_BUILD: 'true'
+        run: npm run build
+
+      - name: Install Capacitor Android tooling & native export/share plugins
+        run: |
+          npm install --no-save @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor/filesystem@7 @capacitor/share@7 @capacitor/splash-screen@7
+
+      - name: Initialize Capacitor Android project and sync assets
+        run: |
+          npx cap add android
+          node scripts/prepare-android-resources.mjs
+          npx cap sync android
+
+      - name: Build Android APK with Gradle
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+          mkdir -p ../release-android
+          cp app/build/outputs/apk/debug/app-debug.apk ../release-android/Daftar-Fani-Golzar.apk
+          ls -lh ../release-android/Daftar-Fani-Golzar.apk
+
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Daftar-Fani-Golzar-Android-APK
+          path: release-android/Daftar-Fani-Golzar.apk
+          if-no-files-found: error
+
+  publish-github-release:
+    name: Publish Installers to GitHub Releases
+    runs-on: ubuntu-latest
+    needs: [build-windows-exe, build-android-apk]
+    if: ${{ github.event_name == 'push' || inputs.publish_release == true }}
+    steps:
+      - name: Download Windows EXE Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Daftar-Fani-Golzar-Windows-EXE
+          path: release-assets
+
+      - name: Download Android APK Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Daftar-Fani-Golzar-Android-APK
+          path: release-assets
+
+      - name: Generate SHA-256 Checksums
+        working-directory: release-assets
+        run: |
+          sha256sum Daftar-Fani-Golzar-Setup.exe Daftar-Fani-Golzar.apk > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Determine Release Tag & Prerelease Flag
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+            echo "prerelease=${{ inputs.is_prerelease }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: دفتر فنی اداره گلزار شهدا — ${{ steps.meta.outputs.tag }}
+          prerelease: ${{ steps.meta.outputs.prerelease }}
+          body: |
+            ## فایل‌های نصبی مستقل نرم‌افزار «دفتر فنی اداره گلزار شهدا»
+
+            - **نسخه مستقل ویندوز (اولویت اول)**: `Daftar-Fani-Golzar-Setup.exe` (نصب Per-User بدون نیاز به دسترسی Administrator، ذخیره واقعی داده‌ها در `D:\Daftar-Fani-Golzar`)
+            - **نسخه مستقل اندروید (دستگاه مکمل)**: `Daftar-Fani-Golzar.apk`
+            - **نسخه وب آنلاین (حفظ‌شده)**: https://forog1980-star.github.io/Daftar-Fani-Golzar-App/
+
+            > تمامی کلیدهای امضا و اطلاعات حساس خارج از مخزن نگه داشته شده‌اند.
+          files: |
+            release-assets/Daftar-Fani-Golzar-Setup.exe
+            release-assets/Daftar-Fani-Golzar.apk
+            release-assets/SHA256SUMS.txt

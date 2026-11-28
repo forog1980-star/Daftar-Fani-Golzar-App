@@ -18,6 +18,7 @@ import {
 import JSZip from 'jszip';
 import { LetterheadConfig, SignatureSnapshot } from '../types';
 import { formatJalaliDate, sanitizeCsvOrXml, todayIsoDate } from './format';
+import { saveBinaryFile } from './platformBridge';
 
 export interface ExportDonutSegment {
   label: string;
@@ -283,16 +284,7 @@ function renderDonutChartPng(donut?: ExportDonutChartData): RenderedChartPng | n
 }
 
 function triggerBlobDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 300);
+  void saveBinaryFile(blob, filename, 'exports', blob.type || 'application/octet-stream');
 }
 
 const CELL_MARGINS = {

@@ -15,6 +15,7 @@ import {
   toPersianDigits,
 } from '../../utils/format';
 import { estimateJsonSizeBytes } from '../../utils/imageMedia';
+import { saveBinaryFile } from '../../utils/platformBridge';
 import { FloatingWindow } from '../layout/FloatingWindow';
 
 const STORE_LABELS: Record<SyncEntityStore, string> = {
@@ -81,16 +82,7 @@ export const JsonExportWindow: React.FC<{
     const blob = new Blob([jsonText], { type: 'application/json;charset=utf-8' });
     const fileName = `daftar-fani-data-${todayIsoDate()}.json`;
 
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 300);
+    await saveBinaryFile(blob, fileName, 'exports', 'application/json');
 
     const now = new Date().toISOString();
     await store.saveSettings({

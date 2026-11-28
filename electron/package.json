@@ -1,0 +1,16 @@
+{
+  "name": "daftar-fani-golzar-desktop",
+  "version": "1.4.0",
+  "description": "نرم‌افزار مستقل دسکتاپ مدیریت امور دفتر فنی اداره گلزار شهدا",
+  "main": "main.cjs",
+  "private": true,
+  "author": "دفتر فنی اداره گلزار شهدا",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --config ../electron-builder.yml --win nsis --x64"
+  },
+  "devDependencies": {
+    "electron": "^35.1.5",
+    "electron-builder": "^26.0.12"
+  }
+}

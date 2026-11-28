@@ -453,6 +453,10 @@ export function setCustomVersionSourceUrl(url: string): void {
 
 function isServiceWorkerEligibleOrigin(): boolean {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return false;
+
+  // Capacitor Android may use https://localhost; it is still a packaged native app, not a PWA.
+  if (window.desktopBridge?.isDesktop || window.Capacitor?.isNativePlatform?.()) return false;
+
   return (
     window.location.protocol === 'https:' ||
     (window.location.protocol === 'http:' &&

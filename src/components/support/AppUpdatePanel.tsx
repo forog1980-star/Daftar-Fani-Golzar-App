@@ -16,9 +16,12 @@ import {
   WifiOff,
 } from 'lucide-react';
 import {
+  NetworkEndpointRecord,
   resolveVersionManifestUrl,
   UpdateErrorCategory,
   useAppUpdater,
+  VerifiedReleaseAsset,
+  verifyInstallerDownloadUrl,
 } from '../../utils/appUpdater';
 import { useOnlineStatus } from '../../hooks/usePWAInstall';
 import { formatFileSize, formatJalaliDateTime, toPersianDigits } from '../../utils/format';
@@ -43,6 +46,33 @@ const ERROR_CATEGORY_LABELS: Record<Exclude<UpdateErrorCategory, null>, string> 
   sw: 'هشدار Service Worker',
 };
 
+function getEndpointOutcomeLabel(ep: NetworkEndpointRecord): string {
+  switch (ep.outcome) {
+    case 'ok':
+      return 'موفق';
+    case 'timeout':
+      return 'عدم پاسخ (زمان انتظار)';
+    case 'cors-error':
+      return 'محدودیت CORS / شبکه';
+    case 'network-error':
+      return 'خطای اتصال شبکه';
+    case 'invalid-json':
+      return 'پاسخ غیرمعتبر (غیر JSON)';
+    case 'http-error':
+      return ep.httpStatus ? `خطای سرور (HTTP ${toPersianDigits(ep.httpStatus)})` : 'خطای سرور';
+  }
+}
+
+function triggerDirectAssetDownload(asset: VerifiedReleaseAsset): void {
+  const anchor = document.createElement('a');
+  anchor.href = asset.downloadUrl;
+  anchor.download = asset.name;
+  anchor.rel = 'noopener noreferrer';
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+}
+
 export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false }) => {
   const updater = useAppUpdater();
   const isOnline = useOnlineStatus();
@@ -56,6 +86,11 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
   const [installingDesktopUpdate, setInstallingDesktopUpdate] = useState(false);
   const [desktopInstallError, setDesktopInstallError] = useState('');
 
+  // Per-platform link verification states so broken links show direct inline errors instead of empty pages
+  const [verifyingPlatform, setVerifyingPlatform] = useState<'windows' | 'android' | null>(null);
+  const [windowsLinkError, setWindowsLinkError] = useState('');
+  const [androidLinkError, setAndroidLinkError] = useState('');
+
   const effectiveVersionUrl =
     updater.checkedUrl ||
     (typeof window !== 'undefined' ? resolveVersionManifestUrl(sourceInput) : './version.json');
@@ -65,7 +100,6 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
   const androidApk = releaseInfo.androidApk;
   const isLoadingReleases = releaseInfo.status === 'loading';
 
-  // Auto-check GitHub Releases once when online and in full panel so installer availability is accurate
   useEffect(() => {
     if (!compact && isOnline && releaseInfo.status === 'idle') {
       void updater.checkReleaseInstallers(updater.versionSourceUrl);
@@ -74,6 +108,8 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
 
   const handleCheckUpdate = async () => {
     setDesktopInstallError('');
+    setWindowsLinkError('');
+    setAndroidLinkError('');
     const cleaned = sourceInput.trim();
     if (cleaned !== updater.versionSourceUrl) {
       updater.setCustomSourceUrl(cleaned);
@@ -81,11 +117,61 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
     await updater.checkForUpdate(cleaned);
   };
 
+  const handleVerifiedDownload = async (platform: 'windows' | 'android') => {
+    const asset = platform === 'windows' ? windowsExe : androidApk;
+    const ext = platform === 'windows' ? '.exe' : '.apk';
+    if (platform === 'windows') setWindowsLinkError('');
+    else setAndroidLinkError('');
+
+    setVerifyingPlatform(platform);
+    try {
+      const check = await verifyInstallerDownloadUrl(asset, ext);
+      if (!check.ok || !asset) {
+        const msg = check.error || 'لینک دانلود فایل نصبی در دسترس نیست.';
+        if (platform === 'windows') setWindowsLinkError(msg);
+        else setAndroidLinkError(msg);
+        return;
+      }
+
+      // On Windows Electron Desktop, use direct native installer runner if available
+      if (
+        platform === 'windows' &&
+        runtimePlatform === 'electron' &&
+        typeof window !== 'undefined' &&
+        typeof window.desktopBridge?.downloadAndRunInstaller === 'function'
+      ) {
+        setInstallingDesktopUpdate(true);
+        const res = await window.desktopBridge.downloadAndRunInstaller({
+          downloadUrl: asset.downloadUrl,
+          fileName: asset.name,
+        });
+        setInstallingDesktopUpdate(false);
+        if (!res.ok) {
+          setWindowsLinkError(res.error || 'خطا در دانلود و اجرای خودکار نصاب ویندوز.');
+        }
+        return;
+      }
+
+      triggerDirectAssetDownload(asset);
+    } catch {
+      const msg = 'بررسی یا آغاز دانلود فایل نصبی با خطای شبکه مواجه شد.';
+      if (platform === 'windows') setWindowsLinkError(msg);
+      else setAndroidLinkError(msg);
+    } finally {
+      setVerifyingPlatform(null);
+    }
+  };
+
   const handleAutoInstallWindows = async () => {
     if (!windowsExe || !window.desktopBridge?.downloadAndRunInstaller) return;
     setInstallingDesktopUpdate(true);
     setDesktopInstallError('');
     try {
+      const check = await verifyInstallerDownloadUrl(windowsExe, '.exe');
+      if (!check.ok) {
+        setDesktopInstallError(check.error || 'لینک دانلود نصاب ویندوز در دسترس نیست.');
+        return;
+      }
       const res = await window.desktopBridge.downloadAndRunInstaller({
         downloadUrl: windowsExe.downloadUrl,
         fileName: windowsExe.name,
@@ -169,10 +255,10 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
         </div>
       </div>
 
-      {/* Exact version.json Endpoint Transparency */}
+      {/* Exact Checked Endpoint Transparency */}
       {!compact && (
         <div className="rounded-lg border border-[#ECE7DC] bg-[#FAF8F3] px-3.5 py-2.5 text-[11px] text-[#5B6573] flex flex-wrap items-center justify-between gap-2">
-          <span>نشانی بررسی نسخه (version.json):</span>
+          <span>نشانی بررسی نسخه:</span>
           <code
             dir="ltr"
             className="break-all rounded bg-[#FFFFFF] border border-[#E2DDD2] px-2 py-0.5 text-[11px] text-[#243B5A]"
@@ -182,7 +268,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
         </div>
       )}
 
-      {/* Direct Verified Installer Downloads (Windows EXE & Android APK from GitHub Releases API) */}
+      {/* Direct Verified Installer Downloads (Windows EXE & Android APK — NO blank /releases redirects) */}
       {!compact && (
         <div className="rounded-lg border border-[#ECE7DC] bg-[#FAF8F3] px-4 py-3.5 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -191,17 +277,21 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
                 دریافت مستقیم فایل‌های نصبی منتشرشده (بدون نیاز به مرورگر Chrome)
               </div>
               <div className="text-[11px] text-[#5B6573]">
-                لینک‌های زیر صرفاً پس از تأیید انتشار واقعی فایل EXE و APK در GitHub Releases فعال می‌شوند.
+                هر دکمه مستقیماً به فایل معتبر EXE یا APK در GitHub Releases یا سرور جایگزین متصل می‌شود و پیش از شروع دانلود سلامت لینک بررسی می‌گردد.
               </div>
             </div>
             <button
               type="button"
               disabled={isLoadingReleases || !isOnline}
-              onClick={() => void updater.checkReleaseInstallers(sourceInput.trim())}
+              onClick={() => {
+                setWindowsLinkError('');
+                setAndroidLinkError('');
+                void updater.checkReleaseInstallers(sourceInput.trim());
+              }}
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#D7D2C6] bg-[#FFFFFF] px-2.5 py-1.5 text-[11px] text-[#243B5A] hover:bg-[#E5EBF2] disabled:opacity-50 cursor-pointer whitespace-nowrap"
             >
               <RefreshCw className={`h-3 w-3 ${isLoadingReleases ? 'animate-spin' : ''}`} />
-              <span>بروزرسانی وضعیت Releases</span>
+              <span>بررسی مجدد فایل‌های نصبی</span>
             </button>
           </div>
 
@@ -228,24 +318,47 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
               {windowsExe ? (
                 <div className="space-y-1.5">
                   <div className="text-[11px] text-[#5B6573] break-all">
-                    فایل: <code dir="ltr">{windowsExe.name}</code> ({formatFileSize(windowsExe.sizeBytes)})
+                    فایل: <code dir="ltr">{windowsExe.name}</code>
+                    {windowsExe.sizeBytes > 0 ? ` (${formatFileSize(windowsExe.sizeBytes)})` : ''}
+                    {' · '}
+                    <span>
+                      {windowsExe.source === 'github-releases' ? 'GitHub Releases' : 'سرور جایگزین'}
+                    </span>
                   </div>
-                  <a
-                    href={windowsExe.downloadUrl}
-                    download={windowsExe.name}
-                    rel="noopener noreferrer"
-                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#243B5A] px-3 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] whitespace-nowrap"
+                  <button
+                    type="button"
+                    disabled={verifyingPlatform === 'windows' || installingDesktopUpdate}
+                    onClick={() => void handleVerifiedDownload('windows')}
+                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#243B5A] px-3 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] disabled:opacity-60 cursor-pointer whitespace-nowrap"
                   >
                     <Download className="h-3.5 w-3.5" />
-                    <span>دانلود مستقیم نصاب ویندوز (EXE)</span>
-                  </a>
+                    <span>
+                      {verifyingPlatform === 'windows'
+                        ? 'در حال بررسی سلامت لینک...'
+                        : installingDesktopUpdate
+                          ? 'در حال دانلود و اجرای نصاب...'
+                          : canAutoInstallWindows
+                            ? 'دانلود و نصب مستقیم ویندوز (EXE)'
+                            : 'دانلود مستقیم نصاب ویندوز (EXE)'}
+                    </span>
+                  </button>
+                  {windowsLinkError && (
+                    <div
+                      role="alert"
+                      className="rounded border border-[#D8B4B4] bg-[#FBF1F1] px-2.5 py-1.5 text-[11px] text-[#9E3B3B]"
+                    >
+                      {windowsLinkError}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  <div className="text-[11px] text-[#9E3B3B]">
+                  <div className="rounded border border-[#E5C6C6] bg-[#FBF1F1] px-2.5 py-1.5 text-[11px] text-[#9E3B3B]">
                     {isLoadingReleases
                       ? 'در حال بررسی انتشار فایل ویندوز...'
-                      : 'فایل نصبی ویندوز (EXE) هنوز در Releases منتشر نشده است.'}
+                      : releaseInfo.status === 'error'
+                        ? 'خطا در دریافت نشانی نصاب ویندوز از گیت‌هاب؛ اتصال شبکه را بررسی کنید.'
+                        : 'فایل نصبی ویندوز (EXE) هنوز در GitHub Releases یا سرور جایگزین منتشر نشده است.'}
                   </div>
                   <button
                     type="button"
@@ -253,7 +366,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
                     className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#D7D2C6] bg-[#F3EFE6] px-3 text-xs font-medium text-[#788290] cursor-not-allowed whitespace-nowrap"
                   >
                     <Monitor className="h-3.5 w-3.5" />
-                    <span>دانلود مستقیم ویندوز (در انتظار انتشار)</span>
+                    <span>دانلود مستقیم ویندوز (فایل منتشر نشده)</span>
                   </button>
                 </div>
               )}
@@ -281,24 +394,43 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
               {androidApk ? (
                 <div className="space-y-1.5">
                   <div className="text-[11px] text-[#5B6573] break-all">
-                    فایل: <code dir="ltr">{androidApk.name}</code> ({formatFileSize(androidApk.sizeBytes)})
+                    فایل: <code dir="ltr">{androidApk.name}</code>
+                    {androidApk.sizeBytes > 0 ? ` (${formatFileSize(androidApk.sizeBytes)})` : ''}
+                    {' · '}
+                    <span>
+                      {androidApk.source === 'github-releases' ? 'GitHub Releases' : 'سرور جایگزین'}
+                    </span>
                   </div>
-                  <a
-                    href={androidApk.downloadUrl}
-                    download={androidApk.name}
-                    rel="noopener noreferrer"
-                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-3 text-xs font-medium text-[#FFFFFF] hover:opacity-90 whitespace-nowrap"
+                  <button
+                    type="button"
+                    disabled={verifyingPlatform === 'android'}
+                    onClick={() => void handleVerifiedDownload('android')}
+                    className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-3 text-xs font-medium text-[#FFFFFF] hover:opacity-90 disabled:opacity-60 cursor-pointer whitespace-nowrap"
                   >
                     <Download className="h-3.5 w-3.5" />
-                    <span>دانلود مستقیم اپ اندروید (APK)</span>
-                  </a>
+                    <span>
+                      {verifyingPlatform === 'android'
+                        ? 'در حال بررسی سلامت لینک...'
+                        : 'دانلود مستقیم اپ اندروید (APK)'}
+                    </span>
+                  </button>
+                  {androidLinkError && (
+                    <div
+                      role="alert"
+                      className="rounded border border-[#D8B4B4] bg-[#FBF1F1] px-2.5 py-1.5 text-[11px] text-[#9E3B3B]"
+                    >
+                      {androidLinkError}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-1.5">
-                  <div className="text-[11px] text-[#9E3B3B]">
+                  <div className="rounded border border-[#E5C6C6] bg-[#FBF1F1] px-2.5 py-1.5 text-[11px] text-[#9E3B3B]">
                     {isLoadingReleases
                       ? 'در حال بررسی انتشار فایل اندروید...'
-                      : 'فایل نصبی اندروید (APK) هنوز در Releases منتشر نشده است.'}
+                      : releaseInfo.status === 'error'
+                        ? 'خطا در دریافت نشانی اپ اندروید از گیت‌هاب؛ اتصال شبکه را بررسی کنید.'
+                        : 'فایل نصبی اندروید (APK) هنوز در GitHub Releases یا سرور جایگزین منتشر نشده است.'}
                   </div>
                   <button
                     type="button"
@@ -306,7 +438,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
                     className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-[#D7D2C6] bg-[#F3EFE6] px-3 text-xs font-medium text-[#788290] cursor-not-allowed whitespace-nowrap"
                   >
                     <Smartphone className="h-3.5 w-3.5" />
-                    <span>دانلود مستقیم اندروید (در انتظار انتشار)</span>
+                    <span>دانلود مستقیم اندروید (فایل منتشر نشده)</span>
                   </button>
                 </div>
               )}
@@ -322,28 +454,26 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
         </div>
       )}
 
-      {/* Clear User-Friendly Guidance tailored per runtime (Web / Windows EXE / Android APK) */}
+      {/* Clear User-Friendly Guidance tailored per runtime */}
       {!compact && (
         <p className="text-xs leading-6 text-[#5B6573]">
-          با کلیک روی دکمه «بررسی به‌روزرسانی»، هنگام اتصال به اینترنت فایل{' '}
-          <code dir="ltr" className="rounded bg-[#FAF8F3] px-1.5 py-0.5 text-[11px] text-[#243B5A]">
-            version.json
-          </code>{' '}
-          به‌صورت مستقیم بررسی می‌شود.{' '}
+          با کلیک روی دکمه «بررسی به‌روزرسانی»، آخرین نسخه نرم‌افزار با مکانیزم تلاش مجدد هوشمند
+          (توقف نمایی) و آینه‌های پشتیبان رسمی (شامل <code dir="ltr">version.json</code> و{' '}
+          <code dir="ltr">GitHub Releases</code>) بررسی می‌شود.{' '}
           {runtimePlatform === 'electron'
-            ? 'در صورت انتشار فایل نصبی جدید ویندوز (EXE) در Releases، دکمه دانلود مستقیم در بالا فعال می‌شود و داده‌های شما در D:\\Daftar-Fani-Golzar بدون تغییر حفظ می‌شوند.'
+            ? 'در صورت انتشار نسخه جدید ویندوز، می‌توانید با یک کلیک آن را بدون تغییر در داده‌های مسیر D:\\Daftar-Fani-Golzar نصب کنید.'
             : runtimePlatform === 'android'
-              ? 'در صورت انتشار فایل نصبی جدید اندروید (APK) در Releases، دکمه دانلود مستقیم در بالا فعال می‌شود و اطلاعات ذخیره‌شده در گوشی حفظ می‌شوند.'
+              ? 'در صورت انتشار فایل نصبی جدید اندروید، دکمه دانلود مستقیم فعال می‌شود و اطلاعات ذخیره‌شده در گوشی حفظ می‌شوند.'
               : 'در صورت انتشار نسخه جدید، می‌توانید تغییرات نسخه وب را به‌صورت مستقیم روی مرورگر همین دستگاه اعمال کنید.'}
         </p>
       )}
 
-      {/* Status Feedback Box + Categorized Diagnostics + Optional Release Notes */}
-      {updater.statusMessage && (
+      {/* Status Feedback Box + Exponential Backoff Progress + Readable Network Diagnostic Report */}
+      {(updater.statusMessage || updater.retryStatusText) && (
         <div
           role="status"
           aria-live="polite"
-          className={`space-y-2 rounded-lg border px-3.5 py-3 text-xs leading-6 ${
+          className={`space-y-2.5 rounded-lg border px-3.5 py-3 text-xs leading-6 ${
             updater.status === 'update-available'
               ? 'border-[#D5C39E] bg-[#FAF8F3] text-[#243B5A]'
               : updater.status === 'up-to-date'
@@ -369,6 +499,9 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
                 </div>
               )}
               <div className="font-medium">{updater.statusMessage}</div>
+              {updater.retryStatusText && updater.status === 'checking' && (
+                <div className="text-[11px] text-[#5B6573]">{updater.retryStatusText}</div>
+              )}
               {updater.status === 'update-available' && updater.remoteBuiltAt && (
                 <div className="text-[11px] tabular-nums text-[#5B6573]">
                   تاریخ انتشار نسخه جدید: {formatJalaliDateTime(updater.remoteBuiltAt)}
@@ -380,7 +513,8 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
           {updater.usedFallback &&
             (updater.status === 'up-to-date' || updater.status === 'update-available') && (
               <div className="mr-6 rounded border border-[#C6D5C4] bg-[#FFFFFF]/80 px-2.5 py-1.5 text-[11px] text-[#3D6B59]">
-                بررسی نسخه با موفقیت از طریق آینه پشتیبان رسمی انجام شد.
+                بررسی نسخه با موفقیت از طریق منبع پشتیبان انجام شد
+                {updater.fallbackSourceLabel ? ` (${updater.fallbackSourceLabel})` : ''}.
               </div>
             )}
 
@@ -390,14 +524,58 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
             </div>
           )}
 
-          {updater.status === 'error' && (
-            <div className="mr-6 space-y-2 rounded border border-[#E5C6C6] bg-[#FFFFFF]/85 px-3 py-2 text-[11px] text-[#5B6573]">
-              <div>
-                راهنمای سریع: اتصال اینترنت را بررسی کنید؛ در صورت استفاده از شبکه سازمانی یا
-                فیلترشکن/پروکسی، دسترسی به دامنه <code dir="ltr">github.io</code> یا{' '}
-                <code dir="ltr">githubusercontent.com</code> را کنترل کرده و دوباره تلاش کنید.
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
+          {/* Readable Network Connection Status Report on Persistent Error or Offline */}
+          {(updater.status === 'error' || updater.status === 'offline') && (
+            <div className="mr-6 space-y-2.5 rounded border border-[#E5C6C6] bg-[#FFFFFF]/90 px-3 py-2.5 text-[11px] text-[#263448]">
+              <div className="font-semibold text-[#9E3B3B]">گزارش خوانای وضعیت اتصال شبکه</div>
+
+              {updater.networkReport && (
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[#5B6573]">
+                    <span>
+                      وضعیت دستگاه:{' '}
+                      <strong className={updater.networkReport.onlineFlag ? 'text-[#3D6B59]' : 'text-[#9E3B3B]'}>
+                        {updater.networkReport.onlineFlag ? 'متصل به شبکه محلی' : 'آفلاین'}
+                      </strong>
+                    </span>
+                    {updater.networkReport.connectionType && (
+                      <span>
+                        نوع ارتباط: <strong>{updater.networkReport.connectionType}</strong>
+                      </span>
+                    )}
+                    {updater.networkReport.totalAttempts > 0 && (
+                      <span className="tabular-nums">
+                        مجموع تلاش‌ها (با توقف نمایی):{' '}
+                        <strong>{toPersianDigits(updater.networkReport.totalAttempts)} نوبت</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  <p className="leading-5 text-[#263448]">{updater.networkReport.summaryPersian}</p>
+
+                  {updater.networkReport.endpoints.length > 0 && (
+                    <ul className="space-y-1 border-t border-[#ECE7DC] pt-2">
+                      {updater.networkReport.endpoints.map((ep, idx) => (
+                        <li
+                          key={`${ep.url}-${idx}`}
+                          className="flex flex-wrap items-center justify-between gap-2 text-[11px]"
+                        >
+                          <span className="font-medium text-[#243B5A]">{ep.label}</span>
+                          <span
+                            className={`tabular-nums ${
+                              ep.outcome === 'ok' ? 'text-[#3D6B59]' : 'text-[#9E3B3B]'
+                            }`}
+                          >
+                            {getEndpointOutcomeLabel(ep)} ({toPersianDigits(ep.attempts)} تلاش)
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
                 <button
                   type="button"
                   disabled={isBusy}
@@ -445,9 +623,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
           className="inline-flex items-center gap-2 rounded-lg border border-[#243B5A] bg-[#243B5A] px-4 py-2.5 text-xs font-medium text-[#FAF8F3] transition-colors hover:bg-[#354F73] disabled:opacity-60 cursor-pointer whitespace-nowrap"
         >
           <RefreshCw className={`h-3.5 w-3.5 ${isBusy ? 'animate-spin' : ''}`} />
-          <span>
-            {updater.status === 'checking' ? 'در حال بررسی...' : 'بررسی به‌روزرسانی'}
-          </span>
+          <span>{updater.status === 'checking' ? 'در حال بررسی...' : 'بررسی به‌روزرسانی'}</span>
         </button>
 
         {!isNativeRuntime && updater.needRefresh && (
@@ -475,15 +651,19 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
           </button>
         )}
 
-        {isNativeRuntime && updater.status === 'update-available' && nativeDirectAsset && (
-          canAutoInstallWindows ? (
+        {isNativeRuntime &&
+          updater.status === 'update-available' &&
+          nativeDirectAsset &&
+          (canAutoInstallWindows ? (
             <button
               type="button"
               disabled={installingDesktopUpdate}
               onClick={() => void handleAutoInstallWindows()}
               className="inline-flex items-center gap-2 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-4 py-2.5 text-xs font-medium text-[#FFFFFF] transition-colors hover:opacity-90 disabled:opacity-60 cursor-pointer whitespace-nowrap"
             >
-              <Download className={`h-3.5 w-3.5 ${installingDesktopUpdate ? 'animate-bounce' : ''}`} />
+              <Download
+                className={`h-3.5 w-3.5 ${installingDesktopUpdate ? 'animate-bounce' : ''}`}
+              />
               <span>
                 {installingDesktopUpdate
                   ? 'در حال دانلود و اجرای نصاب جدید ویندوز...'
@@ -491,11 +671,13 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
               </span>
             </button>
           ) : (
-            <a
-              href={nativeDirectAsset.downloadUrl}
-              download={nativeDirectAsset.name}
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-4 py-2.5 text-xs font-medium text-[#FFFFFF] transition-colors hover:opacity-90 whitespace-nowrap"
+            <button
+              type="button"
+              disabled={verifyingPlatform !== null}
+              onClick={() =>
+                void handleVerifiedDownload(runtimePlatform === 'electron' ? 'windows' : 'android')
+              }
+              className="inline-flex items-center gap-2 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-4 py-2.5 text-xs font-medium text-[#FFFFFF] transition-colors hover:opacity-90 disabled:opacity-60 cursor-pointer whitespace-nowrap"
             >
               <Download className="h-3.5 w-3.5" />
               <span>
@@ -503,9 +685,8 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
                   ? `دانلود مستقیم نسخه جدید ویندوز (${nativeDirectAsset.releaseTag})`
                   : `دانلود مستقیم نسخه جدید اندروید (${nativeDirectAsset.releaseTag})`}
               </span>
-            </a>
-          )
-        )}
+            </button>
+          ))}
 
         {desktopInstallError && (
           <div className="w-full rounded-lg border border-[#D8B4B4] bg-[#FBF1F1] px-3 py-2 text-xs text-[#9E3B3B]">
@@ -559,9 +740,11 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
           <p className="text-[11px] leading-5 text-[#788290]">
             در صورت خالی گذاشتن، به‌صورت خودکار نشانی{' '}
             <code dir="ltr" className="text-[#263448]">
-              {typeof window !== 'undefined' ? resolveVersionManifestUrl(sourceInput) : './version.json'}
+              {typeof window !== 'undefined'
+                ? resolveVersionManifestUrl(sourceInput)
+                : './version.json'}
             </code>{' '}
-            بررسی می‌شود.
+            همراه با آینه‌های پشتیبان رسمی بررسی می‌شود.
           </p>
         </div>
       )}

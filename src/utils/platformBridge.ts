@@ -69,6 +69,13 @@ export interface DesktopBridgeAPI {
     downloadUrl: string;
     fileName: string;
   }) => Promise<{ ok: boolean; savedPath?: string; error?: string }>;
+  verifyDownloadUrl?: (url: string) => Promise<{
+    ok: boolean;
+    status: number;
+    contentType?: string;
+    contentLength?: number;
+    error?: string;
+  }>;
 }
 
 interface CapacitorPluginLike {

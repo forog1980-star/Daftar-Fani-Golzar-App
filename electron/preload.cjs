@@ -13,4 +13,5 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   appendLog: (level, message) => ipcRenderer.invoke('desktop:log', { level, message }),
   fetchJson: (url) => ipcRenderer.invoke('desktop:fetch-json', url),
   downloadAndRunInstaller: (payload) => ipcRenderer.invoke('desktop:download-and-run-installer', payload),
+  verifyDownloadUrl: (url) => ipcRenderer.invoke('desktop:verify-download-url', url),
 });

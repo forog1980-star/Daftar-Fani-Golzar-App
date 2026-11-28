@@ -476,6 +476,63 @@ function registerIpcHandlers() {
       return { ok: false, error: `خطا در دریافت فایل نصاب ویندوز: ${errMsg}` };
     }
   });
+
+  // HEAD probe for installer download URLs via Windows native network stack (no renderer CORS failures)
+  ipcMain.handle('desktop:verify-download-url', async (_event, rawUrl) => {
+    const urlStr = String(rawUrl || '').trim();
+    let parsed;
+    try {
+      parsed = new URL(urlStr);
+    } catch {
+      return { ok: false, status: 0, error: 'نشانی دانلود نامعتبر است.' };
+    }
+    if (parsed.protocol !== 'https:') {
+      return { ok: false, status: 0, error: 'نشانی دانلود باید با HTTPS شروع شود.' };
+    }
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    try {
+      const res = await net.fetch(parsed.toString(), {
+        method: 'HEAD',
+        redirect: 'follow',
+        headers: { 'User-Agent': 'Daftar-Fani-Golzar-Desktop' },
+        signal: controller.signal,
+      });
+      const contentType = res.headers.get('content-type') || '';
+      const contentLength = Number(res.headers.get('content-length') || 0);
+      if (!res.ok) {
+        return {
+          ok: false,
+          status: res.status,
+          contentType,
+          contentLength,
+          error: `لینک فایل نصبی در دسترس نیست (کد وضعیت HTTP ${res.status}).`,
+        };
+      }
+      if (contentType.toLowerCase().includes('text/html')) {
+        return {
+          ok: false,
+          status: res.status,
+          contentType,
+          contentLength,
+          error: 'نشانی دانلود به‌جای فایل نصبی به یک صفحه وب (HTML) اشاره می‌کند.',
+        };
+      }
+      return { ok: true, status: res.status, contentType, contentLength };
+    } catch (err) {
+      const isAbort = err && err.name === 'AbortError';
+      return {
+        ok: false,
+        status: 0,
+        error: isAbort
+          ? 'زمان انتظار برای بررسی لینک دانلود به پایان رسید.'
+          : 'برقراری ارتباط با سرور دانلود فایل نصبی ناموفق بود.',
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
 }
 
 // Single-instance lock so two desktop windows never contend on the same IndexedDB directory

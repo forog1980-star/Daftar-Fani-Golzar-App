@@ -27,6 +27,7 @@ export interface VerifiedReleaseAsset {
   releaseTag: string;
   publishedAt: string | null;
   isPrerelease: boolean;
+  source: 'github-releases' | 'alternate-mirror';
 }
 
 export type ReleaseInstallersStatus =
@@ -51,6 +52,32 @@ export interface VerifiedReleaseInstallers {
   lastCheckedAt: string | null;
 }
 
+export interface NetworkEndpointRecord {
+  label: string;
+  url: string;
+  outcome: 'ok' | 'http-error' | 'timeout' | 'network-error' | 'cors-error' | 'invalid-json';
+  httpStatus?: number;
+  attempts: number;
+}
+
+export interface NetworkDiagnosticSnapshot {
+  onlineFlag: boolean;
+  connectionType: string | null;
+  downlinkMbps: number | null;
+  rttMs: number | null;
+  totalAttempts: number;
+  retryCount: number;
+  endpoints: NetworkEndpointRecord[];
+  summaryPersian: string;
+}
+
+export interface RetryBackoffOptions {
+  maxRetries?: number;
+  baseDelayMs?: number;
+  maxDelayMs?: number;
+  onRetry?: (attempt: number, totalAttempts: number, delayMs: number) => void;
+}
+
 export interface AppUpdateState {
   currentVersion: string;
   currentBuildId: string;
@@ -61,7 +88,10 @@ export interface AppUpdateState {
   versionSourceUrl: string;
   checkedUrl: string;
   usedFallback: boolean;
+  fallbackSourceLabel: string | null;
   attemptedUrls: string[];
+  retryStatusText: string | null;
+  networkReport: NetworkDiagnosticSnapshot | null;
   needRefresh: boolean;
   offlineReady: boolean;
   swRegistered: boolean;
@@ -90,17 +120,61 @@ export const OFFICIAL_GITHUB_RAW_VERSION_URL =
 export const OFFICIAL_GITHUB_API_VERSION_URL =
   'https://api.github.com/repos/forog1980-star/Daftar-Fani-Golzar-App/contents/public/version.json';
 
-interface ResilientFetchResult {
+export const LOCAL_APP_VERSION =
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.4.1';
+export const LOCAL_BUILD_ID =
+  typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'dev-local';
+
+export interface ResilientFetchResult {
   ok: boolean;
   status: number;
   bodyText: string;
   networkError?: 'timeout' | 'cors' | 'network';
+  attempts: number;
 }
 
-async function resilientFetchText(
+interface NavigatorConnectionLike {
+  effectiveType?: string;
+  type?: string;
+  downlink?: number;
+  rtt?: number;
+}
+
+function readNetworkConnectionInfo(): {
+  onlineFlag: boolean;
+  connectionType: string | null;
+  downlinkMbps: number | null;
+  rttMs: number | null;
+} {
+  const onlineFlag = typeof navigator === 'undefined' ? true : navigator.onLine !== false;
+  const conn =
+    typeof navigator !== 'undefined'
+      ? ((navigator as Navigator & { connection?: NavigatorConnectionLike }).connection ?? null)
+      : null;
+
+  const rawType = conn?.effectiveType || conn?.type || null;
+  const connectionType = typeof rawType === 'string' && rawType.trim() ? rawType.trim().toUpperCase() : null;
+  const downlinkMbps = typeof conn?.downlink === 'number' && Number.isFinite(conn.downlink) ? conn.downlink : null;
+  const rttMs = typeof conn?.rtt === 'number' && Number.isFinite(conn.rtt) ? conn.rtt : null;
+
+  return { onlineFlag, connectionType, downlinkMbps, rttMs };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableFailure(res: ResilientFetchResult): boolean {
+  if (res.ok) return false;
+  if (res.networkError) return true; // timeout, network, or transient CORS/gateway drop
+  // Retry transient server/rate-limit statuses; do NOT waste retries on 404/401/400
+  return res.status === 408 || res.status === 429 || res.status >= 500;
+}
+
+async function singleFetchText(
   targetUrl: string,
   headers?: Record<string, string>
-): Promise<ResilientFetchResult> {
+): Promise<Omit<ResilientFetchResult, 'attempts'>> {
   // On Windows Electron Desktop, prefer main-process net.fetch to honor Windows proxy/certs and avoid custom-scheme CORS
   if (typeof window !== 'undefined' && typeof window.desktopBridge?.fetchJson === 'function') {
     try {
@@ -126,7 +200,7 @@ async function resilientFetchText(
   }
 
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeoutId = controller ? setTimeout(() => controller.abort(), 12000) : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 10000) : null;
   try {
     const res = await fetch(targetUrl, {
       cache: 'no-store',
@@ -158,10 +232,45 @@ async function resilientFetchText(
   }
 }
 
-export const LOCAL_APP_VERSION =
-  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.4.1';
-export const LOCAL_BUILD_ID =
-  typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'dev-local';
+/**
+ * Performs an HTTPS fetch with configurable exponential backoff retries for transient failures.
+ * Delays follow `min(maxDelayMs, baseDelayMs * 2^(attempt-1))` (e.g. 600ms -> 1200ms).
+ */
+export async function fetchWithExponentialBackoff(
+  targetUrl: string,
+  headers?: Record<string, string>,
+  options: RetryBackoffOptions = {}
+): Promise<ResilientFetchResult> {
+  const maxRetries = Math.max(0, options.maxRetries ?? 2);
+  const baseDelayMs = Math.max(0, options.baseDelayMs ?? 600);
+  const maxDelayMs = Math.max(baseDelayMs, options.maxDelayMs ?? 4000);
+  const totalAttempts = maxRetries + 1;
+
+  let lastResult: ResilientFetchResult = {
+    ok: false,
+    status: 0,
+    bodyText: '',
+    networkError: 'network',
+    attempts: 0,
+  };
+
+  for (let attempt = 1; attempt <= totalAttempts; attempt++) {
+    const single = await singleFetchText(targetUrl, headers);
+    lastResult = { ...single, attempts: attempt };
+
+    if (!isRetryableFailure(lastResult) || attempt === totalAttempts) {
+      return lastResult;
+    }
+
+    const delayMs = Math.min(maxDelayMs, baseDelayMs * Math.pow(2, attempt - 1));
+    options.onRetry?.(attempt + 1, totalAttempts, delayMs);
+    if (delayMs > 0) {
+      await sleep(delayMs);
+    }
+  }
+
+  return lastResult;
+}
 
 let swRegistration: ServiceWorkerRegistration | null = null;
 let triggerSwReload: ((reloadPage?: boolean) => Promise<void>) | null = null;
@@ -184,7 +293,8 @@ function createInitialReleaseInstallers(sourceUrl: string): VerifiedReleaseInsta
     publishedAt: null,
     windowsExe: null,
     androidApk: null,
-    message: 'برای بررسی انتشار فایل‌های نصبی ویندوز (EXE) و اندروید (APK)، بررسی به‌روزرسانی را اجرا کنید.',
+    message:
+      'برای بررسی انتشار فایل‌های نصبی ویندوز (EXE) و اندروید (APK)، بررسی به‌روزرسانی را اجرا کنید.',
     lastCheckedAt: null,
   };
 }
@@ -201,7 +311,10 @@ let currentState: AppUpdateState = {
   versionSourceUrl: initialSavedUrl,
   checkedUrl: resolveVersionManifestUrl(initialSavedUrl),
   usedFallback: false,
+  fallbackSourceLabel: null,
   attemptedUrls: [],
+  retryStatusText: null,
+  networkReport: null,
   needRefresh: false,
   offlineReady: false,
   swRegistered: false,
@@ -252,11 +365,6 @@ export function extractRepoFromSourceUrl(customUrl?: string): { owner: string; r
 
 /**
  * Normalizes a user-supplied GitHub URL into a direct fetchable version.json endpoint.
- * Accepts:
- *  - empty string -> uses deployed `./version.json` on GitHub Pages, or official GitHub Pages URL otherwise
- *  - `https://github.com/user/repo` -> `https://raw.githubusercontent.com/user/repo/main/public/version.json`
- *  - `https://github.com/user/repo/blob/branch/path` -> `https://raw.githubusercontent.com/user/repo/branch/path`
- *  - direct `https://.../version.json` URL
  */
 export function resolveVersionManifestUrl(customUrl: string): string {
   const trimmed = customUrl.trim();
@@ -287,10 +395,7 @@ export function resolveVersionManifestUrl(customUrl: string): string {
     return `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`;
   }
 
-  // If user enters a GitHub Pages root URL (e.g. https://forog1980-star.github.io/Daftar-Fani-Golzar-App/), append /version.json
-  const ghPagesRootMatch = trimmed.match(
-    /^https?:\/\/([^./\s]+)\.github\.io\/([^/\s#?]+)\/?$/i
-  );
+  const ghPagesRootMatch = trimmed.match(/^https?:\/\/([^./\s]+)\.github\.io\/([^/\s#?]+)\/?$/i);
   if (ghPagesRootMatch) {
     const [, owner, repo] = ghPagesRootMatch;
     return `https://${owner}.github.io/${repo}/version.json`;
@@ -301,8 +406,7 @@ export function resolveVersionManifestUrl(customUrl: string): string {
 
 /**
  * Builds an ordered, deduplicated fallback chain of version.json mirrors
- * (GitHub Pages -> raw.githubusercontent.com -> GitHub Contents API) so temporary
- * DNS/ISP/CDN issues on one endpoint automatically fail over to healthy mirrors.
+ * (GitHub Pages -> raw.githubusercontent.com -> GitHub Contents API).
  */
 export function buildVersionFallbackCandidates(rawSource: string, resolvedPrimary: string): string[] {
   const candidates: string[] = [resolvedPrimary];
@@ -324,6 +428,14 @@ export function buildVersionFallbackCandidates(rawSource: string, resolvedPrimar
   return candidates;
 }
 
+function getEndpointLabel(url: string): string {
+  if (url.includes('github.io')) return 'GitHub Pages (version.json)';
+  if (url.includes('raw.githubusercontent.com')) return 'GitHub Raw Mirror';
+  if (url.includes('api.github.com') && url.includes('/releases')) return 'GitHub Releases API';
+  if (url.includes('api.github.com')) return 'GitHub Contents API';
+  return 'سرور سفارشی نسخه';
+}
+
 function decodeBase64Utf8(b64: string): string {
   const clean = b64.replace(/\s+/g, '');
   if (typeof Buffer !== 'undefined') {
@@ -337,6 +449,30 @@ function decodeBase64Utf8(b64: string): string {
   return new TextDecoder('utf-8').decode(bytes);
 }
 
+interface RemoteInstallersMirrorConfig {
+  windowsExeUrl?: string;
+  windowsExeName?: string;
+  windowsExeSizeBytes?: number;
+  androidApkUrl?: string;
+  androidApkName?: string;
+  androidApkSizeBytes?: number;
+}
+
+interface RemoteVersionManifest {
+  version?: string;
+  buildId?: string;
+  builtAt?: string;
+  notes?: string[];
+  changelog?: string[];
+  installers?: RemoteInstallersMirrorConfig;
+}
+
+let cachedManifestInstallers: {
+  version: string;
+  builtAt: string | null;
+  installers: RemoteInstallersMirrorConfig;
+} | null = null;
+
 function parseRemoteVersionManifest(bodyText: string): RemoteVersionManifest | null {
   try {
     const parsed = JSON.parse(bodyText) as Record<string, unknown> | null;
@@ -344,7 +480,6 @@ function parseRemoteVersionManifest(bodyText: string): RemoteVersionManifest | n
       return null;
     }
 
-    // Handle GitHub Contents API envelope ({ encoding: 'base64', content: '...' })
     if (
       parsed.encoding === 'base64' &&
       typeof parsed.content === 'string' &&
@@ -352,7 +487,13 @@ function parseRemoteVersionManifest(bodyText: string): RemoteVersionManifest | n
     ) {
       const decoded = decodeBase64Utf8(parsed.content);
       const inner = JSON.parse(decoded) as RemoteVersionManifest | null;
-      if (inner && typeof inner === 'object' && !Array.isArray(inner) && typeof inner.version === 'string' && inner.version.trim()) {
+      if (
+        inner &&
+        typeof inner === 'object' &&
+        !Array.isArray(inner) &&
+        typeof inner.version === 'string' &&
+        inner.version.trim()
+      ) {
         return inner;
       }
       return null;
@@ -374,10 +515,6 @@ export interface UrlValidationResult {
   error?: string;
 }
 
-/**
- * Validates that the resolved version.json source URL is a safe, well-formed HTTP(S) URL
- * without exposing local filesystem paths or unsupported schemes.
- */
 export function validateVersionSourceUrl(customUrl: string): UrlValidationResult {
   const resolved = resolveVersionManifestUrl(customUrl);
   try {
@@ -396,7 +533,7 @@ export function validateVersionSourceUrl(customUrl: string): UrlValidationResult
       };
     }
 
-    if (!parsed.hostname || !parsed.hostname.includes('.') && !isLocalHttp) {
+    if (!parsed.hostname || (!parsed.hostname.includes('.') && !isLocalHttp)) {
       return {
         valid: false,
         resolvedUrl: resolved,
@@ -415,14 +552,15 @@ export function validateVersionSourceUrl(customUrl: string): UrlValidationResult
   }
 }
 
-/** Compares two dot-separated semantic versions (e.g., "1.4.0" > "1.3.0"). Returns 1, 0, or -1. */
 export function compareSemver(a: string, b: string): number {
   const pa = a
     .replace(/^v/i, '')
+    .split('-')[0]
     .split('.')
     .map((n) => parseInt(n, 10) || 0);
   const pb = b
     .replace(/^v/i, '')
+    .split('-')[0]
     .split('.')
     .map((n) => parseInt(n, 10) || 0);
   const len = Math.max(pa.length, pb.length);
@@ -485,7 +623,7 @@ export function initAppUpdater(): void {
       onRegisteredSW(_swUrl, registration) {
         swRegistration = registration ?? null;
         emit({ swRegistered: Boolean(registration) });
-        if (registration && navigator.onLine) {
+        if (registration && navigator.onLine !== false) {
           registration.update().catch(() => {});
         }
       },
@@ -509,14 +647,6 @@ export function initAppUpdater(): void {
   }
 }
 
-interface RemoteVersionManifest {
-  version?: string;
-  buildId?: string;
-  builtAt?: string;
-  notes?: string[];
-  changelog?: string[];
-}
-
 interface GitHubReleaseAssetRaw {
   name?: string;
   browser_download_url?: string;
@@ -532,28 +662,96 @@ interface GitHubReleaseRaw {
   assets?: GitHubReleaseAssetRaw[];
 }
 
-function isValidDirectAssetUrl(url: unknown): url is string {
+function isValidDirectBinaryUrl(url: unknown, ext: '.exe' | '.apk', requireGitHubHost: boolean): url is string {
   if (typeof url !== 'string') return false;
   try {
-    const parsed = new URL(url);
-    return parsed.protocol === 'https:' && parsed.hostname.endsWith('github.com');
+    const parsed = new URL(url.trim());
+    if (parsed.protocol !== 'https:') return false;
+    if (requireGitHubHost && !parsed.hostname.endsWith('github.com')) return false;
+    // Reject generic HTML pages like /releases or /releases/latest
+    if (/\/releases\/?$/i.test(parsed.pathname) || /\/releases\/latest\/?$/i.test(parsed.pathname)) {
+      return false;
+    }
+    return parsed.pathname.toLowerCase().endsWith(ext);
   } catch {
     return false;
   }
 }
 
+function buildMirrorAssetIfValid(
+  url: unknown,
+  nameFallback: string,
+  sizeBytes: unknown,
+  ext: '.exe' | '.apk',
+  releaseTag: string,
+  publishedAt: string | null
+): VerifiedReleaseAsset | null {
+  if (!isValidDirectBinaryUrl(url, ext, false)) return null;
+  const parsed = new URL(url.trim());
+  const pathBase = parsed.pathname.split('/').pop() || nameFallback;
+  return {
+    name: pathBase,
+    downloadUrl: parsed.toString(),
+    sizeBytes: typeof sizeBytes === 'number' && sizeBytes > 0 ? sizeBytes : 0,
+    releaseTag,
+    publishedAt,
+    isPrerelease: false,
+    source: 'alternate-mirror',
+  };
+}
+
 /**
- * Pure parser for GitHub Releases API payload.
- * Extracts ONLY genuinely published direct `.exe` and `.apk` download assets.
+ * Pure parser for GitHub Releases API payload with optional verified alternate-mirror fallback.
  * NEVER fabricates URLs and NEVER falls back to the generic `/releases` HTML page.
  */
 export function extractVerifiedInstallersFromReleases(
   releasesPayload: unknown,
   repoFullName: string = DEFAULT_GITHUB_REPO_FULL,
-  checkedAt: string = new Date().toISOString()
+  checkedAt: string = new Date().toISOString(),
+  mirrorConfig?: {
+    version: string;
+    builtAt: string | null;
+    installers: RemoteInstallersMirrorConfig;
+  } | null
 ): VerifiedReleaseInstallers {
   const checkedApiUrl = `https://api.github.com/repos/${repoFullName}/releases`;
+  const mirrorTag = mirrorConfig?.version ? `v${mirrorConfig.version.replace(/^v/i, '')}` : 'mirror';
+  const mirrorExe = mirrorConfig
+    ? buildMirrorAssetIfValid(
+        mirrorConfig.installers.windowsExeUrl,
+        mirrorConfig.installers.windowsExeName || 'Daftar-Fani-Golzar-Setup.exe',
+        mirrorConfig.installers.windowsExeSizeBytes,
+        '.exe',
+        mirrorTag,
+        mirrorConfig.builtAt
+      )
+    : null;
+  const mirrorApk = mirrorConfig
+    ? buildMirrorAssetIfValid(
+        mirrorConfig.installers.androidApkUrl,
+        mirrorConfig.installers.androidApkName || 'Daftar-Fani-Golzar.apk',
+        mirrorConfig.installers.androidApkSizeBytes,
+        '.apk',
+        mirrorTag,
+        mirrorConfig.builtAt
+      )
+    : null;
+
   if (!Array.isArray(releasesPayload)) {
+    if (mirrorExe || mirrorApk) {
+      return {
+        status: mirrorExe && mirrorApk ? 'available' : 'partial',
+        repoFullName,
+        checkedApiUrl,
+        releaseTag: mirrorTag,
+        releaseName: mirrorTag,
+        publishedAt: mirrorConfig?.builtAt ?? null,
+        windowsExe: mirrorExe,
+        androidApk: mirrorApk,
+        message: 'لینک مستقیم فایل نصبی از طریق سرور جایگزین معتبر تأیید شد.',
+        lastCheckedAt: checkedAt,
+      };
+    }
     return {
       status: 'error',
       repoFullName,
@@ -572,7 +770,83 @@ export function extractVerifiedInstallersFromReleases(
     (rel) => rel && !rel.draft && Array.isArray(rel.assets)
   );
 
-  if (publishedReleases.length === 0) {
+  let windowsExe: VerifiedReleaseAsset | null = null;
+  let androidApk: VerifiedReleaseAsset | null = null;
+  let primaryRelease: GitHubReleaseRaw | null = null;
+
+  if (publishedReleases.length > 0) {
+    const orderedReleases = [
+      ...publishedReleases.filter((r) => !r.prerelease),
+      ...publishedReleases.filter((r) => Boolean(r.prerelease)),
+    ];
+
+    for (const rel of orderedReleases) {
+      const assets = Array.isArray(rel.assets) ? rel.assets : [];
+      const tag =
+        typeof rel.tag_name === 'string' && rel.tag_name.trim() ? rel.tag_name.trim() : 'release';
+      const publishedAt = typeof rel.published_at === 'string' ? rel.published_at : null;
+      const isPrerelease = Boolean(rel.prerelease);
+
+      if (!windowsExe) {
+        const exeCandidates = assets.filter(
+          (a) =>
+            typeof a?.name === 'string' &&
+            a.name.toLowerCase().endsWith('.exe') &&
+            !a.name.toLowerCase().endsWith('.blockmap') &&
+            isValidDirectBinaryUrl(a.browser_download_url, '.exe', true) &&
+            typeof a.size === 'number' &&
+            a.size > 0
+        );
+        const preferredExe =
+          exeCandidates.find((a) => /setup|installer/i.test(a.name || '')) ?? exeCandidates[0];
+
+        if (preferredExe && preferredExe.name && preferredExe.browser_download_url) {
+          windowsExe = {
+            name: preferredExe.name,
+            downloadUrl: preferredExe.browser_download_url,
+            sizeBytes: preferredExe.size || 0,
+            releaseTag: tag,
+            publishedAt,
+            isPrerelease,
+            source: 'github-releases',
+          };
+          primaryRelease ??= rel;
+        }
+      }
+
+      if (!androidApk) {
+        const apkCandidates = assets.filter(
+          (a) =>
+            typeof a?.name === 'string' &&
+            a.name.toLowerCase().endsWith('.apk') &&
+            isValidDirectBinaryUrl(a.browser_download_url, '.apk', true) &&
+            typeof a.size === 'number' &&
+            a.size > 0
+        );
+        const preferredApk = apkCandidates[0];
+        if (preferredApk && preferredApk.name && preferredApk.browser_download_url) {
+          androidApk = {
+            name: preferredApk.name,
+            downloadUrl: preferredApk.browser_download_url,
+            sizeBytes: preferredApk.size || 0,
+            releaseTag: tag,
+            publishedAt,
+            isPrerelease,
+            source: 'github-releases',
+          };
+          primaryRelease ??= rel;
+        }
+      }
+
+      if (windowsExe && androidApk) break;
+    }
+  }
+
+  // Merge verified alternate mirror if GitHub Releases lacked either asset
+  windowsExe = windowsExe ?? mirrorExe;
+  androidApk = androidApk ?? mirrorApk;
+
+  if (!primaryRelease && !windowsExe && !androidApk) {
     return {
       status: 'no-release',
       repoFullName,
@@ -588,78 +862,20 @@ export function extractVerifiedInstallersFromReleases(
     };
   }
 
-  // Prefer stable releases first, then fall back to prereleases if needed
-  const orderedReleases = [
-    ...publishedReleases.filter((r) => !r.prerelease),
-    ...publishedReleases.filter((r) => Boolean(r.prerelease)),
-  ];
-
-  let windowsExe: VerifiedReleaseAsset | null = null;
-  let androidApk: VerifiedReleaseAsset | null = null;
-  let primaryRelease: GitHubReleaseRaw | null = null;
-
-  for (const rel of orderedReleases) {
-    const assets = Array.isArray(rel.assets) ? rel.assets : [];
-    const tag = typeof rel.tag_name === 'string' && rel.tag_name.trim() ? rel.tag_name.trim() : 'release';
-    const publishedAt = typeof rel.published_at === 'string' ? rel.published_at : null;
-    const isPrerelease = Boolean(rel.prerelease);
-
-    if (!windowsExe) {
-      const exeCandidates = assets.filter(
-        (a) =>
-          typeof a?.name === 'string' &&
-          a.name.toLowerCase().endsWith('.exe') &&
-          !a.name.toLowerCase().endsWith('.blockmap') &&
-          isValidDirectAssetUrl(a.browser_download_url) &&
-          typeof a.size === 'number' &&
-          a.size > 0
-      );
-      const preferredExe =
-        exeCandidates.find((a) => /setup|installer/i.test(a.name || '')) ?? exeCandidates[0];
-
-      if (preferredExe && preferredExe.name && preferredExe.browser_download_url) {
-        windowsExe = {
-          name: preferredExe.name,
-          downloadUrl: preferredExe.browser_download_url,
-          sizeBytes: preferredExe.size || 0,
-          releaseTag: tag,
-          publishedAt,
-          isPrerelease,
-        };
-        primaryRelease ??= rel;
-      }
-    }
-
-    if (!androidApk) {
-      const apkCandidates = assets.filter(
-        (a) =>
-          typeof a?.name === 'string' &&
-          a.name.toLowerCase().endsWith('.apk') &&
-          isValidDirectAssetUrl(a.browser_download_url) &&
-          typeof a.size === 'number' &&
-          a.size > 0
-      );
-      const preferredApk = apkCandidates[0];
-      if (preferredApk && preferredApk.name && preferredApk.browser_download_url) {
-        androidApk = {
-          name: preferredApk.name,
-          downloadUrl: preferredApk.browser_download_url,
-          sizeBytes: preferredApk.size || 0,
-          releaseTag: tag,
-          publishedAt,
-          isPrerelease,
-        };
-        primaryRelease ??= rel;
-      }
-    }
-
-    if (windowsExe && androidApk) break;
-  }
-
-  const latest = primaryRelease ?? orderedReleases[0];
-  const releaseTag = typeof latest.tag_name === 'string' ? latest.tag_name : null;
-  const releaseName = typeof latest.name === 'string' && latest.name.trim() ? latest.name.trim() : releaseTag;
-  const publishedAt = typeof latest.published_at === 'string' ? latest.published_at : null;
+  const latest = primaryRelease ?? publishedReleases[0];
+  const releaseTag =
+    (typeof latest?.tag_name === 'string' ? latest.tag_name : null) ??
+    windowsExe?.releaseTag ??
+    androidApk?.releaseTag ??
+    null;
+  const releaseName =
+    (typeof latest?.name === 'string' && latest.name.trim() ? latest.name.trim() : null) ??
+    releaseTag;
+  const publishedAt =
+    (typeof latest?.published_at === 'string' ? latest.published_at : null) ??
+    windowsExe?.publishedAt ??
+    androidApk?.publishedAt ??
+    null;
 
   if (windowsExe && androidApk) {
     return {
@@ -687,8 +903,8 @@ export function extractVerifiedInstallersFromReleases(
       windowsExe,
       androidApk,
       message: windowsExe
-        ? 'فایل نصبی ویندوز (EXE) منتشر شده است، اما فایل نصبی اندروید (APK) هنوز در Releases منتشر نشده است.'
-        : 'فایل نصبی اندروید (APK) منتشر شده است، اما فایل نصبی ویندوز (EXE) هنوز در Releases منتشر نشده است.',
+        ? 'فایل نصبی ویندوز (EXE) آماده دانلود مستقیم است، اما فایل نصبی اندروید (APK) هنوز در Releases منتشر نشده است.'
+        : 'فایل نصبی اندروید (APK) آماده دانلود مستقیم است، اما فایل نصبی ویندوز (EXE) هنوز در Releases منتشر نشده است.',
       lastCheckedAt: checkedAt,
     };
   }
@@ -709,11 +925,95 @@ export function extractVerifiedInstallersFromReleases(
 }
 
 /**
- * Queries GitHub Releases API to verify real published EXE / APK direct download URLs.
- * Read-only, never fabricates download URLs, never leaks sensitive paths.
+ * Verifies an installer download link before launching download so broken/dead/HTML links
+ * show a direct Persian error message instead of navigating to an empty/404 page.
+ */
+export async function verifyInstallerDownloadUrl(
+  asset: VerifiedReleaseAsset | null,
+  expectedExt: '.exe' | '.apk'
+): Promise<{ ok: boolean; error?: string }> {
+  if (!asset || !asset.downloadUrl) {
+    return {
+      ok: false,
+      error:
+        expectedExt === '.exe'
+          ? 'فایل نصبی ویندوز (EXE) در Releases یا سرور جایگزین موجود نیست.'
+          : 'فایل نصبی اندروید (APK) در Releases یا سرور جایگزین موجود نیست.',
+    };
+  }
+
+  if (!isValidDirectBinaryUrl(asset.downloadUrl, expectedExt, false)) {
+    return {
+      ok: false,
+      error: 'نشانی دانلود معتبر نیست یا به صفحه عمومی به‌جای فایل نصبی اشاره می‌کند.',
+    };
+  }
+
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return {
+      ok: false,
+      error: 'دستگاه در حالت آفلاین است. ابتدا به اینترنت متصل شوید و سپس دانلود را آغاز کنید.',
+    };
+  }
+
+  // On Electron Desktop, perform real HEAD probe via Windows native network stack (zero CORS limitation)
+  if (typeof window !== 'undefined' && typeof window.desktopBridge?.verifyDownloadUrl === 'function') {
+    const headRes = await window.desktopBridge.verifyDownloadUrl(asset.downloadUrl);
+    if (!headRes.ok) {
+      return {
+        ok: false,
+        error: headRes.error || 'لینک دانلود فایل نصبی در دسترس نیست یا حذف شده است.',
+      };
+    }
+    return { ok: true };
+  }
+
+  // On Web/Android: GitHub Releases URLs were already verified via live GitHub Releases API (size > 0);
+  // for non-GitHub alternate mirrors, run a HEAD probe if CORS permits.
+  if (asset.source === 'alternate-mirror') {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 8000) : null;
+    try {
+      const res = await fetch(asset.downloadUrl, {
+        method: 'HEAD',
+        cache: 'no-store',
+        signal: controller?.signal,
+      });
+      if (!res.ok) {
+        return {
+          ok: false,
+          error: `لینک دانلود در سرور جایگزین خراب یا غیرفعال است (کد خطا: HTTP ${res.status}).`,
+        };
+      }
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (ct.includes('text/html')) {
+        return {
+          ok: false,
+          error: 'سرور جایگزین به‌جای فایل نصبی، صفحه وب (HTML) برگرداند.',
+        };
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return {
+          ok: false,
+          error: 'سرور دانلود در زمان مقرر پاسخ نداد. لطفاً اتصال اینترنت را بررسی کنید.',
+        };
+      }
+      // On browser, CORS-opaque HEAD failures can occur on valid CDNs; allow direct anchor download when online
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  return { ok: true };
+}
+
+/**
+ * Queries GitHub Releases API with exponential backoff retries to verify real published EXE/APK direct download URLs.
  */
 export async function checkVerifiedReleaseInstallers(
-  overrideUrl?: string
+  overrideUrl?: string,
+  retryOptions?: RetryBackoffOptions
 ): Promise<VerifiedReleaseInstallers> {
   const sourceUrl = overrideUrl !== undefined ? overrideUrl : currentState.versionSourceUrl;
   const { owner, repo } = extractRepoFromSourceUrl(sourceUrl);
@@ -748,11 +1048,29 @@ export async function checkVerifiedReleaseInstallers(
     },
   });
 
-  const fetchRes = await resilientFetchText(checkedApiUrl, {
-    Accept: 'application/vnd.github+json',
-  });
+  const fetchRes = await fetchWithExponentialBackoff(
+    checkedApiUrl,
+    { Accept: 'application/vnd.github+json' },
+    {
+      maxRetries: retryOptions?.maxRetries ?? 2,
+      baseDelayMs: retryOptions?.baseDelayMs ?? 600,
+      maxDelayMs: retryOptions?.maxDelayMs ?? 3000,
+    }
+  );
 
   if (fetchRes.networkError) {
+    if (cachedManifestInstallers) {
+      const mirrorOnly = extractVerifiedInstallersFromReleases(
+        null,
+        repoFullName,
+        nowIso,
+        cachedManifestInstallers
+      );
+      if (mirrorOnly.status === 'available' || mirrorOnly.status === 'partial') {
+        emit({ releaseInstallers: mirrorOnly });
+        return mirrorOnly;
+      }
+    }
     const errState: VerifiedReleaseInstallers = {
       status: 'error',
       repoFullName,
@@ -764,7 +1082,7 @@ export async function checkVerifiedReleaseInstallers(
       androidApk: null,
       message:
         fetchRes.networkError === 'timeout'
-          ? 'زمان انتظار برای دریافت فهرست Releases گیت‌هاب به پایان رسید. اتصال اینترنت را بررسی کنید.'
+          ? 'زمان انتظار برای دریافت فهرست Releases گیت‌هاب پس از تلاش‌های مجدد به پایان رسید.'
           : 'اتصال به سرویس Releases گیت‌هاب برقرار نشد (خطای شبکه یا محدودیت دسترسی).',
       lastCheckedAt: nowIso,
     };
@@ -797,7 +1115,12 @@ export async function checkVerifiedReleaseInstallers(
 
   try {
     const payload = JSON.parse(fetchRes.bodyText) as unknown;
-    const parsed = extractVerifiedInstallersFromReleases(payload, repoFullName, nowIso);
+    const parsed = extractVerifiedInstallersFromReleases(
+      payload,
+      repoFullName,
+      nowIso,
+      cachedManifestInstallers
+    );
     emit({ releaseInstallers: parsed });
     return parsed;
   } catch {
@@ -818,7 +1141,55 @@ export async function checkVerifiedReleaseInstallers(
   }
 }
 
-export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdateState> {
+function buildReadableNetworkReport(
+  endpoints: NetworkEndpointRecord[],
+  succeeded: boolean
+): NetworkDiagnosticSnapshot {
+  const conn = readNetworkConnectionInfo();
+  const totalAttempts = endpoints.reduce((sum, ep) => sum + ep.attempts, 0);
+  const retryCount = Math.max(0, totalAttempts - endpoints.length);
+
+  let summaryPersian: string;
+  if (!conn.onlineFlag) {
+    summaryPersian =
+      'سیستم عامل وضعیت شبکه دستگاه را «آفلاین» گزارش می‌کند. لطفاً اتصال Wi-Fi یا کابل شبکه را بررسی کنید.';
+  } else if (succeeded) {
+    summaryPersian = `اتصال به سرورهای گیت‌هاب برقرار است${conn.connectionType ? ` (نوع ارتباط: ${conn.connectionType})` : ''}.`;
+  } else {
+    const hasTimeout = endpoints.some((e) => e.outcome === 'timeout');
+    const hasCors = endpoints.some((e) => e.outcome === 'cors-error');
+    const has404 = endpoints.every((e) => e.outcome === 'http-error' && e.httpStatus === 404);
+    if (has404) {
+      summaryPersian =
+        'اتصال اینترنت برقرار است، اما فایل نسخه در هیچ‌یک از نشانی‌های بررسی‌شده یافت نشد (خطای ۴۰۴).';
+    } else if (hasTimeout) {
+      summaryPersian =
+        'دستگاه به شبکه محلی متصل است، اما سرورهای گیت‌هاب در مهلت زمانی پاسخ ندادند (احتمال کندی اینترنت، محدودیت شبکه سازمانی یا نیاز به بررسی پروکسی/فایروال).';
+    } else if (hasCors) {
+      summaryPersian =
+        'دستگاه به شبکه متصل است، اما مرورگر به دلیل خطای شبکه یا محدودیت CORS/فیلترینگ نتوانست پاسخ سرورهای گیت‌هاب را دریافت کند.';
+    } else {
+      summaryPersian =
+        'دستگاه به شبکه محلی متصل است، اما ارتباط با تمامی سرورهای گیت‌هاب پس از تلاش مجدد (توقف نمایی) ناموفق بود. وضعیت اینترنت، پروکسی سیستم یا فایروال را بررسی کنید.';
+    }
+  }
+
+  return {
+    onlineFlag: conn.onlineFlag,
+    connectionType: conn.connectionType,
+    downlinkMbps: conn.downlinkMbps,
+    rttMs: conn.rttMs,
+    totalAttempts,
+    retryCount,
+    endpoints,
+    summaryPersian,
+  };
+}
+
+export async function checkForAppUpdate(
+  overrideUrl?: string,
+  retryOptions?: RetryBackoffOptions
+): Promise<AppUpdateState> {
   const rawSource = overrideUrl !== undefined ? overrideUrl : currentState.versionSourceUrl;
   const validation = validateVersionSourceUrl(rawSource);
 
@@ -829,6 +1200,8 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
       errorCategory: 'invalid-url',
       httpStatus: null,
       swWarning: null,
+      retryStatusText: null,
+      networkReport: null,
       statusMessage: validation.error || 'نشانی فایل version.json نامعتبر است.',
     });
     return currentState;
@@ -837,13 +1210,16 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
   const baseManifestUrl = validation.resolvedUrl;
 
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const offlineReport = buildReadableNetworkReport([], false);
     emit({
       checkedUrl: baseManifestUrl,
       status: 'offline',
       errorCategory: 'offline',
       httpStatus: null,
+      retryStatusText: null,
+      networkReport: offlineReport,
       statusMessage:
-        'دستگاه در حالت آفلاین است. برای بررسی فایل version.json در مخزن گیت‌هاب، ابتدا به اینترنت متصل شوید و مجدداً دکمه «بررسی به‌روزرسانی» را بزنید.',
+        'دستگاه در حالت آفلاین است. برای بررسی به‌روزرسانی، ابتدا به اینترنت متصل شوید و مجدداً دکمه «بررسی به‌روزرسانی» را بزنید.',
     });
     return currentState;
   }
@@ -854,7 +1230,9 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
     errorCategory: null,
     httpStatus: null,
     swWarning: null,
-    statusMessage: 'در حال اتصال به سرور و بررسی فایل version.json...',
+    retryStatusText: null,
+    networkReport: null,
+    statusMessage: 'در حال اتصال به سرور و بررسی آخرین نسخه نرم‌افزار...',
   });
 
   const nowIso = new Date().toISOString();
@@ -862,13 +1240,10 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
     window.localStorage.setItem(LAST_CHECK_KEY, nowIso);
   }
 
-  // Trigger read-only Releases check in parallel (never blocks version.json result)
-  void checkVerifiedReleaseInstallers(rawSource);
-
   let foundUpdate = false;
   let swWarning: string | null = null;
 
-  // 1. Isolated Service Worker check — ONLY on eligible web origins; NEVER blocks version.json fetch!
+  // 1. Isolated Service Worker check — ONLY on eligible web origins; NEVER blocks remote checks!
   if (isServiceWorkerEligibleOrigin()) {
     try {
       const reg = swRegistration ?? (await navigator.serviceWorker.getRegistration());
@@ -881,35 +1256,48 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
       }
     } catch {
       swWarning =
-        'بررسی Service Worker مرورگر با خطا مواجه شد، اما بررسی مستقیم فایل version.json به‌صورت مستقل انجام شد.';
+        'بررسی Service Worker مرورگر با خطا مواجه شد، اما بررسی مستقیم نسخه از سرور به‌صورت مستقل انجام شد.';
     }
   }
 
-  // 2. Fetch fresh non-cached version.json with 3-tier automatic fallback & in-loop JSON validation
+  // 2. Check version.json mirrors with exponential backoff retry on each mirror
   const candidateUrls = buildVersionFallbackCandidates(rawSource, baseManifestUrl);
   const attemptedUrls: string[] = [];
+  const endpointRecords: NetworkEndpointRecord[] = [];
 
   let activeUrl = baseManifestUrl;
   let usedFallback = false;
+  let fallbackSourceLabel: string | null = null;
   let lastFetchRes: ResilientFetchResult = {
     ok: false,
     status: 0,
     bodyText: '',
     networkError: 'network',
+    attempts: 0,
   };
   let parsedData: RemoteVersionManifest | null = null;
   let hadInvalidJson = false;
 
   for (let i = 0; i < candidateUrls.length; i++) {
     const candidate = candidateUrls[i];
+    const label = getEndpointLabel(candidate);
     attemptedUrls.push(candidate);
     const bustUrl = new URL(candidate);
-    // Avoid extra query params on GitHub Contents API where ref/path is sensitive
     if (!candidate.includes('api.github.com/repos/')) {
       bustUrl.searchParams.set('t', String(Date.now()));
     }
     activeUrl = candidate;
-    const res = await resilientFetchText(bustUrl.toString());
+
+    const res = await fetchWithExponentialBackoff(bustUrl.toString(), undefined, {
+      maxRetries: retryOptions?.maxRetries ?? 2,
+      baseDelayMs: retryOptions?.baseDelayMs ?? 600,
+      maxDelayMs: retryOptions?.maxDelayMs ?? 3000,
+      onRetry: (nextAttempt, totalAttempts, delayMs) => {
+        emit({
+          retryStatusText: `عدم پاسخ از ${label} — تلاش مجدد (${nextAttempt} از ${totalAttempts}) پس از ${Math.round(delayMs / 100) / 10} ثانیه...`,
+        });
+      },
+    });
     lastFetchRes = res;
 
     if (res.ok) {
@@ -917,18 +1305,92 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
       if (parsed) {
         parsedData = parsed;
         usedFallback = i > 0;
+        fallbackSourceLabel = i > 0 ? label : null;
+        endpointRecords.push({
+          label,
+          url: candidate,
+          outcome: 'ok',
+          httpStatus: res.status,
+          attempts: res.attempts,
+        });
         break;
       }
       hadInvalidJson = true;
+      endpointRecords.push({
+        label,
+        url: candidate,
+        outcome: 'invalid-json',
+        httpStatus: res.status,
+        attempts: res.attempts,
+      });
+    } else {
+      endpointRecords.push({
+        label,
+        url: candidate,
+        outcome:
+          res.networkError === 'timeout'
+            ? 'timeout'
+            : res.networkError === 'cors'
+              ? 'cors-error'
+              : res.networkError === 'network'
+                ? 'network-error'
+                : 'http-error',
+        httpStatus: res.status > 0 ? res.status : undefined,
+        attempts: res.attempts,
+      });
     }
   }
 
+  // Cache optional alternate installer mirror from version.json BEFORE checking Releases
+  if (parsedData?.installers) {
+    cachedManifestInstallers = {
+      version: parsedData.version || LOCAL_APP_VERSION,
+      builtAt: typeof parsedData.builtAt === 'string' ? parsedData.builtAt : null,
+      installers: parsedData.installers,
+    };
+  }
+
+  // 3. Also query GitHub Releases (serves both direct EXE/APK downloads AND version fallback if version.json failed!)
+  const releaseInfo = await checkVerifiedReleaseInstallers(rawSource, retryOptions);
+
+  // If ALL version.json mirrors failed, fall back to published GitHub Release tag_name as version source!
+  if (!parsedData && releaseInfo.releaseTag && /\d+\.\d+/.test(releaseInfo.releaseTag)) {
+    const cleanTagVersion = releaseInfo.releaseTag.replace(/^v/i, '').trim();
+    parsedData = {
+      version: cleanTagVersion,
+      builtAt: releaseInfo.publishedAt ?? undefined,
+      notes: [],
+    };
+    activeUrl = releaseInfo.checkedApiUrl;
+    usedFallback = true;
+    fallbackSourceLabel = 'GitHub Releases API (نسخه برچسب انتشار)';
+    endpointRecords.push({
+      label: 'GitHub Releases API',
+      url: releaseInfo.checkedApiUrl,
+      outcome: 'ok',
+      httpStatus: 200,
+      attempts: 1,
+    });
+  } else if (!parsedData) {
+    endpointRecords.push({
+      label: 'GitHub Releases API',
+      url: releaseInfo.checkedApiUrl,
+      outcome: releaseInfo.status === 'error' ? 'network-error' : 'ok',
+      attempts: 1,
+    });
+  }
+
   if (!parsedData) {
+    const networkReport = buildReadableNetworkReport(endpointRecords, false);
+
     if (hadInvalidJson && lastFetchRes.ok) {
       emit({
         checkedUrl: activeUrl,
         usedFallback: false,
+        fallbackSourceLabel: null,
         attemptedUrls,
+        retryStatusText: null,
+        networkReport,
         lastCheckedAt: nowIso,
         status: 'error',
         errorCategory: 'json',
@@ -947,7 +1409,10 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
       emit({
         checkedUrl: activeUrl,
         usedFallback: false,
+        fallbackSourceLabel: null,
         attemptedUrls,
+        retryStatusText: null,
+        networkReport,
         lastCheckedAt: nowIso,
         status: 'error',
         errorCategory: category,
@@ -955,27 +1420,30 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
         swWarning,
         statusMessage:
           lastFetchRes.networkError === 'timeout'
-            ? 'زمان انتظار برای دریافت فایل version.json از تمام آینه‌های رسمی به پایان رسید. اتصال اینترنت یا فیلترشکن/فایروال را بررسی کنید.'
+            ? 'پس از چند نوبت تلاش مجدد (توقف نمایی)، پاسخی از سرورهای بررسی نسخه دریافت نشد.'
             : category === 'cors'
-              ? 'خطای شبکه یا محدودیت CORS هنگام دریافت فایل version.json از سرور مقصد. اتصال اینترنت و نشانی فایل را بررسی کنید.'
-              : 'اتصال شبکه‌ای به سرورهای گیت‌هاب برقرار نشد. وضعیت اتصال اینترنت، پروکسی ویندوز یا فایروال سیستم را بررسی کرده و دوباره تلاش کنید.',
+              ? 'خطای شبکه یا محدودیت CORS هنگام بررسی نسخه نرم‌افزار در مرورگر.'
+              : 'اتصال شبکه‌ای به سرورهای گیت‌هاب پس از تلاش مجدد برقرار نشد.',
       });
       return currentState;
     }
 
     const statusHint =
       lastFetchRes.status === 404
-        ? 'فایل version.json در نشانی مشخص‌شده یافت نشد (HTTP 404).'
+        ? 'فایل version.json در نشانی‌های بررسی‌شده یافت نشد (HTTP 404).'
         : lastFetchRes.status === 403
-          ? 'دسترسی به نشانی version.json مجاز نبود یا با محدودیت موقت مواجه شد (HTTP 403).'
+          ? 'دسترسی به سرور بررسی نسخه مجاز نبود یا با محدودیت موقت مواجه شد (HTTP 403).'
           : lastFetchRes.status >= 500
-            ? `سرور میزبان فایل version.json با خطای داخلی مواجه شد (HTTP ${lastFetchRes.status}).`
-            : `دریافت فایل version.json با پاسخ ناموفق HTTP ${lastFetchRes.status} مواجه شد.`;
+            ? `سرور میزبان با خطای داخلی مواجه شد (HTTP ${lastFetchRes.status}).`
+            : `دریافت اطلاعات نسخه با پاسخ ناموفق HTTP ${lastFetchRes.status} مواجه شد.`;
 
     emit({
       checkedUrl: activeUrl,
       usedFallback: false,
+      fallbackSourceLabel: null,
       attemptedUrls,
+      retryStatusText: null,
+      networkReport,
       lastCheckedAt: nowIso,
       status: 'error',
       errorCategory: 'http',
@@ -1009,11 +1477,16 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
     foundUpdate = true;
   }
 
+  const successReport = buildReadableNetworkReport(endpointRecords, true);
+
   if (foundUpdate || currentState.needRefresh) {
     emit({
       checkedUrl: activeUrl,
       usedFallback,
+      fallbackSourceLabel,
       attemptedUrls,
+      retryStatusText: null,
+      networkReport: successReport,
       needRefresh: true,
       remoteVersion,
       remoteBuildId,
@@ -1022,7 +1495,7 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
       lastCheckedAt: nowIso,
       status: 'update-available',
       errorCategory: null,
-      httpStatus: lastFetchRes.status,
+      httpStatus: lastFetchRes.status || 200,
       swWarning,
       statusMessage: `نسخه جدید (${remoteVersion}) در مخزن منتشر شده است. برای دریافت آخرین تغییرات اقدام کنید.`,
     });
@@ -1030,7 +1503,10 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
     emit({
       checkedUrl: activeUrl,
       usedFallback,
+      fallbackSourceLabel,
       attemptedUrls,
+      retryStatusText: null,
+      networkReport: successReport,
       needRefresh: false,
       remoteVersion,
       remoteBuildId,
@@ -1039,9 +1515,9 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
       lastCheckedAt: nowIso,
       status: 'up-to-date',
       errorCategory: null,
-      httpStatus: lastFetchRes.status,
+      httpStatus: lastFetchRes.status || 200,
       swWarning,
-      statusMessage: `فایل version.json با موفقیت بررسی شد؛ نرم‌افزار هم‌اکنون روی آخرین نسخه (${remoteVersion}) قرار دارد.`,
+      statusMessage: `بررسی نسخه با موفقیت انجام شد؛ نرم‌افزار هم‌اکنون روی آخرین نسخه (${remoteVersion}) قرار دارد.`,
     });
   }
 
@@ -1055,7 +1531,7 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
 export async function applyAppUpdate(forceHardRefresh = false): Promise<void> {
   if (typeof window === 'undefined') return;
 
-  if (typeof navigator !== 'undefined' && !navigator.onLine && forceHardRefresh) {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false && forceHardRefresh) {
     emit({
       status: 'offline',
       errorCategory: 'offline',
@@ -1076,7 +1552,6 @@ export async function applyAppUpdate(forceHardRefresh = false): Promise<void> {
       return;
     }
 
-    // Clear ONLY static asset CacheStorage entries — NEVER touch IndexedDB!
     if ('caches' in window) {
       const cacheNames = await window.caches.keys();
       await Promise.all(cacheNames.map((name) => window.caches.delete(name)));

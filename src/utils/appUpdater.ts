@@ -583,83 +583,99 @@ export function extractVerifiedInstallersFromReleases(
       windowsExe: null,
       androidApk: null,
       message:
-        'تا این لحظه هیچ نسخه منتشرشده‌ای (Release) شامل فایل نصبی EXE یا APK در گیت‌هاب ثبت نشده است. برای فعال شدن دانلود مستقیم، در بخش GitHub Actions گردش‌کار «Build Standalone Installers» را با گزینه publish_release فعال اجرا کنید.',
+        'هنوز هیچ Release رسمی حاوی فایل نصبی منتشر نشده است. فایل‌های GitHub Actions جایگزین Release مستقیم نیستند.',
       lastCheckedAt: checkedAt,
     };
   }
 
-  // Prefer stable releases first, then fall back to prereleases if needed
+  // Keep EXE and APK from the SAME release. Never mix installers from different versions.
   const orderedReleases = [
-    ...publishedReleases.filter((r) => !r.prerelease),
-    ...publishedReleases.filter((r) => Boolean(r.prerelease)),
+    ...publishedReleases.filter((release) => !release.prerelease),
+    ...publishedReleases.filter((release) => Boolean(release.prerelease)),
   ];
 
-  let windowsExe: VerifiedReleaseAsset | null = null;
-  let androidApk: VerifiedReleaseAsset | null = null;
-  let primaryRelease: GitHubReleaseRaw | null = null;
+  const candidates = orderedReleases.map((release) => {
+    const assets = Array.isArray(release.assets) ? release.assets : [];
+    const tag = typeof release.tag_name === 'string' && release.tag_name.trim()
+      ? release.tag_name.trim()
+      : 'release';
+    const publishedAt = typeof release.published_at === 'string' ? release.published_at : null;
+    const isPrerelease = Boolean(release.prerelease);
 
-  for (const rel of orderedReleases) {
-    const assets = Array.isArray(rel.assets) ? rel.assets : [];
-    const tag = typeof rel.tag_name === 'string' && rel.tag_name.trim() ? rel.tag_name.trim() : 'release';
-    const publishedAt = typeof rel.published_at === 'string' ? rel.published_at : null;
-    const isPrerelease = Boolean(rel.prerelease);
+    const exeCandidates = assets.filter(
+      (asset) =>
+        typeof asset?.name === 'string' &&
+        asset.name.toLowerCase().endsWith('.exe') &&
+        !asset.name.toLowerCase().endsWith('.blockmap') &&
+        isValidDirectAssetUrl(asset.browser_download_url) &&
+        typeof asset.size === 'number' &&
+        asset.size > 0
+    );
+    const preferredExe =
+      exeCandidates.find((asset) => /setup|installer/i.test(asset.name || '')) ?? exeCandidates[0];
 
-    if (!windowsExe) {
-      const exeCandidates = assets.filter(
-        (a) =>
-          typeof a?.name === 'string' &&
-          a.name.toLowerCase().endsWith('.exe') &&
-          !a.name.toLowerCase().endsWith('.blockmap') &&
-          isValidDirectAssetUrl(a.browser_download_url) &&
-          typeof a.size === 'number' &&
-          a.size > 0
-      );
-      const preferredExe =
-        exeCandidates.find((a) => /setup|installer/i.test(a.name || '')) ?? exeCandidates[0];
+    const apkCandidates = assets.filter(
+      (asset) =>
+        typeof asset?.name === 'string' &&
+        asset.name.toLowerCase().endsWith('.apk') &&
+        isValidDirectAssetUrl(asset.browser_download_url) &&
+        typeof asset.size === 'number' &&
+        asset.size > 0
+    );
+    const preferredApk = apkCandidates[0];
 
-      if (preferredExe && preferredExe.name && preferredExe.browser_download_url) {
-        windowsExe = {
-          name: preferredExe.name,
-          downloadUrl: preferredExe.browser_download_url,
-          sizeBytes: preferredExe.size || 0,
-          releaseTag: tag,
-          publishedAt,
-          isPrerelease,
-        };
-        primaryRelease ??= rel;
-      }
-    }
+    const windowsExe: VerifiedReleaseAsset | null =
+      preferredExe?.name && preferredExe.browser_download_url
+        ? {
+            name: preferredExe.name,
+            downloadUrl: preferredExe.browser_download_url,
+            sizeBytes: preferredExe.size || 0,
+            releaseTag: tag,
+            publishedAt,
+            isPrerelease,
+          }
+        : null;
 
-    if (!androidApk) {
-      const apkCandidates = assets.filter(
-        (a) =>
-          typeof a?.name === 'string' &&
-          a.name.toLowerCase().endsWith('.apk') &&
-          isValidDirectAssetUrl(a.browser_download_url) &&
-          typeof a.size === 'number' &&
-          a.size > 0
-      );
-      const preferredApk = apkCandidates[0];
-      if (preferredApk && preferredApk.name && preferredApk.browser_download_url) {
-        androidApk = {
-          name: preferredApk.name,
-          downloadUrl: preferredApk.browser_download_url,
-          sizeBytes: preferredApk.size || 0,
-          releaseTag: tag,
-          publishedAt,
-          isPrerelease,
-        };
-        primaryRelease ??= rel;
-      }
-    }
+    const androidApk: VerifiedReleaseAsset | null =
+      preferredApk?.name && preferredApk.browser_download_url
+        ? {
+            name: preferredApk.name,
+            downloadUrl: preferredApk.browser_download_url,
+            sizeBytes: preferredApk.size || 0,
+            releaseTag: tag,
+            publishedAt,
+            isPrerelease,
+          }
+        : null;
 
-    if (windowsExe && androidApk) break;
+    return { release, tag, publishedAt, windowsExe, androidApk };
+  });
+
+  const selected = candidates.find((candidate) => candidate.windowsExe && candidate.androidApk)
+    ?? candidates.find((candidate) => candidate.windowsExe || candidate.androidApk);
+
+  if (!selected) {
+    const latest = orderedReleases[0];
+    const releaseTag = typeof latest?.tag_name === 'string' ? latest.tag_name : null;
+    const releaseName =
+      typeof latest?.name === 'string' && latest.name.trim() ? latest.name.trim() : releaseTag;
+    return {
+      status: 'no-release',
+      repoFullName,
+      checkedApiUrl,
+      releaseTag,
+      releaseName,
+      publishedAt: typeof latest?.published_at === 'string' ? latest.published_at : null,
+      windowsExe: null,
+      androidApk: null,
+      message: 'Release وجود دارد، اما فایل مستقیم معتبر EXE یا APK در آن پیدا نشد.',
+      lastCheckedAt: checkedAt,
+    };
   }
 
-  const latest = primaryRelease ?? orderedReleases[0];
-  const releaseTag = typeof latest.tag_name === 'string' ? latest.tag_name : null;
-  const releaseName = typeof latest.name === 'string' && latest.name.trim() ? latest.name.trim() : releaseTag;
-  const publishedAt = typeof latest.published_at === 'string' ? latest.published_at : null;
+  const { release, tag: releaseTag, publishedAt, windowsExe, androidApk } = selected;
+  const releaseName =
+    typeof release.name === 'string' && release.name.trim() ? release.name.trim() : releaseTag;
 
   if (windowsExe && androidApk) {
     return {
@@ -671,39 +687,23 @@ export function extractVerifiedInstallersFromReleases(
       publishedAt,
       windowsExe,
       androidApk,
-      message: `فایل‌های نصبی مستقیم ویندوز (EXE) و اندروید (APK) برای نسخه ${releaseTag ?? ''} آماده دانلود هستند.`,
-      lastCheckedAt: checkedAt,
-    };
-  }
-
-  if (windowsExe || androidApk) {
-    return {
-      status: 'partial',
-      repoFullName,
-      checkedApiUrl,
-      releaseTag,
-      releaseName,
-      publishedAt,
-      windowsExe,
-      androidApk,
-      message: windowsExe
-        ? 'فایل نصبی ویندوز (EXE) منتشر شده است، اما فایل نصبی اندروید (APK) هنوز در Releases منتشر نشده است.'
-        : 'فایل نصبی اندروید (APK) منتشر شده است، اما فایل نصبی ویندوز (EXE) هنوز در Releases منتشر نشده است.',
+      message: `فایل‌های نصبی ویندوز و اندروید هر دو از Release یکسان (${releaseTag}) آماده دریافت هستند.`,
       lastCheckedAt: checkedAt,
     };
   }
 
   return {
-    status: 'no-release',
+    status: 'partial',
     repoFullName,
     checkedApiUrl,
     releaseTag,
     releaseName,
     publishedAt,
-    windowsExe: null,
-    androidApk: null,
-    message:
-      'در نسخه منتشرشده Releases، فایل نصبی مستقیم EXE یا APK یافت نشد (فایل نصبی هنوز منتشر نشده است).',
+    windowsExe,
+    androidApk,
+    message: windowsExe
+      ? 'فایل نصبی ویندوز منتشر شده است، اما APK متناظر در همین Release وجود ندارد.'
+      : 'فایل نصبی اندروید منتشر شده است، اما EXE متناظر در همین Release وجود ندارد.',
     lastCheckedAt: checkedAt,
   };
 }
@@ -1001,6 +1001,9 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
   if (remoteVersion && compareSemver(remoteVersion, LOCAL_APP_VERSION) > 0) {
     foundUpdate = true;
   } else if (
+    // Build IDs change on every Pages build. Compare them only for the web PWA;
+    // installed Electron/Android packages must be updated by a versioned installer.
+    isServiceWorkerEligibleOrigin() &&
     remoteBuildId &&
     remoteBuildId !== 'dev-local' &&
     LOCAL_BUILD_ID !== 'dev-local' &&
@@ -1024,7 +1027,9 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
       errorCategory: null,
       httpStatus: lastFetchRes.status,
       swWarning,
-      statusMessage: `نسخه جدید (${remoteVersion}) در مخزن منتشر شده است. برای دریافت آخرین تغییرات اقدام کنید.`,
+      statusMessage: isServiceWorkerEligibleOrigin()
+        ? `نسخه وب جدید (${remoteVersion}) در دسترس است؛ تغییرات را از طریق به‌روزرسانی PWA دریافت کنید.`
+        : `نسخه نصبی جدید (${remoteVersion}) شناسایی شد. نصب ویندوز یا اندروید فقط با فایل نصبی هم‌نسخه و امضای معتبر انجام می‌شود؛ وضعیت فایل‌ها را در بخش پشتیبانی بررسی کنید.`,
     });
   } else {
     emit({
@@ -1054,6 +1059,17 @@ export async function checkForAppUpdate(overrideUrl?: string): Promise<AppUpdate
  */
 export async function applyAppUpdate(forceHardRefresh = false): Promise<void> {
   if (typeof window === 'undefined') return;
+
+  // A page reload cannot replace a packaged Electron executable or Android APK.
+  if (!isServiceWorkerEligibleOrigin()) {
+    emit({
+      status: 'error',
+      errorCategory: 'sw',
+      statusMessage:
+        'تازه‌سازی صفحه، نسخه نصب‌شده ویندوز یا اندروید را به‌روزرسانی نمی‌کند. برای ویندوز باید نصاب EXE اجرا شود و برای اندروید باید APK هم‌امضا نصب شود.',
+    });
+    return;
+  }
 
   if (typeof navigator !== 'undefined' && !navigator.onLine && forceHardRefresh) {
     emit({

@@ -24,7 +24,9 @@ import {
 } from '../../utils/platformBridge';
 import { PWAInstallButton } from '../layout/PWAInstallButton';
 
-const GITHUB_RELEASES_URL = 'https://github.com/forog1980-star/Daftar-Fani-Golzar-App/releases';
+const GITHUB_RELEASE_TAG = 'v1.4.0-test.3';
+const WINDOWS_INSTALLER_URL = `https://github.com/forog1980-star/Daftar-Fani-Golzar-App/releases/download/${GITHUB_RELEASE_TAG}/Daftar-Fani-Golzar-Setup.exe`;
+const ANDROID_APK_URL = `https://github.com/forog1980-star/Daftar-Fani-Golzar-App/releases/download/${GITHUB_RELEASE_TAG}/Daftar-Fani-Golzar.apk`;
 
 interface AppUpdatePanelProps {
   compact?: boolean;
@@ -122,7 +124,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <a
-              href={GITHUB_RELEASES_URL}
+              href={WINDOWS_INSTALLER_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#FFFFFF] px-3 text-xs font-medium text-[#243B5A] hover:bg-[#E5EBF2] whitespace-nowrap"
@@ -132,7 +134,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
               <Download className="h-3 w-3 opacity-75" />
             </a>
             <a
-              href={GITHUB_RELEASES_URL}
+              href={ANDROID_APK_URL}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#3D6B59] bg-[#FFFFFF] px-3 text-xs font-medium text-[#3D6B59] hover:bg-[#E7ECE6] whitespace-nowrap"
@@ -245,7 +247,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
 
         {isNativeRuntime && updater.status === 'update-available' && (
           <a
-            href={GITHUB_RELEASES_URL}
+            href={runtimePlatform === 'electron' ? WINDOWS_INSTALLER_URL : ANDROID_APK_URL}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-4 py-2.5 text-xs font-medium text-[#FFFFFF] transition-colors hover:opacity-90 whitespace-nowrap"

@@ -75,10 +75,13 @@ export function toPersianDigits(value: string | number): string {
   return String(value).replace(/[0-9]/g, (d) => map[d] ?? d);
 }
 
-export function formatRial(amount: number | undefined | null): string {
+export function formatAmount(amount: number | undefined | null): string {
   const num = Number(amount || 0);
-  const formatted = new Intl.NumberFormat('fa-IR').format(Math.round(num));
-  return `${formatted} ریال`;
+  return new Intl.NumberFormat('fa-IR').format(Math.round(num));
+}
+
+export function formatRial(amount: number | undefined | null): string {
+  return `${formatAmount(amount)} ریال`;
 }
 
 export function formatNumber(value: number | undefined | null): string {

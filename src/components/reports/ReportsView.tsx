@@ -22,6 +22,7 @@ import {
 import { LetterheadConfig, ProjectStatus, SignatureSnapshot } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
 import {
+  formatAmount,
   formatJalaliDate,
   formatRial,
   isOverdue,
@@ -240,16 +241,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             value: `${toPersianDigits(store.projects.filter((p) => p.status === 'در حال اجرا').length)} / ${toPersianDigits(store.projects.filter((p) => p.status === 'دارای مشکل').length)}`,
           },
           { label: 'میانگین پیشرفت فیزیکی', value: `${toPersianDigits(avgProgress)} درصد` },
-          { label: 'مجموع مبلغ قراردادها', value: formatRial(totalContract) },
+          { label: 'مجموع مبلغ قراردادها (ریال)', value: formatAmount(totalContract) },
         ],
-        headers: ['کد', 'نام پروژه', 'نوع', 'وضعیت', 'پیمانکار', 'مبلغ قرارداد', 'پیشرفت فیزیکی'],
+        headers: ['کد', 'نام پروژه', 'نوع', 'وضعیت', 'پیمانکار', 'مبلغ قرارداد (ریال)', 'پیشرفت فیزیکی'],
         rows: store.projects.map((p) => [
           p.code,
           p.title,
           p.type,
           p.status,
           p.contractor || '—',
-          formatRial(p.contractAmount),
+          formatAmount(p.contractAmount),
           `${toPersianDigits(p.physicalProgress)}٪`,
         ]),
       };
@@ -278,11 +279,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         return [
           p.code,
           p.title,
-          formatRial(b?.approvedCredit),
-          formatRial(b?.allocatedCredit),
-          formatRial(b?.fundedCredit),
-          formatRial(paid),
-          formatRial(remaining),
+          formatAmount(b?.approvedCredit),
+          formatAmount(b?.allocatedCredit),
+          formatAmount(b?.fundedCredit),
+          formatAmount(paid),
+          formatAmount(remaining),
           `${toPersianDigits(usage)}٪`,
         ];
       });
@@ -294,48 +295,48 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           `تا تاریخ تهیه این گزارش، مجموع بودجه هزینه‌شده (پرداخت‌شده) معادل ${formatRial(totalPaid)} (${toPersianDigits(usagePct)} درصد اعتبار مبنا) و مانده اعتبار برابر با ${formatRial(totalRemaining)} محاسبه شده است.`,
         ],
         donutChartData: {
-          title: 'نمودار دوناتی وضعیت بودجه (تخصیص‌یافته، هزینه‌شده و مانده)',
+          title: 'نمودار دوناتی وضعیت بودجه (تخصیص‌یافته، هزینه‌شده و مانده — مبالغ به ریال)',
           centerLabel: 'درصد جذب بودجه',
           centerValue: `${toPersianDigits(usagePct)}٪`,
           segments: [
             {
               label: 'بودجه هزینه‌شده (پرداخت‌شده)',
               value: totalPaid,
-              formattedValue: formatRial(totalPaid),
+              formattedValue: formatAmount(totalPaid),
               percentText: `${toPersianDigits(usagePct)}٪`,
               color: '#2D6A4F',
             },
             {
               label: 'بودجه مانده قابل مصرف',
               value: Math.max(0, totalRemaining),
-              formattedValue: formatRial(totalRemaining),
+              formattedValue: formatAmount(totalRemaining),
               percentText: `${toPersianDigits(remPct)}٪`,
               color: '#243B5A',
             },
             {
               label: 'بودجه تخصیص‌یافته',
               value: effectiveAllocated,
-              formattedValue: formatRial(effectiveAllocated),
+              formattedValue: formatAmount(effectiveAllocated),
               percentText: `${toPersianDigits(allocPct)}٪`,
               color: '#B99A62',
             },
           ],
         },
         summaryRows: [
-          { label: 'جمع اعتبار مصوب', value: formatRial(totalApproved) },
-          { label: 'بودجه تخصیص‌یافته', value: formatRial(effectiveAllocated) },
-          { label: 'جمع تأمین اعتبار', value: formatRial(totalFunded) },
-          { label: 'بودجه هزینه‌شده (پرداخت‌شده)', value: formatRial(totalPaid) },
-          { label: 'جمع مانده اعتبار', value: formatRial(totalRemaining) },
+          { label: 'جمع اعتبار مصوب (ریال)', value: formatAmount(totalApproved) },
+          { label: 'بودجه تخصیص‌یافته (ریال)', value: formatAmount(effectiveAllocated) },
+          { label: 'جمع تأمین اعتبار (ریال)', value: formatAmount(totalFunded) },
+          { label: 'بودجه هزینه‌شده (ریال)', value: formatAmount(totalPaid) },
+          { label: 'جمع مانده اعتبار (ریال)', value: formatAmount(totalRemaining) },
         ],
         headers: [
           'کد',
           'پروژه',
-          'اعتبار مصوب',
-          'تخصیص‌یافته',
-          'تأمین اعتبار',
-          'هزینه‌شده',
-          'مانده اعتبار',
+          'اعتبار مصوب (ریال)',
+          'تخصیص‌یافته (ریال)',
+          'تأمین اعتبار (ریال)',
+          'هزینه‌شده (ریال)',
+          'مانده اعتبار (ریال)',
           'درصد مصرف',
         ],
         rows,
@@ -351,7 +352,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         title: 'گزارش جامع پیشنهاد بودجه سال آینده',
         summaryRows: [
           { label: 'تعداد پرونده‌های پیشنهادی', value: toPersianDigits(store.proposals.length) },
-          { label: 'جمع برآورد اعتبار پیشنهادی', value: formatRial(totalEstimated) },
+          { label: 'جمع برآورد اعتبار پیشنهادی (ریال)', value: formatAmount(totalEstimated) },
           { label: 'دارای جزئیات برآورد', value: `${toPersianDigits(itemizedCount)} مورد` },
           { label: 'مستندات تصویری پیوست', value: `${toPersianDigits(imageCount)} تصویر` },
         ],
@@ -363,7 +364,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           'شروع تا پایان',
           'مبنای برآورد',
           'اولویت / وضعیت',
-          'برآورد مبلغ',
+          'برآورد مبلغ (ریال)',
         ],
         rows: store.proposals.map((pr) => [
           pr.projectCode || '—',
@@ -377,7 +378,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
             ? `${pr.estimateBasis}${pr.estimateItems?.length ? ` (${toPersianDigits(pr.estimateItems.length)} ردیف)` : ''}`
             : 'برآورد کارشناسی',
           `${pr.priority} · ${pr.proposalStatus ?? 'پیش‌نویس'}`,
-          formatRial(pr.estimatedAmount),
+          formatAmount(pr.estimatedAmount),
         ]),
       };
     }
@@ -459,20 +460,24 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
           value: `${proj.contractor || '—'} (${proj.contractNumber || '—'})`,
         },
         {
-          label: 'مبلغ و مدت قرارداد',
-          value: `${formatRial(proj.contractAmount)} — ${proj.contractDuration || '—'}`,
+          label: 'مبلغ قرارداد (ریال)',
+          value: formatAmount(proj.contractAmount),
+        },
+        {
+          label: 'مدت قرارداد',
+          value: proj.contractDuration || '—',
         }
       );
     }
     if (singleSections.includeBudget) {
       summaryRows.push(
         {
-          label: 'اعتبار مصوب / تخصیصی',
-          value: `${formatRial(bud?.approvedCredit)} / ${formatRial(bud?.allocatedCredit)}`,
+          label: 'اعتبار مصوب / تخصیصی (ریال)',
+          value: `${formatAmount(bud?.approvedCredit)} / ${formatAmount(bud?.allocatedCredit)}`,
         },
         {
-          label: 'تأمین اعتبار / مجموع پرداخت‌ها',
-          value: `${formatRial(bud?.fundedCredit)} / ${formatRial(paid)}`,
+          label: 'تأمین اعتبار / مجموع پرداخت‌ها (ریال)',
+          value: `${formatAmount(bud?.fundedCredit)} / ${formatAmount(paid)}`,
         }
       );
     }
@@ -689,7 +694,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
         return {
           label: `${p.code} — ${p.title}`,
           value: paid,
-          display: `${formatRial(paid)} از ${formatRial(approved)}`,
+          display: `${formatAmount(paid)} از ${formatAmount(approved)}`,
           pct: Math.round((paid / maxVal) * 100),
         };
       });
@@ -699,7 +704,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       return store.proposals.map((pr) => ({
         label: pr.title,
         value: pr.estimatedAmount,
-        display: formatRial(pr.estimatedAmount),
+        display: formatAmount(pr.estimatedAmount),
         pct: Math.round((pr.estimatedAmount / maxVal) * 100),
       }));
     }
@@ -1179,7 +1184,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <div className="text-xs font-semibold text-[#243B5A]">
                 {reportType === 'projects'
                   ? 'پیشرفت فیزیکی هر پروژه (نمودار میله‌ای)'
-                  : 'نمودار مقایسه‌ای بر مبنای داده‌های واقعی دستگاه'}
+                  : reportType === 'budget' || reportType === 'proposals'
+                    ? 'نمودار مقایسه‌ای بر مبنای داده‌های واقعی دستگاه (مبالغ به ریال)'
+                    : 'نمودار مقایسه‌ای بر مبنای داده‌های واقعی دستگاه'}
               </div>
               {barChartItems.length === 0 ? (
                 <div className="py-8 text-center text-xs text-[#788290]">

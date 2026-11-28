@@ -13,7 +13,7 @@ import {
 import { Project, ProjectStatus } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
 import { useVoiceSearch } from '../../hooks/useVoiceSearch';
-import { formatJalaliDate, formatRial, todayIsoDate, toPersianDigits } from '../../utils/format';
+import { formatAmount, formatJalaliDate, todayIsoDate, toPersianDigits } from '../../utils/format';
 import { getNeutralProjectImage } from '../../utils/officialAssets';
 import { ProjectFormModal } from './ProjectFormModal';
 import { ConfirmDialog } from '../layout/ConfirmDialog';
@@ -336,7 +336,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   <th className="px-4 py-3 font-medium">تصویر و موضوع پروژه</th>
                   <th className="px-4 py-3 font-medium">نوع و وضعیت</th>
                   <th className="px-4 py-3 font-medium">پیمانکار / مجری</th>
-                  <th className="px-4 py-3 font-medium">مبلغ قرارداد</th>
+                  <th className="px-4 py-3 font-medium">مبلغ قرارداد (ریال)</th>
                   <th className="px-4 py-3 font-medium">پیشرفت</th>
                   <th className="px-4 py-3 font-medium">ابلاغ</th>
                   <th className="px-4 py-3 font-medium">عملیات</th>
@@ -395,7 +395,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         {p.contractor || 'تعیین‌نشده'}
                       </td>
                       <td className="px-4 py-3 text-xs tabular-nums text-[#263448] whitespace-nowrap">
-                        {formatRial(p.contractAmount)}
+                        {formatAmount(p.contractAmount)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="text-xs font-semibold tabular-nums text-[#243B5A]">
@@ -481,7 +481,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 { label: 'در حال اجرا / دارای مشکل', value: `${toPersianDigits(inProg)} / ${toPersianDigits(issue)}` },
                 { label: 'تکمیل‌شده', value: `${toPersianDigits(done)} پرونده` },
                 { label: 'میانگین پیشرفت فیزیکی', value: `${toPersianDigits(avgProgress)} درصد` },
-                { label: 'جمع مبلغ قراردادها', value: formatRial(totalContract) },
+                { label: 'جمع مبلغ قراردادها (ریال)', value: formatAmount(totalContract) },
               ],
               headers: [
                 'کد پروژه',
@@ -489,7 +489,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 'نوع',
                 'وضعیت',
                 'پیمانکار / مجری',
-                'مبلغ قرارداد',
+                'مبلغ قرارداد (ریال)',
                 'پیشرفت فیزیکی',
                 'تاریخ ابلاغ',
               ],
@@ -499,7 +499,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 p.type,
                 p.status,
                 p.contractor || '—',
-                formatRial(p.contractAmount),
+                formatAmount(p.contractAmount),
                 `${toPersianDigits(p.physicalProgress)}٪`,
                 formatJalaliDate(p.notificationDate),
               ]),

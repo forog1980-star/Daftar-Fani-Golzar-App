@@ -24,9 +24,9 @@ import { AppStore } from '../../hooks/useAppStore';
 import { useOnlineStatus } from '../../hooks/usePWAInstall';
 import {
   daysUntil,
+  formatAmount,
   formatJalaliDate,
   formatJalaliDateTime,
-  formatRial,
   isOverdue,
   isUpcomingDeadline,
   toPersianDigits,
@@ -411,9 +411,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </div>
 
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[#5B6573]">اعتبار مصوب:</span>
+                      <span className="text-[#5B6573]">اعتبار مصوب (ریال):</span>
                       <span className="truncate font-semibold tabular-nums text-[#1D3250]">
-                        {formatRial(selectedProjectBudget?.approvedCredit)}
+                        {formatAmount(selectedProjectBudget?.approvedCredit)}
                       </span>
                     </div>
                   </div>

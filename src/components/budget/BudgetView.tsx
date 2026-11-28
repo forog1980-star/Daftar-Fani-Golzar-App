@@ -24,6 +24,7 @@ import {
 } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
 import {
+  formatAmount,
   formatFileSize,
   formatJalaliDate,
   formatRial,
@@ -300,12 +301,12 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
               <thead>
                 <tr className="border-b border-[#E2DDD0] bg-[#F3EFE6] text-[#5B6268]">
                   <th className="px-3 py-3 font-medium">پروژه</th>
-                  <th className="px-3 py-3 font-medium">مصوب / ابلاغی</th>
-                  <th className="px-3 py-3 font-medium">تخصیص / تأمین</th>
-                  <th className="px-3 py-3 font-medium">تعهدشده</th>
-                  <th className="px-3 py-3 font-medium">ص‌وض ارائه‌شده / تأییدشده</th>
-                  <th className="px-3 py-3 font-medium">پرداخت‌شده</th>
-                  <th className="px-3 py-3 font-medium">مانده اعتبار</th>
+                  <th className="px-3 py-3 font-medium">مصوب / ابلاغی (ریال)</th>
+                  <th className="px-3 py-3 font-medium">تخصیص / تأمین (ریال)</th>
+                  <th className="px-3 py-3 font-medium">تعهدشده (ریال)</th>
+                  <th className="px-3 py-3 font-medium">ص‌وض ارائه‌شده / تأییدشده (ریال)</th>
+                  <th className="px-3 py-3 font-medium">پرداخت‌شده (ریال)</th>
+                  <th className="px-3 py-3 font-medium">مانده اعتبار (ریال)</th>
                   <th className="px-3 py-3 font-medium">مصرف / نسبت فیزیکی به تأمین</th>
                   <th className="px-3 py-3 font-medium">عملیات</th>
                 </tr>
@@ -326,31 +327,31 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
                       </div>
                     </td>
                     <td className="px-3 py-3 tabular-nums whitespace-nowrap">
-                      <div>{formatRial(row.budget.approvedCredit)}</div>
-                      <div className="text-[11px] text-[#7C8287]">{formatRial(row.budget.notifiedCredit)}</div>
+                      <div>{formatAmount(row.budget.approvedCredit)}</div>
+                      <div className="text-[11px] text-[#7C8287]">{formatAmount(row.budget.notifiedCredit)}</div>
                     </td>
                     <td className="px-3 py-3 tabular-nums whitespace-nowrap">
-                      <div>{formatRial(row.budget.allocatedCredit)}</div>
-                      <div className="text-[11px] text-[#243B5A]">{formatRial(row.budget.fundedCredit)}</div>
+                      <div>{formatAmount(row.budget.allocatedCredit)}</div>
+                      <div className="text-[11px] text-[#243B5A]">{formatAmount(row.budget.fundedCredit)}</div>
                     </td>
                     <td className="px-3 py-3 tabular-nums whitespace-nowrap">
-                      {formatRial(row.budget.committedAmount)}
+                      {formatAmount(row.budget.committedAmount)}
                     </td>
                     <td className="px-3 py-3 tabular-nums whitespace-nowrap">
-                      <div>{formatRial(row.budget.submittedStatementAmount)}</div>
+                      <div>{formatAmount(row.budget.submittedStatementAmount)}</div>
                       <div className="text-[11px] text-[#2D6A4F]">
-                        {formatRial(row.budget.approvedStatementAmount)}
+                        {formatAmount(row.budget.approvedStatementAmount)}
                       </div>
                     </td>
                     <td className="px-3 py-3 font-semibold tabular-nums text-[#2D6A4F] whitespace-nowrap">
-                      {formatRial(row.paidAmount)}
+                      {formatAmount(row.paidAmount)}
                     </td>
                     <td
                       className={`px-3 py-3 font-semibold tabular-nums whitespace-nowrap ${
                         row.remainingCredit < 0 ? 'text-[#B43E3E]' : 'text-[#2B3033]'
                       }`}
                     >
-                      {formatRial(row.remainingCredit)}
+                      {formatAmount(row.remainingCredit)}
                     </td>
                     <td className="px-3 py-3 tabular-nums whitespace-nowrap">
                       <div>مصرف: {toPersianDigits(row.usagePercent.toFixed(1))}٪</div>
@@ -431,7 +432,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
                     <th className="px-4 py-3 font-medium">تاریخ پرداخت</th>
                     <th className="px-4 py-3 font-medium">شماره سند</th>
                     <th className="px-4 py-3 font-medium">بابت / صورت‌وضعیت</th>
-                    <th className="px-4 py-3 font-medium">مبلغ پرداختی</th>
+                    <th className="px-4 py-3 font-medium">مبلغ پرداختی (ریال)</th>
                     <th className="px-4 py-3 font-medium">حذف</th>
                   </tr>
                 </thead>
@@ -454,7 +455,7 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
                         )}
                       </td>
                       <td className="px-4 py-3 text-xs font-semibold tabular-nums text-[#2D6A4F] whitespace-nowrap">
-                        {formatRial(pay.amount)}
+                        {formatAmount(pay.amount)}
                       </td>
                       <td className="px-4 py-3">
                         <button
@@ -489,9 +490,9 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
               </div>
               <div className="h-4 w-px bg-[#E2DDD0]" />
               <div>
-                <span className="text-[#788290]">جمع برآورد سال آینده: </span>
+                <span className="text-[#788290]">جمع برآورد سال آینده (ریال): </span>
                 <strong className="tabular-nums text-[#2D6A4F]">
-                  {formatRial(proposalStats.totalEstimated)}
+                  {formatAmount(proposalStats.totalEstimated)}
                 </strong>
               </div>
               <div className="hidden h-4 w-px bg-[#E2DDD0] sm:block" />
@@ -596,9 +597,9 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
                         {/* Amount + Action Buttons */}
                         <div className="flex flex-wrap items-center justify-between gap-2.5 sm:flex-col sm:items-end shrink-0">
                           <div className="text-right sm:text-left">
-                            <div className="text-[11px] text-[#788290]">برآورد کل پیشنهادی</div>
+                            <div className="text-[11px] text-[#788290]">برآورد کل پیشنهادی (ریال)</div>
                             <div className="text-sm font-bold tabular-nums text-[#2D6A4F]">
-                              {formatRial(pr.estimatedAmount)}
+                              {formatAmount(pr.estimatedAmount)}
                             </div>
                           </div>
                           <div className="flex items-center gap-1.5">
@@ -739,8 +740,8 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
                                   <th className="px-3 py-2 font-medium">شرح ردیف برآورد</th>
                                   <th className="px-3 py-2 font-medium">واحد</th>
                                   <th className="px-3 py-2 font-medium">مقدار</th>
-                                  <th className="px-3 py-2 font-medium">بهای واحد</th>
-                                  <th className="px-3 py-2 font-medium">جمع ردیف</th>
+                                  <th className="px-3 py-2 font-medium">بهای واحد (ریال)</th>
+                                  <th className="px-3 py-2 font-medium">جمع ردیف (ریال)</th>
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-[#EFECE4]">
@@ -757,10 +758,10 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
                                       {line.quantity ? toPersianDigits(line.quantity) : '—'}
                                     </td>
                                     <td className="px-3 py-2 tabular-nums text-[#5B6573]">
-                                      {line.unitPrice ? formatRial(line.unitPrice) : '—'}
+                                      {line.unitPrice ? formatAmount(line.unitPrice) : '—'}
                                     </td>
                                     <td className="px-3 py-2 font-semibold tabular-nums text-[#1D3250]">
-                                      {formatRial(line.amount)}
+                                      {formatAmount(line.amount)}
                                     </td>
                                   </tr>
                                 ))}

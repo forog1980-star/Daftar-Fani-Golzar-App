@@ -617,7 +617,7 @@ export const BudgetProposalEditor: React.FC<BudgetProposalEditorProps> = ({
                       <th className="px-2.5 py-2 font-medium">شرح ردیف برآورد</th>
                       <th className="px-2 py-2 font-medium w-20">واحد</th>
                       <th className="px-2 py-2 font-medium w-20">مقدار</th>
-                      <th className="px-2 py-2 font-medium w-28">بهای واحد</th>
+                      <th className="px-2 py-2 font-medium w-28">بهای واحد (ریال)</th>
                       <th className="px-2 py-2 font-medium w-32">جمع ردیف (ریال)</th>
                       <th className="px-2 py-2 font-medium w-9" />
                     </tr>

@@ -35,7 +35,7 @@ export const OFFICIAL_GITHUB_VERSION_URL =
   'https://forog1980-star.github.io/Daftar-Fani-Golzar-App/version.json';
 
 export const LOCAL_APP_VERSION =
-  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.3.3';
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.3.4';
 export const LOCAL_BUILD_ID =
   typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'dev-local';
 

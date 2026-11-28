@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PieChart, X } from 'lucide-react';
 import { LetterheadConfig, Project, ProjectBudget } from '../../types';
-import { formatRial, todayIsoDate, toPersianDigits } from '../../utils/format';
+import { formatAmount, formatRial, todayIsoDate, toPersianDigits } from '../../utils/format';
 import { ExportDonutChartData, ExportTablePayload } from '../../utils/exportEngine';
 
 export interface ProjectFinancialRow {
@@ -99,28 +99,28 @@ export function buildBudgetReportPayload(
   ];
 
   const donutChartData: ExportDonutChartData = {
-    title: 'نمودار دوناتی وضعیت بودجه (تخصیص‌یافته، هزینه‌شده و باقیمانده)',
+    title: 'نمودار دوناتی وضعیت بودجه (تخصیص‌یافته، هزینه‌شده و باقیمانده — مبالغ به ریال)',
     centerLabel: 'درصد هزینه‌شده',
     centerValue: `${toPersianDigits(metrics.usagePct)}٪`,
     segments: [
       {
         label: 'تخصیص‌یافته',
         value: metrics.allocated,
-        formattedValue: formatRial(metrics.allocated),
+        formattedValue: formatAmount(metrics.allocated),
         percentText: `${toPersianDigits(metrics.allocationPct)}٪`,
         color: '#E6CA80',
       },
       {
         label: 'هزینه‌شده',
         value: metrics.spent,
-        formattedValue: formatRial(metrics.spent),
+        formattedValue: formatAmount(metrics.spent),
         percentText: `${toPersianDigits(metrics.usagePct)}٪`,
         color: '#6E9E89',
       },
       {
         label: 'باقیمانده',
         value: metrics.positiveRemaining,
-        formattedValue: formatRial(metrics.rawRemaining),
+        formattedValue: formatAmount(metrics.rawRemaining),
         percentText: `${toPersianDigits(metrics.remainingPct)}٪`,
         color: '#3F5D7D',
       },
@@ -138,28 +138,28 @@ export function buildBudgetReportPayload(
     narrativeParagraphs,
     donutChartData,
     summaryRows: [
-      { label: 'بودجه کل', value: formatRial(metrics.totalBudget) },
-      { label: 'تخصیص‌یافته', value: formatRial(metrics.allocated) },
-      { label: 'هزینه‌شده', value: formatRial(metrics.spent) },
-      { label: 'باقیمانده', value: formatRial(metrics.rawRemaining) },
+      { label: 'بودجه کل (ریال)', value: formatAmount(metrics.totalBudget) },
+      { label: 'تخصیص‌یافته (ریال)', value: formatAmount(metrics.allocated) },
+      { label: 'هزینه‌شده (ریال)', value: formatAmount(metrics.spent) },
+      { label: 'باقیمانده (ریال)', value: formatAmount(metrics.rawRemaining) },
       { label: 'درصد هزینه‌شده', value: `${toPersianDigits(metrics.usagePct)} درصد` },
     ],
     headers: [
       'کد پروژه',
       'عنوان پروژه',
-      'بودجه کل',
-      'تخصیص‌یافته',
-      'هزینه‌شده',
-      'باقیمانده',
+      'بودجه کل (ریال)',
+      'تخصیص‌یافته (ریال)',
+      'هزینه‌شده (ریال)',
+      'باقیمانده (ریال)',
       'درصد هزینه‌شده',
     ],
     rows: scopedRows.map((r) => [
       r.project.code,
       r.project.title,
-      formatRial(r.budget.approvedCredit),
-      formatRial(r.budget.allocatedCredit || r.budget.fundedCredit),
-      formatRial(r.paidAmount),
-      formatRial(r.remainingCredit),
+      formatAmount(r.budget.approvedCredit),
+      formatAmount(r.budget.allocatedCredit || r.budget.fundedCredit),
+      formatAmount(r.paidAmount),
+      formatAmount(r.remainingCredit),
       `${toPersianDigits(r.usagePercent.toFixed(1))}٪`,
     ]),
   };
@@ -290,7 +290,7 @@ export const BudgetStatusDonut: React.FC<BudgetStatusDonutProps> = ({
     {
       id: 'total',
       label: 'بودجه کل',
-      value: formatRial(metrics.totalBudget),
+      value: formatAmount(metrics.totalBudget),
       badge: '۱۰۰٪',
       dotColor: '#6C7A89',
       valueColor: 'text-[#1D3250]',
@@ -298,7 +298,7 @@ export const BudgetStatusDonut: React.FC<BudgetStatusDonutProps> = ({
     {
       id: 'allocated',
       label: 'تخصیص‌یافته',
-      value: formatRial(metrics.allocated),
+      value: formatAmount(metrics.allocated),
       badge: `${toPersianDigits(metrics.allocationPct)}٪`,
       dotColor: '#C9A44C',
       valueColor: 'text-[#8B6B2E]',
@@ -306,7 +306,7 @@ export const BudgetStatusDonut: React.FC<BudgetStatusDonutProps> = ({
     {
       id: 'spent',
       label: 'هزینه‌شده',
-      value: formatRial(metrics.spent),
+      value: formatAmount(metrics.spent),
       badge: `${toPersianDigits(metrics.usagePct)}٪`,
       dotColor: '#2D6A4F',
       valueColor: 'text-[#2D6A4F]',
@@ -314,7 +314,7 @@ export const BudgetStatusDonut: React.FC<BudgetStatusDonutProps> = ({
     {
       id: 'remaining',
       label: 'باقیمانده',
-      value: formatRial(metrics.rawRemaining),
+      value: formatAmount(metrics.rawRemaining),
       badge: `${toPersianDigits(metrics.remainingPct)}٪`,
       dotColor: '#243B5A',
       valueColor: metrics.rawRemaining < 0 ? 'text-[#B43E3E]' : 'text-[#243B5A]',
@@ -341,7 +341,9 @@ export const BudgetStatusDonut: React.FC<BudgetStatusDonutProps> = ({
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#EEF3F9] text-[#243B5A]">
             <PieChart className="h-4 w-4" />
           </div>
-          <h2 className="text-sm font-bold text-[#1D3250]">نمای دوناتی وضعیت بودجه</h2>
+          <h2 className="text-sm font-bold text-[#1D3250]">
+            نمای دوناتی وضعیت بودجه <span className="font-normal text-[#5B6573]">(ارقام به ریال)</span>
+          </h2>
         </div>
 
         <select

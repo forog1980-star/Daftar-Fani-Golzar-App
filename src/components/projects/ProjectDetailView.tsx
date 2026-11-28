@@ -21,9 +21,9 @@ import {
 } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
 import {
+  formatAmount,
   formatFileSize,
   formatJalaliDate,
-  formatRial,
   generateId,
   todayIsoDate,
   toPersianDigits,
@@ -245,9 +245,10 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
           { label: 'محل اجرا', value: project.location || '—' },
           { label: 'معاونت متولی', value: project.responsibleDepartment || '—' },
           { label: 'کارفرما / پیمانکار', value: `${project.client || '—'} / ${project.contractor || '—'}` },
-          { label: 'شماره و مبلغ قرارداد', value: `${project.contractNumber || '—'} — ${formatRial(project.contractAmount)}` },
+          { label: 'شماره قرارداد', value: project.contractNumber || '—' },
+          { label: 'مبلغ قرارداد (ریال)', value: formatAmount(project.contractAmount) },
           { label: 'دستور ابلاغ مدیرعامل', value: `${project.ceoOrderNumber || '—'} (${formatJalaliDate(project.ceoOrderDate)})` },
-          { label: 'پیشرفت فیزیکی / پرداخت‌شده', value: `${toPersianDigits(project.physicalProgress)}٪ — ${formatRial(totalPaid)}` },
+          { label: 'پیشرفت فیزیکی / پرداخت‌شده (ریال)', value: `${toPersianDigits(project.physicalProgress)}٪ — ${formatAmount(totalPaid)}` },
         ],
         headers: ['ردیف', 'مرحله اجرایی', 'وضعیت', 'تاریخ اتمام', 'توضیحات'],
         rows: project.stages
@@ -439,7 +440,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 { label: 'پیمانکار یا مجری', val: project.contractor || '—' },
                 { label: 'شماره قرارداد', val: project.contractNumber || '—' },
                 { label: 'تاریخ قرارداد', val: formatJalaliDate(project.contractDate) },
-                { label: 'مبلغ قرارداد', val: formatRial(project.contractAmount) },
+                { label: 'مبلغ قرارداد (ریال)', val: formatAmount(project.contractAmount) },
                 { label: 'مدت قرارداد', val: project.contractDuration || '—' },
                 { label: 'تاریخ ابلاغ', val: formatJalaliDate(project.notificationDate) },
                 { label: 'پیشرفت فیزیکی', val: `${toPersianDigits(project.physicalProgress)} درصد` },
@@ -459,7 +460,9 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             {budget && (
               <div className="border-t border-[#E8E5DE] pt-5">
                 <div className="mb-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-[#243B5A]">خلاصه وضعیت مالی پروژه</h3>
+                  <h3 className="text-sm font-semibold text-[#243B5A]">
+                    خلاصه وضعیت مالی پروژه <span className="font-normal text-[#5B6573]">(ارقام به ریال)</span>
+                  </h3>
                   <button
                     type="button"
                     onClick={() => onNavigate('budget')}
@@ -472,25 +475,25 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                   <div className="rounded-lg border border-[#E8E5DE] bg-[#F2EEE6] p-3">
                     <div className="text-xs text-[#5B6573]">اعتبار مصوب</div>
                     <div className="mt-1 text-sm font-semibold tabular-nums text-[#243B5A]">
-                      {formatRial(budget.approvedCredit)}
+                      {formatAmount(budget.approvedCredit)}
                     </div>
                   </div>
                   <div className="rounded-lg border border-[#E8E5DE] bg-[#F2EEE6] p-3">
                     <div className="text-xs text-[#5B6573]">تأمین اعتبار</div>
                     <div className="mt-1 text-sm font-semibold tabular-nums text-[#243B5A]">
-                      {formatRial(budget.fundedCredit)}
+                      {formatAmount(budget.fundedCredit)}
                     </div>
                   </div>
                   <div className="rounded-lg border border-[#E8E5DE] bg-[#E7ECE6] p-3">
                     <div className="text-xs text-[#5B6573]">مبلغ پرداخت‌شده</div>
                     <div className="mt-1 text-sm font-semibold tabular-nums text-[#243B5A]">
-                      {formatRial(totalPaid)}
+                      {formatAmount(totalPaid)}
                     </div>
                   </div>
                   <div className="rounded-lg border border-[#E8E5DE] bg-[#E5EBF2] p-3">
                     <div className="text-xs text-[#5B6573]">مانده اعتبار</div>
                     <div className="mt-1 text-sm font-semibold tabular-nums text-[#243B5A]">
-                      {formatRial((budget.fundedCredit || budget.approvedCredit) - totalPaid)}
+                      {formatAmount((budget.fundedCredit || budget.approvedCredit) - totalPaid)}
                     </div>
                   </div>
                 </div>

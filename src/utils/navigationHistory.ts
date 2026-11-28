@@ -40,9 +40,8 @@ interface RouteParentRule {
 }
 
 /**
- * Explicit parent reference rules for every route in the application.
- * Ensures Back always returns to the exact logical parent page prior to entering
- * a detail/report screen rather than replaying linear browser history clicks.
+ * Default parent map kept as fallback metadata for single-entry stacks.
+ * Actual back navigation always follows the real step-by-step HistoryStack.
  */
 export const PAGE_PARENT_MAP: Record<AppRoute, RouteParentRule> = {
   dashboard: { defaultParent: null, allowedParents: [] },
@@ -74,6 +73,8 @@ export const PAGE_PARENT_MAP: Record<AppRoute, RouteParentRule> = {
   },
 };
 
+const MAX_HISTORY_ENTRIES = 50;
+
 export function createInitialHistoryStack(): HistoryStack {
   return [{ route: 'dashboard', parentRoute: null }];
 }
@@ -102,18 +103,37 @@ function buildEntry(
 }
 
 function isSameScreen(a: HistoryEntry, b: HistoryEntry): boolean {
-  if (normalizeRoute(a.route) !== normalizeRoute(b.route)) return false;
-  if (a.route === 'project-detail') {
-    return a.projectId === b.projectId;
+  const routeA = normalizeRoute(a.route);
+  const routeB = normalizeRoute(b.route);
+  if (routeA !== routeB) return false;
+  if (routeA === 'project-detail') {
+    return a.projectId === b.projectId && (a.subTab ?? 'overview') === (b.subTab ?? 'overview');
+  }
+  if (routeA === 'budget') {
+    return (a.subTab ?? 'credits') === (b.subTab ?? 'credits');
+  }
+  if (routeA === 'documents') {
+    return (a.subTab ?? 'archive') === (b.subTab ?? 'archive');
+  }
+  if (routeA === 'reports') {
+    return (
+      (a.reportType ?? 'projects') === (b.reportType ?? 'projects') &&
+      (a.reportDisplayMode ?? 'table') === (b.reportDisplayMode ?? 'table')
+    );
+  }
+  if (routeA === 'support') {
+    return (a.supportTab ?? 'settings') === (b.supportTab ?? 'settings');
   }
   return true;
 }
 
 /**
- * Updates the in-app hierarchical HistoryStack cleanly:
- * - 'replace': updates in-page tabs/filters/report modes in-place while preserving parentRoute.
- * - 'sidebar': switches top-level section cleanly to [dashboard, section(parent: dashboard)].
- * - 'drill': navigates to a child/contextual page and records the exact origin screen as its parentRoute.
+ * Updates the in-app step-by-step HistoryStack:
+ * - Navigating to 'dashboard' resets to the root dashboard entry.
+ * - 'replace' (or navigating to the exact same screen already on top) updates in-place
+ *   while preserving the previous screen reference.
+ * - 'drill' and 'sidebar' push a new step onto the stack so Back always returns one step
+ *   to the immediately preceding screen rather than jumping back to the home page.
  */
 export function pushNavigationHistory(
   stack: HistoryStack,
@@ -126,25 +146,17 @@ export function pushNavigationHistory(
   const top = safeStack[safeStack.length - 1];
   const topRoute = normalizeRoute(top.route);
 
-  // Navigating to root dashboard always resets to a clean root stack
+  // Navigating explicitly to root dashboard resets to a clean root stack
   if (normalized === 'dashboard') {
     return createInitialHistoryStack();
   }
 
-  const rule = PAGE_PARENT_MAP[normalized];
   const resolvedParent: AppRoute | null =
-    options?.parentRoute !== undefined
-      ? options.parentRoute
-      : mode === 'sidebar'
-        ? 'dashboard'
-        : rule.allowedParents.includes(topRoute)
-          ? topRoute
-          : rule.defaultParent;
+    options?.parentRoute !== undefined ? options.parentRoute : topRoute;
 
   const nextEntry = buildEntry(normalized, resolvedParent, options);
 
-  // Same-screen updates (tabs, filters, report types, display modes) replace top in-place
-  // while strictly preserving the original parentRoute reference
+  // In-place updates or re-selecting the exact active screen/tab replace top in-place
   if (mode === 'replace' || isSameScreen(top, nextEntry)) {
     return [
       ...safeStack.slice(0, -1),
@@ -152,86 +164,58 @@ export function pushNavigationHistory(
     ];
   }
 
-  // Sidebar navigation jumps cleanly to a Level-1 branch under Dashboard
-  if (mode === 'sidebar') {
-    return [
-      { route: 'dashboard', parentRoute: null },
-      { ...nextEntry, parentRoute: 'dashboard' },
-    ];
+  const nextStack = [...safeStack, nextEntry];
+  if (nextStack.length > MAX_HISTORY_ENTRIES) {
+    // Always preserve the root dashboard entry at index 0
+    return [nextStack[0], ...nextStack.slice(nextStack.length - (MAX_HISTORY_ENTRIES - 1))];
   }
 
-  // Prevent circular loops if the target screen is already an ancestor in HistoryStack
-  const existingIndex = safeStack.findIndex((item) => isSameScreen(item, nextEntry));
-  if (existingIndex !== -1) {
-    const existing = safeStack[existingIndex];
-    return [
-      ...safeStack.slice(0, existingIndex),
-      { ...existing, ...nextEntry, parentRoute: existing.parentRoute },
-    ];
-  }
-
-  return [...safeStack, nextEntry];
+  return nextStack;
 }
 
 /**
- * Resolves the exact logical parent state from the HistoryStack using each entry's
- * parentRoute reference and PAGE_PARENT_MAP. Never relies on linear browser history.
+ * Steps back exactly one screen in HistoryStack instead of jumping straight to dashboard.
  */
 export function resolveLogicalBackHistory(stack: HistoryStack): HistoryStack {
   if (stack.length === 0) {
     return createInitialHistoryStack();
   }
 
-  const current = stack[stack.length - 1];
+  if (stack.length > 1) {
+    return stack.slice(0, -1);
+  }
+
+  const current = stack[0];
   const currentRoute = normalizeRoute(current.route);
-  const rule = PAGE_PARENT_MAP[currentRoute];
-
-  if (!rule || (!current.parentRoute && !rule.defaultParent)) {
-    return createInitialHistoryStack();
+  if (currentRoute === 'dashboard') {
+    return stack;
   }
 
-  const preferredParent = normalizeRoute(
-    (current.parentRoute ?? rule.defaultParent) as AppRoute
-  );
+  const fallbackParent =
+    current.parentRoute ?? PAGE_PARENT_MAP[currentRoute]?.defaultParent ?? 'dashboard';
+  const normalizedParent = normalizeRoute(fallbackParent);
 
-  // 1. Exact match for the recorded logical parent in HistoryStack
-  //    (restores exact projectId, subTab, reportType, displayMode, etc.)
-  for (let i = stack.length - 2; i >= 0; i--) {
-    if (normalizeRoute(stack[i].route) === preferredParent) {
-      return stack.slice(0, i + 1);
-    }
-  }
-
-  // 2. Nearest valid ancestor allowed by PAGE_PARENT_MAP
-  for (let i = stack.length - 2; i >= 0; i--) {
-    if (rule.allowedParents.includes(normalizeRoute(stack[i].route))) {
-      return stack.slice(0, i + 1);
-    }
-  }
-
-  // 3. Canonical fallback chain to the logical parent
-  if (preferredParent === 'dashboard') {
+  if (normalizedParent === 'dashboard') {
     return createInitialHistoryStack();
   }
 
   return [
     { route: 'dashboard', parentRoute: null },
-    { route: preferredParent, parentRoute: 'dashboard' },
+    { route: normalizedParent, parentRoute: 'dashboard' },
   ];
 }
 
 export function getLogicalParentEntry(stack: HistoryStack): HistoryEntry | null {
-  if (stack.length === 0) return null;
-  const current = stack[stack.length - 1];
-  if (normalizeRoute(current.route) === 'dashboard') return null;
-
-  const resolved = resolveLogicalBackHistory(stack);
-  return resolved[resolved.length - 1] ?? null;
+  if (stack.length <= 1) return null;
+  return stack[stack.length - 2] ?? null;
 }
 
 export function getParentLabel(stack: HistoryStack): string {
   const target = getLogicalParentEntry(stack);
   if (!target) return 'داشبورد';
+
+  const current = stack[stack.length - 1];
+  const sameRoute = current && normalizeRoute(current.route) === normalizeRoute(target.route);
 
   switch (normalizeRoute(target.route)) {
     case 'dashboard':
@@ -239,17 +223,39 @@ export function getParentLabel(stack: HistoryStack): string {
     case 'projects':
       return 'پرونده پروژه‌ها';
     case 'project-detail':
+      if (sameRoute && target.projectId === current?.projectId) {
+        if (target.subTab === 'stages') return 'مراحل ۱۸گانه پروژه';
+        if (target.subTab === 'contracts') return 'قرارداد و صورت‌وضعیت‌ها';
+        if (target.subTab === 'minutes') return 'صورتجلسات پروژه';
+        if (target.subTab === 'actions') return 'اقدامات پروژه';
+        if (target.subTab === 'correspondence') return 'مکاتبات پروژه';
+        if (target.subTab === 'attachments') return 'پیوست‌های پروژه';
+        return 'نمای کلی پروژه';
+      }
       return 'پرونده پروژه';
     case 'budget':
+      if (sameRoute) {
+        if (target.subTab === 'payments') return 'سوابق پرداخت‌ها';
+        if (target.subTab === 'proposals') return 'پیشنهاد بودجه سال آینده';
+        return 'وضعیت اعتبارات پروژه‌ها';
+      }
       return 'بودجه و اعتبارات';
     case 'actions':
       return 'اقدامات و پیگیری‌ها';
     case 'documents':
+      if (sameRoute) {
+        return target.subTab === 'forms' ? 'فرم‌ساز سازمانی' : 'بایگانی اسناد و مکاتبات';
+      }
       return 'اسناد و مکاتبات';
     case 'reports':
       return 'گزارش‌ها';
     case 'support':
-      return target.supportTab === 'guide' ? 'راهنما' : 'تنظیمات';
+      if (target.supportTab === 'guide') return 'راهنما';
+      if (target.supportTab === 'media') return 'تصاویر و آرم رسمی';
+      if (target.supportTab === 'transfer') return 'ورودی و خروجی JSON';
+      if (target.supportTab === 'backup') return 'پشتیبان و بازیابی';
+      if (target.supportTab === 'people') return 'اشخاص و امضاها';
+      return 'تنظیمات';
     default:
       return 'صفحه قبل';
   }

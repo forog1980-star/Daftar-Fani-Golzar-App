@@ -38,10 +38,12 @@ import { HelpSectionId } from '../help/helpContent';
 import { SectionHelpLink } from '../help/SectionHelpLink';
 import { BudgetProposalEditor } from './BudgetProposalEditor';
 import { BudgetStatusDonut, buildBudgetReportPayload } from './BudgetStatusDonut';
+import { MonthlyAllocatedBarChart } from './MonthlyAllocatedBarChart';
 import { SectionReportExportBar } from '../layout/SectionReportExportBar';
 import { JalaliDateInput } from '../common/JalaliDateInput';
 import { summarizeProjectStatements } from '../../utils/statementCalculations';
 import { dataUrlToBlob, saveBinaryFile } from '../../utils/platformBridge';
+import { JALALI_MONTH_NAMES, todayJalaliParts } from '../../utils/jalali';
 
 export type BudgetSubTab = 'credits' | 'payments' | 'proposals';
 
@@ -219,6 +221,13 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
         rows={projectFinancialRows}
         scopeProjectId={donutScopeProjectId}
         onScopeChange={setDonutScopeProjectId}
+      />
+
+      {/* Recharts Monthly Allocated Credits Bar Chart (Current Jalali Year) */}
+      <MonthlyAllocatedBarChart
+        rows={projectFinancialRows}
+        payments={store.payments}
+        scopeProjectId={donutScopeProjectId}
       />
 
       {/* Sub-navigation — Next-Year Budget Proposal stands out with an independent visual identity */}
@@ -1031,6 +1040,7 @@ const BudgetEditWindow: React.FC<{
   onSave: (budget: ProjectBudget) => Promise<void>;
   onClose: () => void;
 }> = ({ project, initial, onSave, onClose }) => {
+  const currentJalaliYear = useMemo(() => todayJalaliParts().jy, []);
   const [approvedCredit, setApprovedCredit] = useState(String(initial.approvedCredit));
   const [notifiedCredit, setNotifiedCredit] = useState(String(initial.notifiedCredit));
   const [allocatedCredit, setAllocatedCredit] = useState(String(initial.allocatedCredit));
@@ -1042,25 +1052,62 @@ const BudgetEditWindow: React.FC<{
   const [approvedStatementAmount, setApprovedStatementAmount] = useState(
     String(initial.approvedStatementAmount)
   );
+  const [allocationDate, setAllocationDate] = useState(
+    initial.allocationDate || project.notificationDate || project.contractDate || ''
+  );
+  const [showMonthlyGrid, setShowMonthlyGrid] = useState(() =>
+    Boolean(
+      initial.monthlyAllocations &&
+        Object.values(initial.monthlyAllocations).some((v) => Number(v) > 0)
+    )
+  );
+  const [monthlyValues, setMonthlyValues] = useState<Record<number, string>>(() => {
+    const map: Record<number, string> = {};
+    for (let m = 1; m <= 12; m += 1) {
+      const val = initial.monthlyAllocations?.[m];
+      map[m] = val && val > 0 ? String(val) : '';
+    }
+    return map;
+  });
   const [notes, setNotes] = useState(initial.notes);
+
+  const monthlySum = useMemo(() => {
+    let total = 0;
+    for (let m = 1; m <= 12; m += 1) {
+      total += Number(monthlyValues[m]) || 0;
+    }
+    return total;
+  }, [monthlyValues]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanedMonthly: Record<number, number> = {};
+    for (let m = 1; m <= 12; m += 1) {
+      const num = Number(monthlyValues[m]) || 0;
+      if (num > 0) cleanedMonthly[m] = num;
+    }
+    const hasMonthly = Object.keys(cleanedMonthly).length > 0;
+    const finalAllocated =
+      Number(allocatedCredit) > 0 ? Number(allocatedCredit) : hasMonthly ? monthlySum : 0;
+
     await onSave({
       ...initial,
       approvedCredit: Number(approvedCredit) || 0,
       notifiedCredit: Number(notifiedCredit) || 0,
-      allocatedCredit: Number(allocatedCredit) || 0,
+      allocatedCredit: finalAllocated,
       fundedCredit: Number(fundedCredit) || 0,
       committedAmount: Number(committedAmount) || 0,
       submittedStatementAmount: Number(submittedStatementAmount) || 0,
       approvedStatementAmount: Number(approvedStatementAmount) || 0,
+      allocationDate: allocationDate || undefined,
+      allocationYear: hasMonthly ? currentJalaliYear : initial.allocationYear,
+      monthlyAllocations: hasMonthly ? cleanedMonthly : undefined,
       notes: notes.trim(),
     });
   };
 
   return (
-    <FloatingWindow title={`ویرایش بودجه و اعتبارات: ${project.title}`} onClose={onClose} width={660}>
+    <FloatingWindow title={`ویرایش بودجه و اعتبارات: ${project.title}`} onClose={onClose} width={700}>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
           {[
@@ -1087,31 +1134,96 @@ const BudgetEditWindow: React.FC<{
                 min={0}
                 value={field.val}
                 onChange={(e) => field.set(e.target.value)}
-                className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033]"
+                className="w-full rounded-lg border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm text-[#2B3033]"
               />
             </div>
           ))}
+          <div>
+            <label className="mb-1 block text-xs text-[#5B6268]">تاریخ تخصیص اعتبار (شمسی)</label>
+            <JalaliDateInput
+              value={allocationDate}
+              onChange={setAllocationDate}
+              ariaLabel="تاریخ تخصیص اعتبار"
+            />
+          </div>
         </div>
+
+        {/* Optional Monthly Allocation Breakdown for Current Year */}
+        <div className="rounded-xl border border-[#E2DDD0] bg-[#FAF8F3] p-3 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setShowMonthlyGrid((prev) => !prev)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#243B5A] hover:underline cursor-pointer"
+            >
+              {showMonthlyGrid ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
+              <span>
+                تفکیک ماهانه اعتبار تخصیص‌یافته سال {toPersianDigits(currentJalaliYear)} (اختیاری)
+              </span>
+            </button>
+
+            {showMonthlyGrid && monthlySum > 0 && (
+              <button
+                type="button"
+                onClick={() => setAllocatedCredit(String(monthlySum))}
+                className="rounded-lg border border-[#243B5A]/30 bg-[#FFFFFF] px-2.5 py-1 text-[11px] font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+              >
+                اعمال جمع ماه‌ها ({formatAmount(monthlySum)} ریال) در تخصیص‌یافته
+              </button>
+            )}
+          </div>
+
+          {showMonthlyGrid && (
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+              {JALALI_MONTH_NAMES.map((mName, idx) => {
+                const mNum = idx + 1;
+                return (
+                  <div key={mName}>
+                    <label className="mb-1 block text-[11px] text-[#5B6573]">{mName}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={monthlyValues[mNum] ?? ''}
+                      onChange={(e) =>
+                        setMonthlyValues((prev) => ({
+                          ...prev,
+                          [mNum]: e.target.value,
+                        }))
+                      }
+                      placeholder="۰"
+                      className="w-full rounded-lg border border-[#D4CEBF] bg-[#FFFFFF] px-2.5 py-1.5 text-xs tabular-nums text-[#263448]"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         <div>
           <label className="mb-1 block text-xs text-[#5B6268]">ملاحظات مالی</label>
           <textarea
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            className="w-full border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
+            className="w-full rounded-lg border border-[#CEC7B6] bg-[#FAF8F3] px-3 py-2 text-sm"
           />
         </div>
         <div className="flex justify-end gap-2 pt-2">
           <button
             type="button"
             onClick={onClose}
-            className="border border-[#CEC7B6] px-4 py-2 text-xs"
+            className="rounded-lg border border-[#CEC7B6] px-4 py-2 text-xs cursor-pointer"
           >
             انصراف
           </button>
           <button
             type="submit"
-            className="border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3]"
+            className="rounded-lg border border-[#243B5A] bg-[#243B5A] px-4 py-2 text-xs text-[#FAF8F3] cursor-pointer"
           >
             ذخیره اطلاعات مالی
           </button>

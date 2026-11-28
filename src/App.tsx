@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { CheckCircle2, AlertCircle, CloudDownload, X } from 'lucide-react';
 import { AppRoute, Project } from './types';
 import { useAppStore } from './hooks/useAppStore';
@@ -50,20 +50,102 @@ export default function App() {
   const [confirmExitOpen, setConfirmExitOpen] = useState(false);
   const [dismissUpdateBanner, setDismissUpdateBanner] = useState(false);
 
+  const historyStackRef = useRef<HistoryStack>(historyStack);
+  historyStackRef.current = historyStack;
+  const browserHistoryDepthRef = useRef(0);
+  const ignoreNextPopstateRef = useRef(0);
+  const showSplashRef = useRef(showSplash);
+  showSplashRef.current = showSplash;
+  const sessionStateRef = useRef(sessionState);
+  sessionStateRef.current = sessionState;
+  const mobileMenuOpenRef = useRef(mobileMenuOpen);
+  mobileMenuOpenRef.current = mobileMenuOpen;
+
   const current = historyStack[historyStack.length - 1];
 
   const navigate = useCallback((route: AppRoute, options?: NavigateOptions) => {
-    setHistoryStack((prev) => pushNavigationHistory(prev, route, options));
+    const prevStack = historyStackRef.current;
+    const nextStack = pushNavigationHistory(prevStack, route, options);
+    historyStackRef.current = nextStack;
+    setHistoryStack(nextStack);
+
+    if (typeof window !== 'undefined' && nextStack.length > prevStack.length) {
+      try {
+        window.history.pushState(
+          { ...(window.history.state || {}), daftarFaniNav: true, depth: nextStack.length },
+          ''
+        );
+        browserHistoryDepthRef.current += nextStack.length - prevStack.length;
+      } catch {
+        // Ignore restricted history environments
+      }
+    }
 
     if (options?.scrollToTop !== false) {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   }, []);
 
-  // Always restores the logical parent page based on each screen's parentRoute in HistoryStack
+  // Steps back one screen in HistoryStack and keeps browser/Android Back history synchronized
   const handleBack = useCallback(() => {
-    setHistoryStack((prev) => resolveLogicalBackHistory(prev));
+    const prevStack = historyStackRef.current;
+    if (prevStack.length <= 1 && prevStack[0]?.route === 'dashboard') {
+      return;
+    }
+
+    const nextStack = resolveLogicalBackHistory(prevStack);
+    historyStackRef.current = nextStack;
+    setHistoryStack(nextStack);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    if (typeof window !== 'undefined' && browserHistoryDepthRef.current > 0) {
+      browserHistoryDepthRef.current -= 1;
+      ignoreNextPopstateRef.current += 1;
+      window.setTimeout(() => {
+        if (ignoreNextPopstateRef.current > 0) {
+          ignoreNextPopstateRef.current = 0;
+        }
+      }, 300);
+      try {
+        window.history.back();
+      } catch {
+        ignoreNextPopstateRef.current = Math.max(0, ignoreNextPopstateRef.current - 1);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handlePopState = () => {
+      if (ignoreNextPopstateRef.current > 0) {
+        ignoreNextPopstateRef.current -= 1;
+        return;
+      }
+
+      if (browserHistoryDepthRef.current > 0) {
+        browserHistoryDepthRef.current -= 1;
+      }
+
+      if (showSplashRef.current || sessionStateRef.current === 'exited') {
+        return;
+      }
+
+      if (mobileMenuOpenRef.current) {
+        setMobileMenuOpen(false);
+      }
+
+      const prevStack = historyStackRef.current;
+      if (prevStack.length > 1) {
+        const nextStack = resolveLogicalBackHistory(prevStack);
+        historyStackRef.current = nextStack;
+        setHistoryStack(nextStack);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   const handleOpenProject = useCallback(
@@ -97,7 +179,9 @@ export default function App() {
     setMobileMenuOpen(false);
     store.setHasUnsavedChanges(false);
     setAuthUnlocked(false);
-    setHistoryStack(createInitialHistoryStack());
+    const initial = createInitialHistoryStack();
+    historyStackRef.current = initial;
+    setHistoryStack(initial);
     setSessionState('exited');
   }, [store]);
 
@@ -186,7 +270,9 @@ export default function App() {
         settings={store.settings}
         onEnterApp={() => {
           setSessionState('active');
-          setHistoryStack(createInitialHistoryStack());
+          const initial = createInitialHistoryStack();
+          historyStackRef.current = initial;
+          setHistoryStack(initial);
         }}
       />
     );
@@ -210,7 +296,7 @@ export default function App() {
         route={current.route}
         pageTitle={headerMeta.title}
         pageSubtitle={headerMeta.subtitle}
-        canGoBack={current.route !== 'dashboard' && current.route !== 'home'}
+        canGoBack={historyStack.length > 1 || (current.route !== 'dashboard' && current.route !== 'home')}
         backTooltip={backTooltip}
         officialLogoDataUrl={store.settings.officialLogoDataUrl}
         onBack={handleBack}
@@ -351,7 +437,7 @@ export default function App() {
                 navigate('project-detail', {
                   projectId: current.projectId,
                   subTab: tab,
-                  mode: 'replace',
+                  mode: 'drill',
                   scrollToTop: false,
                 })
               }
@@ -366,7 +452,7 @@ export default function App() {
               onTabChange={(tab) =>
                 navigate('budget', {
                   subTab: tab,
-                  mode: 'replace',
+                  mode: 'drill',
                   scrollToTop: false,
                 })
               }
@@ -386,7 +472,7 @@ export default function App() {
               onTabChange={(tab) =>
                 navigate('documents', {
                   subTab: tab,
-                  mode: 'replace',
+                  mode: 'drill',
                   scrollToTop: false,
                 })
               }
@@ -403,7 +489,7 @@ export default function App() {
                 navigate('reports', {
                   reportType: rt,
                   reportDisplayMode: current.reportDisplayMode ?? 'table',
-                  mode: 'replace',
+                  mode: 'drill',
                   scrollToTop: false,
                 })
               }
@@ -411,7 +497,7 @@ export default function App() {
                 navigate('reports', {
                   reportType: current.reportType ?? 'projects',
                   reportDisplayMode: mode,
-                  mode: 'replace',
+                  mode: 'drill',
                   scrollToTop: false,
                 })
               }
@@ -424,14 +510,15 @@ export default function App() {
               store={store}
               initialTab={current.supportTab ?? 'settings'}
               initialHelpSection={current.helpSection ?? null}
-              onTabChange={(tab) =>
+              onTabChange={(tab) => {
+                const isGuideTransition = tab === 'guide' || current.supportTab === 'guide';
                 navigate('support', {
                   supportTab: tab,
                   helpSection: tab === 'guide' ? current.helpSection ?? null : null,
-                  mode: 'replace',
-                  scrollToTop: false,
-                })
-              }
+                  mode: 'drill',
+                  scrollToTop: isGuideTransition,
+                });
+              }}
               onHelpSectionChange={(sec) =>
                 navigate('support', {
                   supportTab: 'guide',

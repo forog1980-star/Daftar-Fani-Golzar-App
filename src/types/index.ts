@@ -66,6 +66,9 @@ export interface ProjectBudget {
   committedAmount: number; // مبلغ تعهدشده
   submittedStatementAmount: number; // صورت‌وضعیت ارائه‌شده
   approvedStatementAmount: number; // صورت‌وضعیت تأییدشده
+  allocationDate?: string; // تاریخ تخصیص اعتبار
+  allocationYear?: number; // سال شمسی تفکیک ماهانه تخصیص
+  monthlyAllocations?: Record<number, number>; // تفکیک ماهانه اعتبار تخصیص‌یافته (۱ تا ۱۲)
   notes: string;
   isSample?: boolean;
   createdAt: string;

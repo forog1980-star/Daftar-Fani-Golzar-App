@@ -10,7 +10,7 @@ on:
       publish_release:
         description: 'انتشار خروجی‌ها در صفحه GitHub Releases'
         type: boolean
-        default: true
+        default: false
       is_prerelease:
         description: 'ثبت به‌عنوان نسخه آزمایشی (Pre-release) پیش از تأیید نهایی'
         type: boolean
@@ -98,6 +98,10 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # setup-android@v3 defaults to the removed SDK package "tools".
+          # Install only platform-tools; command-line tools are provisioned by the action.
+          packages: platform-tools
 
       - name: Install root web dependencies
         run: npm install

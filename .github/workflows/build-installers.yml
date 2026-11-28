@@ -159,18 +159,9 @@ jobs:
             KEY_ALIAS="$ANDROID_KEY_ALIAS"
             KEY_PASS="${ANDROID_KEY_PASSWORD:-$ANDROID_KEYSTORE_PASSWORD}"
           else
-            echo "::warning::ANDROID_KEYSTORE_BASE64 secret is not configured; generating a clean non-debuggable PKCS12 release keystore for this build. Configure permanent signing secrets for seamless future in-place upgrades."
-            KS_PASS="DaftarFaniGolzarRelease2026"
-            KEY_ALIAS="daftarfani"
-            KEY_PASS="$KS_PASS"
-            keytool -genkeypair -v \
-              -storetype PKCS12 \
-              -keystore "$KEYSTORE_PATH" \
-              -alias "$KEY_ALIAS" \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -storepass "$KS_PASS" \
-              -keypass "$KEY_PASS" \
-              -dname "CN=Daftar Fani Golzar, OU=Technical Office, O=Golzar Shohada, L=Tehran, C=IR"
+            echo "::error::Permanent Android signing secrets are missing. Refusing to generate a one-time keystore because future APK updates would not be installable over this version."
+            echo "::error::Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, and ANDROID_KEY_PASSWORD in GitHub Actions secrets."
+            exit 1
           fi
 
           "$ZIPALIGN" -v -p 4 "$UNSIGNED_APK" "$ALIGNED_APK"

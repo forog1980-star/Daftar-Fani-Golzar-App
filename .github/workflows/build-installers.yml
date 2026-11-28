@@ -48,6 +48,26 @@ jobs:
         working-directory: electron
         run: npm install
 
+      - name: Stage and verify Electron build assets
+        working-directory: electron
+        shell: pwsh
+        run: |
+          npm run stage
+          if (!(Test-Path "dist/index.html") -or !(Test-Path "build-resources/icon.ico")) {
+            Write-Error "Electron staged assets are missing!"
+            exit 1
+          }
+
+      - name: Stage and verify Electron build assets
+        working-directory: electron
+        shell: pwsh
+        run: |
+          npm run stage
+          if (!(Test-Path "dist/index.html") -or !(Test-Path "build-resources/icon.ico")) {
+            Write-Error "Electron staged assets are missing!"
+            exit 1
+          }
+
       - name: Build Windows Per-User NSIS Setup EXE
         working-directory: electron
         run: npm run dist:win
@@ -85,6 +105,9 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
       - name: Install root web dependencies
         run: npm install

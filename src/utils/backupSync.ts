@@ -9,7 +9,7 @@ import {
 } from '../types';
 import { getDB, replaceAllDataFromBackup, RollbackSnapshot } from '../db/database';
 import { computeRecordFingerprint, generateId, todayIsoDate } from './format';
-import { saveBinaryFile, SaveFileOutcome } from './platformBridge';
+import { saveBinaryFile, SaveFileOutcome, syncAttachmentToDesktopDisk } from './platformBridge';
 
 const SYNC_STORES: SyncEntityStore[] = [
   'projects',
@@ -167,6 +167,11 @@ export async function restoreFullZipBackup(
     deviceId,
     `نسخه خودکار پیش از بازیابی ${file.name}`
   );
+
+  // Mirror restored attachments physically into D:\Daftar-Fani-Golzar\Attachments\ on Windows Desktop
+  for (const att of restoredAttachments) {
+    await syncAttachmentToDesktopDisk(att.id, att.fileName, att.data);
+  }
 
   if (parsed.officialLogoDataUrl) {
     const db = await getDB();
@@ -384,6 +389,7 @@ export async function applyApprovedSyncDecisions(
     }
     for (const att of analysis.newAttachments) {
       await db.put('attachments', att);
+      await syncAttachmentToDesktopDisk(att.id, att.fileName, att.data);
     }
   }
 

@@ -284,19 +284,42 @@ export const DataCleanupPanel: React.FC<DataCleanupPanelProps> = ({
             </div>
 
             {sampleInfo.counts.attachments + sampleInfo.counts.projectImages > 0 && (
-              <label className="flex items-start gap-2.5 rounded-lg border border-[#E2DDD2] bg-[#FFFFFF] p-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={includeLinkedAtts}
-                  onChange={(e) => setIncludeLinkedAtts(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 accent-[#243B5A]"
-                />
-                <span>
-                  پیوست‌ها و تصاویر آزمایشی مرتبط ({toPersianDigits(sampleInfo.counts.attachments)}{' '}
-                  پیوست و {toPersianDigits(sampleInfo.counts.projectImages)} تصویر پروژه آزمایشی) نیز
-                  پاکسازی شوند.
-                </span>
-              </label>
+              <div className="space-y-2 rounded-lg border border-[#E2DDD2] bg-[#FFFFFF] p-3">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeLinkedAtts}
+                    onChange={(e) => setIncludeLinkedAtts(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 accent-[#243B5A]"
+                  />
+                  <span>
+                    پیوست‌ها و تصاویر آزمایشی مرتبط ({toPersianDigits(sampleInfo.counts.attachments)}{' '}
+                    پیوست و {toPersianDigits(sampleInfo.counts.projectImages)} تصویر پروژه آزمایشی) نیز
+                    پاکسازی شوند.
+                  </span>
+                </label>
+
+                {(sampleInfo.sampleAttachmentNames.length > 0 ||
+                  sampleInfo.sampleProjectImageNames.length > 0) && (
+                  <div className="mr-6 rounded border border-[#ECE7DC] bg-[#FAF8F3] px-3 py-2 space-y-1">
+                    <div className="text-[11px] font-medium text-[#243B5A]">
+                      فهرست نام فایل‌های پیوست و تصویر آزمایشی شناسایی‌شده:
+                    </div>
+                    <ul className="max-h-28 overflow-y-auto list-disc mr-4 space-y-0.5 text-[11px] text-[#5B6573]">
+                      {sampleInfo.sampleAttachmentNames.map((name, idx) => (
+                        <li key={`att-${idx}`} className="break-all">
+                          {name} <span className="text-[#788290]">(پیوست)</span>
+                        </li>
+                      ))}
+                      {sampleInfo.sampleProjectImageNames.map((name, idx) => (
+                        <li key={`img-${idx}`} className="break-all">
+                          {name} <span className="text-[#788290]">(تصویر پروژه آزمایشی)</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             )}
 
             <div className="rounded-lg border border-[#C6D5C4] bg-[#E7ECE6]/70 px-3.5 py-2.5 text-[11px] text-[#263448]">

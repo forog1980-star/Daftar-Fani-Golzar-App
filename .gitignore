@@ -6,3 +6,13 @@ coverage/
 *.log
 .env*
 !.env.example
+electron/dist/
+electron/build-resources/
+electron/node_modules/
+release-desktop/
+release-android/
+electron/dist/
+electron/build-resources/
+electron/node_modules/
+release-desktop/
+release-android/

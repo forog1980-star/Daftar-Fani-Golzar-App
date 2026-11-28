@@ -6,9 +6,12 @@ const { app, BrowserWindow, dialog, ipcMain, protocol, shell } = require('electr
 const {
   DEFAULT_WINDOWS_DATA_ROOT,
   appendLogLine,
+  cleanupEphemeralProbeDir,
+  createEphemeralProbeDir,
   getDetailedStorageInfo,
   isDriveCPath,
   migrateStorageRootSafe,
+  resolveSaveTargetPath,
   resolveStartupStorageRoot,
   verifyStorageRootWritable,
   writeBootstrapConfig,
@@ -42,11 +45,13 @@ function getBootstrapConfigPath() {
 
 const BOOTSTRAP_CONFIG_PATH = getBootstrapConfigPath();
 let activeDataRoot = DEFAULT_WINDOWS_DATA_ROOT;
+let ephemeralProbeDir = null;
 let mainWindow = null;
 
 /**
  * Resolves D:\Daftar-Fani-Golzar BEFORE Chromium initializes userData/IndexedDB.
- * If D:\ is unavailable, stops and asks user explicitly — NEVER silently falls back to C:\.
+ * If D:\ is unavailable, redirects Chromium's transient userData strictly to an ephemeral
+ * temp probe folder (deleted on exit) so %APPDATA% on drive C:\ is NEVER created or polluted.
  */
 function ensureStartupStorageBeforeReady() {
   const initial = resolveStartupStorageRoot({
@@ -65,6 +70,16 @@ function ensureStartupStorageBeforeReady() {
       `Application starting. Real IndexedDB userData path set to: ${path.join(activeDataRoot, 'Database')}`
     );
     return true;
+  }
+
+  // Prevent Chromium from touching %APPDATA% on C:\ while displaying the drive-unavailable dialog
+  try {
+    ephemeralProbeDir = createEphemeralProbeDir();
+    app.setPath('userData', ephemeralProbeDir);
+    app.setPath('sessionData', ephemeralProbeDir);
+    app.setPath('logs', path.join(ephemeralProbeDir, 'logs'));
+  } catch {
+    // Non-fatal fallback; dialog still blocks app launch
   }
 
   return false;
@@ -167,8 +182,16 @@ function getMimeType(filePath) {
   return map[ext] || 'application/octet-stream';
 }
 
+function resolveBundledPath(...segments) {
+  const insidePackage = path.join(__dirname, ...segments);
+  if (fs.existsSync(insidePackage)) {
+    return insidePackage;
+  }
+  return path.resolve(__dirname, '..', ...segments);
+}
+
 function registerStaticDistProtocol() {
-  const distDir = path.resolve(__dirname, '..', 'dist');
+  const distDir = resolveBundledPath('dist');
 
   protocol.handle(CUSTOM_SCHEME, (request) => {
     const reqUrl = new URL(request.url);
@@ -194,7 +217,7 @@ function registerStaticDistProtocol() {
 }
 
 function createMainWindow() {
-  const iconPath = path.resolve(__dirname, '..', 'build-resources', 'icon.ico');
+  const iconPath = resolveBundledPath('build-resources', 'icon.ico');
 
   mainWindow = new BrowserWindow({
     width: 1360,
@@ -262,20 +285,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle('desktop:save-file', async (_event, payload) => {
     try {
-      const folderMap = {
-        exports: 'Exports',
-        backups: 'Backups',
-        attachments: 'Attachments',
-      };
-      const subName = folderMap[payload?.category] || 'Exports';
-      const targetDir = path.join(activeDataRoot, subName);
+      const { subName, targetDir, targetPath } = resolveSaveTargetPath(
+        activeDataRoot,
+        payload?.category,
+        payload?.filename,
+        payload?.mimeType
+      );
       fs.mkdirSync(targetDir, { recursive: true });
 
-      const safeFileName = String(payload?.filename || `file-${Date.now()}`).replace(
-        /[/\\:*?"<>|]/g,
-        '_'
-      );
-      const targetPath = path.join(targetDir, safeFileName);
       const buffer = Buffer.from(String(payload?.base64Data || ''), 'base64');
       fs.writeFileSync(targetPath, buffer);
       appendLogLine(activeDataRoot, 'info', `Saved ${subName} file: ${targetPath} (${buffer.length} bytes)`);
@@ -352,9 +369,16 @@ if (!gotSingleInstanceLock) {
     }
   });
 
+  app.on('will-quit', () => {
+    cleanupEphemeralProbeDir(ephemeralProbeDir);
+    ephemeralProbeDir = null;
+  });
+
   app.whenReady().then(() => {
     if (!startupReadySynchronously) {
       const approvedRoot = promptUserWhenDriveUnavailable();
+      cleanupEphemeralProbeDir(ephemeralProbeDir);
+      ephemeralProbeDir = null;
       if (!approvedRoot) {
         app.quit();
         return;

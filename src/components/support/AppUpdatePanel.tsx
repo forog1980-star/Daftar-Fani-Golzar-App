@@ -17,7 +17,11 @@ import {
 import { resolveVersionManifestUrl, useAppUpdater } from '../../utils/appUpdater';
 import { useOnlineStatus } from '../../hooks/usePWAInstall';
 import { formatJalaliDateTime, toPersianDigits } from '../../utils/format';
-import { getPlatformDisplayLabel } from '../../utils/platformBridge';
+import {
+  detectRuntimePlatform,
+  getPlatformDisplayLabel,
+  isNativeInstalledRuntime,
+} from '../../utils/platformBridge';
 import { PWAInstallButton } from '../layout/PWAInstallButton';
 
 const GITHUB_RELEASES_URL = 'https://github.com/forog1980-star/Daftar-Fani-Golzar-App/releases';
@@ -30,7 +34,9 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
   const updater = useAppUpdater();
   const isOnline = useOnlineStatus();
   const isBusy = updater.status === 'checking' || updater.status === 'updating';
-  const platformLabel = getPlatformDisplayLabel();
+  const runtimePlatform = detectRuntimePlatform();
+  const isNativeRuntime = isNativeInstalledRuntime();
+  const platformLabel = getPlatformDisplayLabel(runtimePlatform);
 
   const [showSourceConfig, setShowSourceConfig] = useState(false);
   const [sourceInput, setSourceInput] = useState(updater.versionSourceUrl);
@@ -139,15 +145,19 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
         </div>
       )}
 
-      {/* Clear User-Friendly Guidance */}
+      {/* Clear User-Friendly Guidance tailored per runtime (Web / Windows EXE / Android APK) */}
       {!compact && (
         <p className="text-xs leading-6 text-[#5B6573]">
           با کلیک روی دکمه «بررسی به‌روزرسانی»، هنگام اتصال به اینترنت فایل{' '}
           <code dir="ltr" className="rounded bg-[#FAF8F3] px-1.5 py-0.5 text-[11px] text-[#243B5A]">
             version.json
           </code>{' '}
-          از مخزن گیت‌هاب بررسی می‌شود و در صورت انتشار نسخه جدید، می‌توانید تغییرات را روی نسخه
-          محلی دستگاه اعمال کنید.
+          از مخزن گیت‌هاب بررسی می‌شود.{' '}
+          {runtimePlatform === 'electron'
+            ? 'در صورت انتشار نسخه جدید، فایل نصبی ویندوز (Daftar-Fani-Golzar-Setup.exe) را از صفحه Releases گیت‌هاب دانلود و نصب کنید؛ داده‌های شما در مسیر D:\\Daftar-Fani-Golzar بدون تغییر حفظ می‌شوند.'
+            : runtimePlatform === 'android'
+              ? 'در صورت انتشار نسخه جدید، فایل نصبی اندروید (Daftar-Fani-Golzar.apk) را از صفحه Releases گیت‌هاب دانلود و روی همین نسخه نصب کنید؛ اطلاعات ذخیره‌شده در گوشی حفظ می‌شوند.'
+              : 'در صورت انتشار نسخه جدید، می‌توانید تغییرات نسخه وب را به‌صورت مستقیم روی مرورگر همین دستگاه اعمال کنید.'}
         </p>
       )}
 
@@ -208,7 +218,7 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
           </span>
         </button>
 
-        {updater.needRefresh && (
+        {!isNativeRuntime && updater.needRefresh && (
           <button
             type="button"
             disabled={isBusy}
@@ -220,16 +230,34 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
           </button>
         )}
 
-        <button
-          type="button"
-          disabled={isBusy || !isOnline}
-          onClick={() => updater.applyUpdate(true)}
-          title="پاک‌سازی کش ظاهری مرورگر و بارگذاری مستقیم آخرین فایل‌های منتشرشده از گیت‌هاب (بدون حذف داده‌ها)"
-          className="inline-flex items-center gap-2 rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-3.5 py-2.5 text-xs font-medium text-[#263448] transition-colors hover:border-[#243B5A] hover:bg-[#E5EBF2] disabled:opacity-50 cursor-pointer whitespace-nowrap"
-        >
-          <CloudDownload className="h-3.5 w-3.5 text-[#243B5A]" />
-          <span>دریافت اجباری آخرین نسخه</span>
-        </button>
+        {!isNativeRuntime && (
+          <button
+            type="button"
+            disabled={isBusy || !isOnline}
+            onClick={() => updater.applyUpdate(true)}
+            title="پاک‌سازی کش ظاهری مرورگر و بارگذاری مستقیم آخرین فایل‌های منتشرشده از گیت‌هاب (بدون حذف داده‌ها)"
+            className="inline-flex items-center gap-2 rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-3.5 py-2.5 text-xs font-medium text-[#263448] transition-colors hover:border-[#243B5A] hover:bg-[#E5EBF2] disabled:opacity-50 cursor-pointer whitespace-nowrap"
+          >
+            <CloudDownload className="h-3.5 w-3.5 text-[#243B5A]" />
+            <span>دریافت اجباری آخرین نسخه</span>
+          </button>
+        )}
+
+        {isNativeRuntime && updater.status === 'update-available' && (
+          <a
+            href={GITHUB_RELEASES_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-lg border border-[#3D6B59] bg-[#3D6B59] px-4 py-2.5 text-xs font-medium text-[#FFFFFF] transition-colors hover:opacity-90 whitespace-nowrap"
+          >
+            <Download className="h-3.5 w-3.5" />
+            <span>
+              {runtimePlatform === 'electron'
+                ? 'دانلود نسخه جدید ویندوز (EXE) از Releases'
+                : 'دانلود نسخه جدید اندروید (APK) از Releases'}
+            </span>
+          </a>
+        )}
 
         {!compact && (
           <button
@@ -288,8 +316,11 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
       <div className="flex items-center gap-2 border-t border-[#ECE7DC] pt-3 text-[11px] text-[#5B6573]">
         <ShieldCheck className="h-4 w-4 shrink-0 text-[#3D6B59]" />
         <span>
-          در فرآیند به‌روزرسانی محلی، تمامی پرونده‌ها، بودجه‌ها، تصاویر و پیوست‌های ذخیره‌شده در
-          حافظه دستگاه (IndexedDB) کاملاً محفوظ می‌مانند.
+          {runtimePlatform === 'electron'
+            ? 'در فرآیند به‌روزرسانی نسخه ویندوز، تمامی پرونده‌ها، بودجه‌ها، تصاویر و پیوست‌ها در پوشه D:\\Daftar-Fani-Golzar کاملاً محفوظ می‌مانند و حذف نمی‌شوند.'
+            : runtimePlatform === 'android'
+              ? 'در فرآیند نصب نسخه جدید اپلیکیشن اندروید (با همان شناسه بسته)، اطلاعات ذخیره‌شده در حافظه داخلی برنامه محفوظ می‌مانند. تهیه پشتیبان ZIP پیش از ارتقا توصیه می‌شود.'
+              : 'در فرآیند به‌روزرسانی نسخه وب، تمامی پرونده‌ها، بودجه‌ها، تصاویر و پیوست‌های ذخیره‌شده در حافظه محلی مرورگر (IndexedDB) کاملاً محفوظ می‌مانند.'}
         </span>
       </div>
     </div>

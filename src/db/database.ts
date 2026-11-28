@@ -194,7 +194,9 @@ export interface SampleCleanupInspection {
   };
   totalRecords: number;
   sampleAttachmentIds: string[];
+  sampleAttachmentNames: string[];
   sampleProjectImageIds: string[];
+  sampleProjectImageNames: string[];
   preservedCounts: {
     realProjects: number;
     referenceFormTemplates: number;
@@ -303,7 +305,9 @@ export async function inspectSampleDataCleanup(): Promise<SampleCleanupInspectio
     counts,
     totalRecords,
     sampleAttachmentIds: linkedAttachments.map((a) => a.id),
+    sampleAttachmentNames: linkedAttachments.map((a) => a.fileName),
     sampleProjectImageIds: linkedProjectImages.map((i) => i.id),
+    sampleProjectImageNames: linkedProjectImages.map((i) => i.fileName),
     preservedCounts: {
       realProjects: projects.length - sampleProjects.length,
       referenceFormTemplates: formTemplates.filter((t) => t.isReferenceForm).length,

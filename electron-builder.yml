@@ -3,33 +3,25 @@ productName: دفتر فنی اداره گلزار شهدا
 copyright: دفتر فنی اداره گلزار شهدا
 directories:
   output: ../release-desktop
-  buildResources: ../build-resources
+  buildResources: build-resources
 files:
-  - from: .
-    to: electron
-    filter:
-      - main.cjs
-      - preload.cjs
-      - storagePolicy.cjs
-      - package.json
-  - from: ../dist
-    to: dist
-    filter:
-      - "**/*"
-  - from: ../build-resources
-    to: build-resources
-    filter:
-      - icon.ico
-      - icon.png
+  - main.cjs
+  - preload.cjs
+  - storagePolicy.cjs
+  - package.json
+  - dist/**/*
+  - build-resources/icon.ico
+  - build-resources/icon.png
+  - "!stage-assets.cjs"
 extraMetadata:
-  main: electron/main.cjs
+  main: main.cjs
 asar: true
 win:
   target:
     - target: nsis
       arch:
         - x64
-  icon: ../build-resources/icon.ico
+  icon: build-resources/icon.ico
   artifactName: Daftar-Fani-Golzar-Setup.exe
   requestedExecutionLevel: asInvoker
 nsis:
@@ -41,7 +33,7 @@ nsis:
   createStartMenuShortcut: true
   shortcutName: دفتر فنی اداره گلزار شهدا
   uninstallDisplayName: دفتر فنی اداره گلزار شهدا
-  installerIcon: ../build-resources/icon.ico
-  uninstallerIcon: ../build-resources/icon.ico
-  installerHeaderIcon: ../build-resources/icon.ico
+  installerIcon: build-resources/icon.ico
+  uninstallerIcon: build-resources/icon.ico
+  installerHeaderIcon: build-resources/icon.ico
   deleteAppDataOnUninstall: false

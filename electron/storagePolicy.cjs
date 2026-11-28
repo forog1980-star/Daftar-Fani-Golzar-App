@@ -3,15 +3,18 @@
 const fs = require('fs');
 const path = require('path');
 
+const os = require('os');
 const DEFAULT_WINDOWS_DATA_ROOT = 'D:\\Daftar-Fani-Golzar';
 
 const REQUIRED_SUBDIRS = [
   { name: 'Database', label: 'پایگاه داده محلی برنامه (IndexedDB)' },
   { name: 'Attachments', label: 'تصاویر، فایل‌ها و پیوست‌های پرونده‌ها' },
   { name: 'Backups', label: 'نسخه‌های پشتیبان کامل (ZIP)' },
-  { name: 'Exports', label: 'خروجی‌های Word، Excel، PDF و JSON' },
+  { name: 'Exports', label: 'خروجی‌ها (پوشه‌های مجزای Word، Excel، PDF و JSON)' },
   { name: 'Logs', label: 'گزارش خطاها و عملیات فنی' },
 ];
+
+const EXPORT_SUBDIRS = ['Word', 'Excel', 'PDF', 'JSON'];
 
 function extractDriveRoot(targetPath) {
   const match = String(targetPath || '').match(/^([A-Za-z]:)[\\/]?/);
@@ -33,6 +36,81 @@ function ensureRequiredSubdirs(rootPath, fsImpl = fs) {
   fsImpl.mkdirSync(rootPath, { recursive: true });
   for (const sub of REQUIRED_SUBDIRS) {
     fsImpl.mkdirSync(path.join(rootPath, sub.name), { recursive: true });
+  }
+  for (const expSub of EXPORT_SUBDIRS) {
+    fsImpl.mkdirSync(path.join(rootPath, 'Exports', expSub), { recursive: true });
+  }
+}
+
+/**
+ * Classifies an export file into Exports\{Word|Excel|PDF|JSON} by extension or MIME type.
+ */
+function resolveExportSubfolder(filename, mimeType = '') {
+  const ext = path.extname(String(filename || '')).toLowerCase();
+  const mime = String(mimeType || '').toLowerCase();
+  if (ext === '.docx' || ext === '.doc' || ext === '.rtf' || mime.includes('wordprocessingml') || mime.includes('msword')) {
+    return 'Word';
+  }
+  if (ext === '.xlsx' || ext === '.xls' || ext === '.csv' || mime.includes('spreadsheetml') || mime.includes('ms-excel')) {
+    return 'Excel';
+  }
+  if (ext === '.pdf' || ext === '.html' || ext === '.htm' || mime.includes('application/pdf')) {
+    return 'PDF';
+  }
+  if (ext === '.json' || mime.includes('application/json')) {
+    return 'JSON';
+  }
+  return '';
+}
+
+function sanitizeFilename(filename) {
+  return String(filename || `file-${Date.now()}`).replace(/[/\\:*?"<>|]/g, '_');
+}
+
+function resolveSaveTargetPath(dataRoot, category, filename, mimeType = '') {
+  const folderMap = {
+    exports: 'Exports',
+    backups: 'Backups',
+    attachments: 'Attachments',
+  };
+  const subName = folderMap[category] || 'Exports';
+  const safeFileName = sanitizeFilename(filename);
+
+  if (subName === 'Exports') {
+    const exportSub = resolveExportSubfolder(safeFileName, mimeType);
+    const targetDir = exportSub
+      ? path.join(dataRoot, 'Exports', exportSub)
+      : path.join(dataRoot, 'Exports');
+    return {
+      subName: exportSub ? `Exports/${exportSub}` : 'Exports',
+      targetDir,
+      targetPath: path.join(targetDir, safeFileName),
+    };
+  }
+
+  const targetDir = path.join(dataRoot, subName);
+  return {
+    subName,
+    targetDir,
+    targetPath: path.join(targetDir, safeFileName),
+  };
+}
+
+/**
+ * Creates an isolated temporary probe directory in os.tmpdir() used ONLY when D:\ is unavailable
+ * so Chromium never creates or writes a persistent cache folder under %APPDATA% on drive C:\.
+ */
+function createEphemeralProbeDir(fsImpl = fs, tmpRoot = os.tmpdir()) {
+  const prefix = path.join(tmpRoot, 'daftar-fani-golzar-probe-');
+  return fsImpl.mkdtempSync(prefix);
+}
+
+function cleanupEphemeralProbeDir(probeDir, fsImpl = fs) {
+  if (!probeDir) return;
+  try {
+    fsImpl.rmSync(probeDir, { recursive: true, force: true });
+  } catch {
+    // Non-fatal cleanup
   }
 }
 
@@ -359,8 +437,14 @@ function migrateStorageRootSafe({
 module.exports = {
   DEFAULT_WINDOWS_DATA_ROOT,
   REQUIRED_SUBDIRS,
+  EXPORT_SUBDIRS,
   extractDriveRoot,
   isDriveCPath,
+  ensureRequiredSubdirs,
+  resolveExportSubfolder,
+  resolveSaveTargetPath,
+  createEphemeralProbeDir,
+  cleanupEphemeralProbeDir,
   verifyStorageRootWritable,
   readBootstrapConfig,
   writeBootstrapConfig,

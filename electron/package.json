@@ -7,7 +7,8 @@
   "author": "دفتر فنی اداره گلزار شهدا",
   "scripts": {
     "start": "electron .",
-    "dist:win": "electron-builder --config ../electron-builder.yml --win nsis --x64"
+    "stage": "node stage-assets.cjs",
+    "dist:win": "node stage-assets.cjs && electron-builder --config ../electron-builder.yml --win nsis --x64"
   },
   "devDependencies": {
     "electron": "^35.1.5",

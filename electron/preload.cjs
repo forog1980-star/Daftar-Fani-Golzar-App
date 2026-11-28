@@ -14,4 +14,9 @@ contextBridge.exposeInMainWorld('desktopBridge', {
   fetchJson: (url) => ipcRenderer.invoke('desktop:fetch-json', url),
   downloadAndRunInstaller: (payload) => ipcRenderer.invoke('desktop:download-and-run-installer', payload),
   verifyDownloadUrl: (url) => ipcRenderer.invoke('desktop:verify-download-url', url),
+  openFile: (filePath) => ipcRenderer.invoke('desktop:open-file', filePath),
+  showInFolder: (filePath) => ipcRenderer.invoke('desktop:show-in-folder', filePath),
+  openExternal: (url) => ipcRenderer.invoke('desktop:open-external', url),
+  getLocalVersionInfo: () => ipcRenderer.invoke('desktop:get-local-version-info'),
+  applyBundleUpdate: (payload) => ipcRenderer.invoke('desktop:apply-bundle-update', payload),
 });

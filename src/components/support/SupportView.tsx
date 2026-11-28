@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Archive,
+  ChevronDown,
+  ChevronUp,
   Download,
   FileJson,
   HelpCircle,
@@ -13,6 +15,7 @@ import {
 import { AppearanceConfig } from '../../types';
 import { AppStore } from '../../hooks/useAppStore';
 import { DEFAULT_APPEARANCE, MASTER_STAGE_CATALOG } from '../../db/seedData';
+import { LOCAL_APP_VERSION } from '../../utils/appUpdater';
 import { createFullZipBackup, restoreFullZipBackup } from '../../utils/backupSync';
 import { formatJalaliDateTime, toPersianDigits } from '../../utils/format';
 import { applyAppearanceToDocument, resolveAppearance } from '../../utils/themeEngine';
@@ -52,6 +55,7 @@ export const SupportView: React.FC<SupportViewProps> = ({
   const [authEnabled, setAuthEnabled] = useState(store.settings.auth.enabled);
   const [selectedProcessType, setSelectedProcessType] = useState('عمرانی');
   const [processTemplates, setProcessTemplates] = useState(store.settings.processTemplates);
+  const [stagesAccordionOpen, setStagesAccordionOpen] = useState(false);
   const [appearance, setAppearance] = useState<AppearanceConfig>(() =>
     resolveAppearance(store.settings.appearance)
   );
@@ -138,7 +142,13 @@ export const SupportView: React.FC<SupportViewProps> = ({
 
   const handleFullBackup = async () => {
     setError('');
+    setNotice('');
     const outcome = await createFullZipBackup(store.settings.deviceId, store.settings.deviceName);
+    if (outcome.cancelled) return;
+    if (!outcome.ok) {
+      setError(outcome.error || 'ایجاد یا ذخیره فایل پشتیبان کامل (.zip) با خطا مواجه شد.');
+      return;
+    }
     await store.saveSettings({
       ...store.settings,
       lastBackupAt: new Date().toISOString(),
@@ -170,36 +180,46 @@ export const SupportView: React.FC<SupportViewProps> = ({
 
   return (
     <div className="animate-page-in mx-auto max-w-[1280px] space-y-5 px-4 py-5 sm:px-6">
-      {/* Settings Tabs — hidden on Help page so no duplicate top navigation appears */}
+      {/* Settings Tabs + Active Version Strip — hidden on Help page so no duplicate top navigation appears */}
       {tab !== 'guide' && (
-        <div className="grid grid-cols-2 gap-2 rounded-2xl border border-[#E2DDD2] bg-[#FFFFFF] p-3 sm:grid-cols-3 lg:grid-cols-5">
-          {(
-            [
-              { key: 'settings', label: 'تنظیمات ظاهری و سازمانی' },
-              { key: 'media', label: 'مدیریت تصاویر و آرم رسمی' },
-              { key: 'transfer', label: 'ورودی و خروجی JSON' },
-              { key: 'backup', label: 'پشتیبان‌گیری و بازیابی (ZIP)' },
-              { key: 'people', label: `اشخاص و امضاها (${toPersianDigits(store.people.length)})` },
-            ] as Array<{ key: SupportTab; label: string }>
-          ).map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => {
-                setTab(t.key);
-                setNotice('');
-                setError('');
-                onTabChange?.(t.key);
-              }}
-              className={`inline-flex min-h-[40px] items-center justify-center rounded-xl px-2.5 py-2 text-center text-xs font-medium leading-4 transition-colors cursor-pointer ${
-                tab === t.key
-                  ? 'border border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'
-                  : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#263448] hover:bg-[#F2EEE6]'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
+        <div className="space-y-2.5 rounded-2xl border border-[#E2DDD2] bg-[#FFFFFF] p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-1">
+            <span className="text-xs font-semibold text-[#243B5A]">
+              پشتیبانی، تنظیمات و انتقال اطلاعات
+            </span>
+            <span className="inline-flex items-center rounded-md border border-[#D5C39E] bg-[#FAF8F3] px-2.5 py-0.5 text-[11px] font-bold tabular-nums text-[#243B5A]">
+              نسخه فعال برنامه: {toPersianDigits(LOCAL_APP_VERSION)}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+            {(
+              [
+                { key: 'settings', label: 'تنظیمات و به‌روزرسانی' },
+                { key: 'media', label: 'مدیریت تصاویر و آرم رسمی' },
+                { key: 'transfer', label: 'ورودی و خروجی JSON' },
+                { key: 'backup', label: 'پشتیبان‌گیری و بازیابی (ZIP)' },
+                { key: 'people', label: `اشخاص و امضاها (${toPersianDigits(store.people.length)})` },
+              ] as Array<{ key: SupportTab; label: string }>
+            ).map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => {
+                  setTab(t.key);
+                  setNotice('');
+                  setError('');
+                  onTabChange?.(t.key);
+                }}
+                className={`inline-flex min-h-[40px] items-center justify-center rounded-xl px-2.5 py-2 text-center text-xs font-medium leading-4 transition-colors cursor-pointer ${
+                  tab === t.key
+                    ? 'border border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'
+                    : 'border border-[#ECE7DC] bg-[#FAF8F3] text-[#263448] hover:bg-[#F2EEE6]'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
@@ -305,56 +325,82 @@ export const SupportView: React.FC<SupportViewProps> = ({
             </div>
           </div>
 
-          {/* Configurable Project Process Templates */}
-          <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <h3 className="text-sm font-semibold text-[#243B5A]">
-                  الگوی مراحل اجرای پروژه بر اساس نوع پروژه
-                </h3>
+          {/* Configurable Project Process Templates — Collapsible Accordion (18-Stage Checklist) */}
+          <div className="rounded-[var(--app-radius)] border border-[#E2DDD2] bg-[#FFFFFF] overflow-hidden">
+            <button
+              type="button"
+              aria-expanded={stagesAccordionOpen}
+              onClick={() => setStagesAccordionOpen((prev) => !prev)}
+              className="flex w-full items-center justify-between gap-3 px-5 py-4 text-right transition-colors hover:bg-[#FAF8F3] cursor-pointer"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold text-[#243B5A]">
+                    الگوی مراحل ۱۸گانه اجرای پروژه بر اساس نوع پروژه
+                  </h3>
+                  <span className="rounded-md border border-[#E2DDD2] bg-[#FAF8F3] px-2 py-0.5 text-[11px] tabular-nums text-[#5B6573]">
+                    {toPersianDigits((processTemplates[selectedProcessType] ?? []).length)} از{' '}
+                    {toPersianDigits(MASTER_STAGE_CATALOG.length)} مرحله فعال ({selectedProcessType})
+                  </span>
+                </div>
                 <p className="mt-0.5 text-xs text-[#5B6573]">
-                  مراحل پیش‌فرض هر نوع پروژه (فرهنگی، عمرانی، بهسازی، مرمت) را تنظیم کنید.
+                  برای مشاهده و ویرایش فهرست ۱۸ مرحله پیش‌فرض پروژه‌های عمرانی، بهسازی، مرمت و فرهنگی کلیک کنید.
                 </p>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {['عمرانی', 'بهسازی', 'مرمت', 'فرهنگی'].map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setSelectedProcessType(t)}
-                    className={`rounded-lg px-3 py-1 text-xs cursor-pointer ${
-                      selectedProcessType === t
-                        ? 'border border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'
-                        : 'border border-[#E2DDD2] bg-[#FAF8F3] text-[#263448]'
-                    }`}
-                  >
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-[#E2DDD2] bg-[#FAF8F3] text-[#243B5A]">
+                {stagesAccordionOpen ? (
+                  <ChevronUp className="h-4 w-4" />
+                ) : (
+                  <ChevronDown className="h-4 w-4" />
+                )}
+              </span>
+            </button>
 
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {MASTER_STAGE_CATALOG.map((st, idx) => {
-                const checked = (processTemplates[selectedProcessType] ?? []).includes(st.key);
-                return (
-                  <label
-                    key={st.key}
-                    className="flex items-center gap-2 rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] px-3 py-2 text-xs text-[#263448] cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleStageInTemplate(selectedProcessType, st.key)}
-                      className="h-4 w-4 accent-[#243B5A]"
-                    />
-                    <span>
-                      {toPersianDigits(idx + 1)}. {st.title}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
+            {stagesAccordionOpen && (
+              <div className="border-t border-[#E8E5DE] p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-[#5B6573]">انتخاب نوع پروژه:</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {['عمرانی', 'بهسازی', 'مرمت', 'فرهنگی'].map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setSelectedProcessType(t)}
+                        className={`rounded-lg px-3 py-1 text-xs cursor-pointer ${
+                          selectedProcessType === t
+                            ? 'border border-[#243B5A] bg-[#243B5A] text-[#FAF8F3]'
+                            : 'border border-[#E2DDD2] bg-[#FAF8F3] text-[#263448]'
+                        }`}
+                      >
+                        {t} ({toPersianDigits((processTemplates[t] ?? []).length)})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                  {MASTER_STAGE_CATALOG.map((st, idx) => {
+                    const checked = (processTemplates[selectedProcessType] ?? []).includes(st.key);
+                    return (
+                      <label
+                        key={st.key}
+                        className="flex items-center gap-2 rounded-lg border border-[#E8E5DE] bg-[#FAF8F3] px-3 py-2 text-xs text-[#263448] cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleStageInTemplate(selectedProcessType, st.key)}
+                          className="h-4 w-4 accent-[#243B5A]"
+                        />
+                        <span>
+                          {toPersianDigits(idx + 1)}. {st.title}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Auth Architecture */}

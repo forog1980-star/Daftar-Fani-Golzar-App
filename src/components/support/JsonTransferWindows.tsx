@@ -15,7 +15,12 @@ import {
   toPersianDigits,
 } from '../../utils/format';
 import { estimateJsonSizeBytes } from '../../utils/imageMedia';
-import { saveBinaryFile } from '../../utils/platformBridge';
+import {
+  openSavedDesktopFile,
+  revealSavedDesktopFile,
+  saveBinaryFile,
+  SaveFileOutcome,
+} from '../../utils/platformBridge';
 import { FloatingWindow } from '../layout/FloatingWindow';
 
 const STORE_LABELS: Record<SyncEntityStore, string> = {
@@ -49,7 +54,10 @@ export const JsonExportWindow: React.FC<{
     exportedAt: string;
     sizeBytes: number;
     blob: Blob;
+    savedPath?: string;
+    method: SaveFileOutcome['method'];
   } | null>(null);
+  const [exportError, setExportError] = useState('');
   const [shareNote, setShareNote] = useState('');
 
   useEffect(() => {
@@ -79,11 +87,20 @@ export const JsonExportWindow: React.FC<{
 
   const handleGenerateExport = async () => {
     if (!pkgPreview || !confirmed) return;
+    setExportError('');
+    setShareNote('');
     const jsonText = JSON.stringify(pkgPreview.pkg, null, 2);
     const blob = new Blob([jsonText], { type: 'application/json;charset=utf-8' });
     const fileName = `daftar-fani-data-${todayIsoDate()}.json`;
 
-    await saveBinaryFile(blob, fileName, 'exports', 'application/json');
+    const outcome = await saveBinaryFile(blob, fileName, 'exports', 'application/json');
+    if (outcome.cancelled) {
+      return;
+    }
+    if (!outcome.ok) {
+      setExportError(outcome.error || 'ذخیره فایل خروجی JSON با خطا مواجه شد.');
+      return;
+    }
 
     const now = new Date().toISOString();
     await store.saveSettings({
@@ -96,6 +113,8 @@ export const JsonExportWindow: React.FC<{
       exportedAt: now,
       sizeBytes: blob.size,
       blob,
+      savedPath: outcome.savedPath,
+      method: outcome.method,
     });
   };
 
@@ -115,7 +134,7 @@ export const JsonExportWindow: React.FC<{
         setShareNote('پنجره اشتراک‌گذاری سیستم‌عامل (برای ارسال در ایتا یا ذخیره) باز شد.');
       } else {
         setShareNote(
-          'مرورگر فعلی از اشتراک‌گذاری مستقیم فایل پشتیبانی نمی‌کند؛ فایل JSON در پوشه Downloads ذخیره شده و می‌توانید آن را از طریق ایتا یا کابل USB منتقل کنید.'
+          'مرورگر فعلی از اشتراک‌گذاری مستقیم فایل پشتیبانی نمی‌کند؛ می‌توانید فایل ذخیره‌شده را مستقیماً از پوشه مقصد از طریق ایتا یا کابل USB منتقل کنید.'
         );
       }
     } catch {
@@ -254,19 +273,59 @@ export const JsonExportWindow: React.FC<{
           </>
         )}
 
+        {exportError && (
+          <div
+            role="alert"
+            className="rounded-lg border border-[#D8B4B4] bg-[#FBF1F1] px-4 py-3 text-xs text-[#9E3B3B]"
+          >
+            {exportError}
+          </div>
+        )}
+
         {resultInfo && (
           <div className="space-y-3 rounded-lg border border-[#C6D5C4] bg-[#E7ECE6] p-4 text-xs text-[#263448]">
             <div className="flex items-center gap-2 font-semibold text-[#243B5A]">
               <CheckCircle2 className="h-4 w-4 text-[#3D6B59]" />
-              <span>فایل JSON با موفقیت تولید شد</span>
+              <span>فایل JSON با موفقیت ذخیره شد</span>
             </div>
             <div className="space-y-1 text-[#3B4856]">
-              <div>نام فایل: <span className="font-mono" dir="ltr">{resultInfo.fileName}</span></div>
+              <div>
+                نام فایل: <span className="font-mono" dir="ltr">{resultInfo.fileName}</span>
+              </div>
               <div>زمان تولید: {formatJalaliDateTime(resultInfo.exportedAt)}</div>
               <div>حجم نهایی: {formatFileSize(resultInfo.sizeBytes)}</div>
-              <div>محل ذخیره: پوشه دانلود مرورگر (Downloads) روی دستگاه فعلی</div>
+              <div>
+                محل ذخیره:{' '}
+                {resultInfo.savedPath ? (
+                  <span className="font-mono break-all" dir="ltr">
+                    {resultInfo.savedPath}
+                  </span>
+                ) : resultInfo.method === 'android-native' ? (
+                  'پوشه Documents/DaftarFaniGolzar و پنجره اشتراک‌گذاری اندروید'
+                ) : (
+                  'پوشه دانلود مرورگر (Downloads) روی دستگاه فعلی'
+                )}
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 pt-1">
+              {resultInfo.method === 'electron-disk' && resultInfo.savedPath && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void openSavedDesktopFile(resultInfo.savedPath!)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#243B5A] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
+                  >
+                    <span>باز کردن فایل</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void revealSavedDesktopFile(resultInfo.savedPath!)}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#243B5A] bg-[#FFFFFF] px-3.5 py-1.5 text-xs font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+                  >
+                    <span>نمایش در پوشه</span>
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={handleOsShare}

@@ -41,6 +41,7 @@ import { BudgetStatusDonut, buildBudgetReportPayload } from './BudgetStatusDonut
 import { SectionReportExportBar } from '../layout/SectionReportExportBar';
 import { JalaliDateInput } from '../common/JalaliDateInput';
 import { summarizeProjectStatements } from '../../utils/statementCalculations';
+import { dataUrlToBlob, saveBinaryFile } from '../../utils/platformBridge';
 
 export type BudgetSubTab = 'credits' | 'payments' | 'proposals';
 
@@ -802,18 +803,26 @@ export const BudgetView: React.FC<BudgetViewProps> = ({
                             </div>
                             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                               {pr.estimateDocuments.map((doc) => (
-                                <a
+                                <button
                                   key={doc.id}
-                                  href={doc.dataUrl}
-                                  download={doc.title || 'estimate-document'}
-                                  className="flex items-center justify-between gap-2 rounded-xl border border-[#E2DDD0] bg-[#FFFFFF] px-3 py-2 text-xs text-[#243B5A] hover:border-[#243B5A] hover:bg-[#F5F7FB]"
+                                  type="button"
+                                  onClick={() => {
+                                    const blob = dataUrlToBlob(doc.dataUrl);
+                                    void saveBinaryFile(
+                                      blob,
+                                      doc.title || 'estimate-document',
+                                      'attachments',
+                                      blob.type
+                                    );
+                                  }}
+                                  className="flex items-center justify-between gap-2 rounded-xl border border-[#E2DDD0] bg-[#FFFFFF] px-3 py-2 text-xs text-[#243B5A] hover:border-[#243B5A] hover:bg-[#F5F7FB] cursor-pointer text-right"
                                 >
                                   <span className="truncate font-medium">{doc.title}</span>
                                   <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-[#5B6573]">
                                     <span>{formatFileSize(doc.sizeBytes)}</span>
                                     <Download className="h-3.5 w-3.5 text-[#243B5A]" />
                                   </span>
-                                </a>
+                                </button>
                               ))}
                             </div>
                           </div>

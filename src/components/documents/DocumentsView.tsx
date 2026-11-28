@@ -25,6 +25,7 @@ import { FormBuilderView } from './FormBuilderView';
 import { HelpSectionId } from '../help/helpContent';
 import { SectionHelpLink } from '../help/SectionHelpLink';
 import { JalaliDateInput } from '../common/JalaliDateInput';
+import { saveBinaryFile } from '../../utils/platformBridge';
 
 export type DocumentsSectionTab = 'archive' | 'forms';
 
@@ -94,17 +95,8 @@ export const DocumentsView: React.FC<DocumentsViewProps> = ({
     });
   }, [store.documents, categoryFilter, projectFilter, search]);
 
-  const downloadAttachment = (att: AttachmentRecord) => {
-    const url = URL.createObjectURL(att.data);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = att.fileName;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 300);
+  const downloadAttachment = async (att: AttachmentRecord) => {
+    await saveBinaryFile(att.data, att.fileName, 'attachments', att.mimeType);
   };
 
   return (

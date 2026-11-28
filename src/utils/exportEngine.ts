@@ -18,7 +18,7 @@ import {
 import JSZip from 'jszip';
 import { LetterheadConfig, SignatureSnapshot } from '../types';
 import { formatJalaliDate, sanitizeCsvOrXml, todayIsoDate } from './format';
-import { saveBinaryFile } from './platformBridge';
+import { detectRuntimePlatform, saveBinaryFile, SaveFileOutcome } from './platformBridge';
 
 export interface ExportDonutSegment {
   label: string;
@@ -294,7 +294,7 @@ export function sanitizeExportFileName(fileName: string, extension: string): str
   return base.toLowerCase().endsWith(ext) ? base : `${base}${ext}`;
 }
 
-async function triggerBlobDownload(blob: Blob, filename: string) {
+async function triggerBlobDownload(blob: Blob, filename: string): Promise<SaveFileOutcome> {
   return saveBinaryFile(blob, filename, 'exports', blob.type || 'application/octet-stream');
 }
 
@@ -588,7 +588,10 @@ async function enforceDocxStrictRtlXml(blob: Blob): Promise<Blob> {
   });
 }
 
-export async function exportToWordDocx(payload: ExportTablePayload, fileName: string): Promise<void> {
+export async function exportToWordDocx(
+  payload: ExportTablePayload,
+  fileName: string
+): Promise<SaveFileOutcome> {
   const children: Array<Paragraph | Table> = [];
 
   // Formal Text-Only Letterhead Box (100% RTL, B Zar font, soft warm ivory/gold styling, NO emblem)
@@ -948,7 +951,7 @@ export async function exportToWordDocx(payload: ExportTablePayload, fileName: st
 
   const rawBlob = await Packer.toBlob(doc);
   const strictRtlBlob = await enforceDocxStrictRtlXml(rawBlob);
-  triggerBlobDownload(strictRtlBlob, fileName.endsWith('.docx') ? fileName : `${fileName}.docx`);
+  return triggerBlobDownload(strictRtlBlob, sanitizeExportFileName(fileName, '.docx'));
 }
 
 // Column index to Excel letter (0 -> A, 25 -> Z, 26 -> AA)
@@ -1497,14 +1500,26 @@ export async function buildExcelXlsxBlob(payload: ExportTablePayload): Promise<B
   });
 }
 
-export async function exportToExcelXlsx(payload: ExportTablePayload, fileName: string): Promise<void> {
+export async function exportToExcelXlsx(
+  payload: ExportTablePayload,
+  fileName: string
+): Promise<SaveFileOutcome> {
   const blob = await buildExcelXlsxBlob(payload);
-  await triggerBlobDownload(blob, sanitizeExportFileName(fileName, '.xlsx'));
+  return triggerBlobDownload(blob, sanitizeExportFileName(fileName, '.xlsx'));
 }
 
-// Build clean RTL A4 printable HTML document (B Zar 14pt, soft warm sand/gold + slate palette, color & B&W print-friendly, NO emblem)
-export function buildPrintableReportHtml(payload: ExportTablePayload): string {
+export interface PrintableReportOptions {
+  orientation?: 'portrait' | 'landscape';
+}
+
+// Build clean RTL A4 printable HTML document (B Zar, soft warm sand/gold + slate palette, supports portrait & landscape)
+export function buildPrintableReportHtml(
+  payload: ExportTablePayload,
+  options?: PrintableReportOptions
+): string {
   const esc = sanitizeCsvOrXml;
+  const isLandscape = options?.orientation === 'landscape';
+
   const narrativeHtml =
     payload.narrativeParagraphs && payload.narrativeParagraphs.length > 0
       ? `<div class="narrative-box">
@@ -1536,16 +1551,25 @@ export function buildPrintableReportHtml(payload: ExportTablePayload): string {
 
   const summaryHtml =
     payload.summaryRows && payload.summaryRows.length > 0
-      ? `<table class="meta-table">
-          <tbody>
+      ? isLandscape
+        ? `<div class="summary-grid">
             ${payload.summaryRows
               .map(
                 (r) =>
-                  `<tr><th>${esc(r.label)}</th><td>${esc(r.value)}</td></tr>`
+                  `<div class="summary-card"><div class="summary-label">${esc(r.label)}</div><div class="summary-value">${esc(r.value)}</div></div>`
               )
               .join('')}
-          </tbody>
-        </table>`
+          </div>`
+        : `<table class="meta-table">
+            <tbody>
+              ${payload.summaryRows
+                .map(
+                  (r) =>
+                    `<tr><th>${esc(r.label)}</th><td>${esc(r.value)}</td></tr>`
+                )
+                .join('')}
+            </tbody>
+          </table>`
       : '';
 
   const mainTableHtml =
@@ -1601,67 +1625,107 @@ export function buildPrintableReportHtml(payload: ExportTablePayload): string {
   <meta charset="utf-8" />
   <title>${esc(payload.title)}</title>
   <style>
-    @page { size: A4 portrait; margin: 15mm; }
+    @page { size: ${isLandscape ? 'A4 landscape' : 'A4 portrait'}; margin: ${isLandscape ? '10mm 12mm' : '15mm'}; }
+    * { box-sizing: border-box; }
     body {
       font-family: 'B Zar', 'BZar', 'Zar', Tahoma, Arial, sans-serif;
-      font-size: 14pt;
-      line-height: 1.75;
+      font-size: ${isLandscape ? '11.5pt' : '14pt'};
+      line-height: ${isLandscape ? '1.55' : '1.75'};
       color: #${PALETTE.textBody};
       direction: rtl;
       text-align: right;
       margin: 0;
-      padding: 16px;
+      padding: ${isLandscape ? '10px 12px' : '16px'};
       background: #FFFFFF;
     }
     .letterhead {
+      display: ${isLandscape ? 'flex' : 'block'};
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
       text-align: right;
       background: #${PALETTE.bannerFill};
       border: 1px solid #${PALETTE.borderInner};
       border-top: 2.5px solid #${PALETTE.borderGold};
       border-bottom: 2px solid #${PALETTE.borderGold};
       border-right: 4px solid #${PALETTE.borderStrong};
-      padding: 12px 16px;
-      margin-bottom: 14px;
+      padding: ${isLandscape ? '8px 14px' : '12px 16px'};
+      margin-bottom: ${isLandscape ? '10px' : '14px'};
     }
-    .letterhead h1 { margin: 0; font-size: 16pt; color: #${PALETTE.inkNavy}; }
-    .letterhead h2 { margin: 2px 0; font-size: 14pt; font-weight: bold; color: #${PALETTE.inkMuted}; }
-    .letterhead p { margin: 2px 0; font-size: 12pt; color: #${PALETTE.inkMuted}; }
+    .letterhead h1 { margin: 0; font-size: ${isLandscape ? '14pt' : '16pt'}; color: #${PALETTE.inkNavy}; }
+    .letterhead h2 { margin: 2px 0; font-size: ${isLandscape ? '12pt' : '14pt'}; font-weight: bold; color: #${PALETTE.inkMuted}; }
+    .letterhead p { margin: 2px 0; font-size: ${isLandscape ? '10.5pt' : '12pt'}; color: #${PALETTE.inkMuted}; }
     .doc-meta {
-      margin-top: 6px;
-      font-size: 12pt;
+      margin-top: ${isLandscape ? '0' : '6px'};
+      font-size: ${isLandscape ? '10.5pt' : '12pt'};
       color: #${PALETTE.inkMuted};
+      white-space: ${isLandscape ? 'nowrap' : 'normal'};
     }
-    .doc-title { font-size: 15pt; font-weight: bold; color: #${PALETTE.inkNavy}; margin: 10px 0 12px; text-align: right; }
+    .doc-title {
+      font-size: ${isLandscape ? '13.5pt' : '15pt'};
+      font-weight: bold;
+      color: #${PALETTE.inkNavy};
+      margin: ${isLandscape ? '6px 0 8px' : '10px 0 12px'};
+      text-align: right;
+    }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+    .summary-card {
+      border: 1px solid #${PALETTE.borderInner};
+      background: #${PALETTE.keyFill};
+      padding: 5px 8px;
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    .summary-label {
+      font-size: 9.5pt;
+      color: #${PALETTE.inkMuted};
+      margin-bottom: 2px;
+    }
+    .summary-value {
+      font-size: 11pt;
+      font-weight: bold;
+      color: #${PALETTE.inkNavy};
+    }
     .narrative-box {
-      margin-bottom: 14px;
-      padding: 10px 14px;
+      margin-bottom: ${isLandscape ? '10px' : '14px'};
+      padding: ${isLandscape ? '8px 12px' : '10px 14px'};
       border: 1px solid #${PALETTE.borderInner};
       border-right: 4px solid #${PALETTE.borderGold};
       background: #${PALETTE.narrativeFill};
       text-align: right;
     }
-    .narrative-box h3 { margin: 0 0 6px; font-size: 14pt; color: #${PALETTE.inkNavy}; }
-    .narrative-box p { margin: 4px 0; font-size: 13.5pt; }
-    .chart-block { margin-bottom: 14px; text-align: center; }
-    .chart-img { max-width: 100%; height: auto; margin-bottom: 10px; border: 1px solid #${PALETTE.borderInner}; }
+    .narrative-box h3 { margin: 0 0 4px; font-size: ${isLandscape ? '12pt' : '14pt'}; color: #${PALETTE.inkNavy}; }
+    .narrative-box p { margin: 3px 0; font-size: ${isLandscape ? '11pt' : '13.5pt'}; }
+    .chart-block { margin-bottom: ${isLandscape ? '10px' : '14px'}; text-align: center; break-inside: avoid; page-break-inside: avoid; }
+    .chart-img { max-width: ${isLandscape ? '70%' : '100%'}; height: auto; margin-bottom: 8px; border: 1px solid #${PALETTE.borderInner}; }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 14px;
-      font-size: 13pt;
+      margin-bottom: ${isLandscape ? '10px' : '14px'};
+      font-size: ${isLandscape ? '10.5pt' : '13pt'};
       direction: rtl;
+      page-break-inside: auto;
     }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
     th, td {
       border: 1px solid #${PALETTE.borderInner};
-      padding: 6px 8px;
+      padding: ${isLandscape ? '4px 6px' : '6px 8px'};
       text-align: right;
       vertical-align: middle;
+      word-break: break-word;
     }
     th { background: #${PALETTE.headerFill}; font-weight: bold; color: #${PALETTE.inkNavy}; border-color: #${PALETTE.borderGold}; }
     tbody tr:nth-child(even) td { background: #${PALETTE.zebraFill}; }
     .meta-table th { width: 34%; background: #${PALETTE.keyFill}; color: #${PALETTE.inkNavy}; border-color: #${PALETTE.borderInner}; }
-    .notes { margin-top: 10px; padding: 8px 12px; border: 1px solid #${PALETTE.borderInner}; background: #${PALETTE.narrativeFill}; font-size: 13pt; text-align: right; }
-    .sig-block h3 { font-size: 14pt; margin: 16px 0 6px; color: #${PALETTE.inkNavy}; text-align: right; }
+    .notes { margin-top: 8px; padding: 7px 10px; border: 1px solid #${PALETTE.borderInner}; background: #${PALETTE.narrativeFill}; font-size: ${isLandscape ? '10.5pt' : '13pt'}; text-align: right; }
+    .sig-block { break-inside: avoid; page-break-inside: avoid; }
+    .sig-block h3 { font-size: ${isLandscape ? '12pt' : '14pt'}; margin: 12px 0 6px; color: #${PALETTE.inkNavy}; text-align: right; }
     @media print {
       body { padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     }
@@ -1669,9 +1733,11 @@ export function buildPrintableReportHtml(payload: ExportTablePayload): string {
 </head>
 <body>
   <div class="letterhead">
-    <h1>${esc(payload.letterhead.organizationName)}</h1>
-    ${payload.letterhead.unitName ? `<h2>${esc(payload.letterhead.unitName)}</h2>` : ''}
-    ${payload.letterhead.subtitle ? `<p>${esc(payload.letterhead.subtitle)}</p>` : ''}
+    <div>
+      <h1>${esc(payload.letterhead.organizationName)}</h1>
+      ${payload.letterhead.unitName ? `<h2>${esc(payload.letterhead.unitName)}</h2>` : ''}
+      ${payload.letterhead.subtitle ? `<p>${esc(payload.letterhead.subtitle)}</p>` : ''}
+    </div>
     ${
       payload.letterhead.showDateAndNumber
         ? `<div class="doc-meta">تاریخ گزارش: ${esc(formatJalaliDate(payload.date || todayIsoDate()))} &nbsp;|&nbsp; شماره: ${esc(payload.documentNumber || 'ثبت محلی')}</div>`
@@ -1690,40 +1756,66 @@ export function buildPrintableReportHtml(payload: ExportTablePayload): string {
 </html>`;
 }
 
-export function downloadPrintableReportHtml(payload: ExportTablePayload, fileName: string): void {
-  const html = buildPrintableReportHtml(payload);
+export async function downloadPrintableReportHtml(
+  payload: ExportTablePayload,
+  fileName: string,
+  options?: PrintableReportOptions
+): Promise<SaveFileOutcome> {
+  const html = buildPrintableReportHtml(payload, options);
   const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
-  triggerBlobDownload(blob, fileName.endsWith('.html') ? fileName : `${fileName}.html`);
+  return triggerBlobDownload(blob, sanitizeExportFileName(fileName, '.html'));
 }
 
-export function exportToPdfPrint(payload: ExportTablePayload): void {
-  const html = buildPrintableReportHtml(payload);
+export function exportToPdfPrint(
+  payload: ExportTablePayload,
+  options?: PrintableReportOptions
+): void {
+  // On Android WebView, hidden iframe.print() is ignored by the OS; deliver the printable A4 HTML file natively instead.
+  if (detectRuntimePlatform() === 'android') {
+    void downloadPrintableReportHtml(
+      payload,
+      `${payload.title || 'report'}-${todayIsoDate()}`,
+      options
+    );
+    return;
+  }
+
+  const html = buildPrintableReportHtml(payload, options);
 
   const iframe = document.createElement('iframe');
   iframe.style.position = 'fixed';
   iframe.style.right = '-9999px';
+  iframe.style.bottom = '0';
   iframe.style.width = '0';
   iframe.style.height = '0';
   iframe.style.border = '0';
   document.body.appendChild(iframe);
 
-  const doc = iframe.contentWindow?.document;
-  if (doc) {
+  const cleanup = () => {
+    if (iframe.parentNode) {
+      iframe.parentNode.removeChild(iframe);
+    }
+  };
+
+  const win = iframe.contentWindow;
+  const doc = win?.document;
+  if (win && doc) {
     doc.open();
     doc.write(html);
     doc.close();
+    win.addEventListener('afterprint', cleanup, { once: true });
     setTimeout(() => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      setTimeout(() => {
-        if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-      }, 2000);
+      win.focus();
+      win.print();
+      setTimeout(cleanup, 60000);
     }, 250);
+  } else {
+    cleanup();
   }
 }
 
-export function exportToJson(data: unknown, fileName: string): void {
+export async function exportToJson(data: unknown, fileName: string): Promise<SaveFileOutcome> {
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
-  triggerBlobDownload(blob, fileName.endsWith('.json') ? fileName : `${fileName}.json`);
+  return triggerBlobDownload(blob, sanitizeExportFileName(fileName, '.json'));
 }

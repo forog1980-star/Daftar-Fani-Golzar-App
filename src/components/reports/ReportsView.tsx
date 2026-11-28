@@ -35,9 +35,16 @@ import {
   downloadPrintableReportHtml,
   exportToExcelXlsx,
   exportToJson,
+  exportToPdfPrint,
   exportToWordDocx,
   ExportTablePayload,
 } from '../../utils/exportEngine';
+import {
+  detectRuntimePlatform,
+  openSavedDesktopFile,
+  revealSavedDesktopFile,
+  SaveFileOutcome,
+} from '../../utils/platformBridge';
 import { FloatingWindow } from '../layout/FloatingWindow';
 import { SectionReportExportBar } from '../layout/SectionReportExportBar';
 import { SignatureBlockEditor } from '../documents/SignatureBlockEditor';
@@ -150,13 +157,19 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
   const [letterhead, setLetterhead] = useState<LetterheadConfig>(store.settings.letterhead);
   const [signatures, setSignatures] = useState<SignatureSnapshot[]>([]);
   const [exportNotice, setExportNotice] = useState<{
+    kind?: 'success' | 'error';
     title: string;
     detail: string;
+    savedPath?: string;
+    canOpenDesktop?: boolean;
   } | null>(null);
 
   useEffect(() => {
     if (!exportNotice) return;
-    const timer = window.setTimeout(() => setExportNotice(null), 5000);
+    const timer = window.setTimeout(
+      () => setExportNotice(null),
+      exportNotice.canOpenDesktop ? 9000 : 5500
+    );
     return () => window.clearTimeout(timer);
   }, [exportNotice]);
 
@@ -894,33 +907,101 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
     selectedProjectPayments,
   ]);
 
+  const reportOutcomeToNotice = (label: string, outcome: SaveFileOutcome) => {
+    if (outcome.cancelled) return;
+    if (!outcome.ok) {
+      setExportNotice({
+        kind: 'error',
+        title: `خطا در ذخیره فایل ${label}`,
+        detail: outcome.error || `ذخیره فایل ${label} ناموفق بود.`,
+      });
+      return;
+    }
+    if (outcome.method === 'electron-disk' && outcome.savedPath) {
+      setExportNotice({
+        kind: 'success',
+        title: `خروجی ${label} ذخیره شد`,
+        detail: `فایل در مسیر زیر ذخیره شد: ${outcome.savedPath}`,
+        savedPath: outcome.savedPath,
+        canOpenDesktop: true,
+      });
+      return;
+    }
+    if (outcome.method === 'android-native') {
+      setExportNotice({
+        kind: 'success',
+        title: `خروجی ${label} روی گوشی ذخیره شد`,
+        detail: outcome.savedPath
+          ? `فایل در ${outcome.savedPath} ذخیره و پنجره اشتراک‌گذاری اندروید باز شد.`
+          : `فایل ${outcome.filename} برای باز کردن/اشتراک‌گذاری روی اندروید آماده شد.`,
+      });
+      return;
+    }
+    setExportNotice({
+      kind: 'success',
+      title: `خروجی ${label} آماده شد`,
+      detail: `فایل ${label} (${outcome.filename}) با موفقیت روی دستگاه بارگیری شد.`,
+    });
+  };
+
   const handleExport = async (format: 'word' | 'excel' | 'pdf' | 'json') => {
     const slug = `report-${reportType}-${todayIsoDate()}`;
-    if (format === 'word') {
-      await exportToWordDocx(reportPayload, slug);
+    try {
+      if (format === 'word') {
+        const outcome = await exportToWordDocx(reportPayload, slug);
+        reportOutcomeToNotice('Word', outcome);
+      } else if (format === 'excel') {
+        const outcome = await exportToExcelXlsx(reportPayload, slug);
+        reportOutcomeToNotice('Excel', outcome);
+      } else if (format === 'pdf') {
+        setSettingsModalOpen(false);
+        setPrintPreviewOpen(true);
+      } else {
+        const outcome = await exportToJson(reportPayload, slug);
+        reportOutcomeToNotice('JSON', outcome);
+      }
+    } catch (err) {
       setExportNotice({
-        title: 'خروجی Word آماده شد',
-        detail: 'فایل Word گزارش با سربرگ انتخابی تولید و روی دستگاه بارگیری شد.',
-      });
-    } else if (format === 'excel') {
-      await exportToExcelXlsx(reportPayload, slug);
-      setExportNotice({
-        title: 'خروجی Excel آماده شد',
-        detail: 'فایل Excel گزارش با موفقیت تولید و روی دستگاه ذخیره شد.',
-      });
-    } else if (format === 'pdf') {
-      setSettingsModalOpen(false);
-      setPrintPreviewOpen(true);
-    } else {
-      exportToJson(reportPayload, slug);
-      setExportNotice({
-        title: 'فایل JSON آماده شد',
-        detail: 'خروجی ساخت‌یافته داده‌های گزارش آماده و بارگیری شد.',
+        kind: 'error',
+        title: 'خطا در تولید فایل خروجی',
+        detail: err instanceof Error ? err.message : 'عملیات تولید خروجی با خطا مواجه شد.',
       });
     }
   };
 
-  const handleTriggerVisiblePrint = () => {
+  const handleLandscapePrint = async () => {
+    const landscapePayload: ExportTablePayload = {
+      ...reportPayload,
+      narrativeParagraphs:
+        displayMode === 'narrative'
+          ? reportPayload.narrativeParagraphs && reportPayload.narrativeParagraphs.length > 0
+            ? reportPayload.narrativeParagraphs
+            : narrativeParagraphs
+          : reportPayload.narrativeParagraphs,
+    };
+
+    if (detectRuntimePlatform() === 'android') {
+      const outcome = await downloadPrintableReportHtml(
+        landscapePayload,
+        `report-${reportType}-landscape-${todayIsoDate()}`,
+        { orientation: 'landscape' }
+      );
+      reportOutcomeToNotice('چاپ افقی', outcome);
+      return;
+    }
+
+    exportToPdfPrint(landscapePayload, { orientation: 'landscape' });
+  };
+
+  const handleTriggerVisiblePrint = async () => {
+    if (detectRuntimePlatform() === 'android') {
+      const outcome = await downloadPrintableReportHtml(
+        reportPayload,
+        `report-${reportType}-${todayIsoDate()}`
+      );
+      reportOutcomeToNotice('نسخه قابل چاپ', outcome);
+      return;
+    }
     const win = printIframeRef.current?.contentWindow;
     if (win) {
       win.focus();
@@ -1091,11 +1172,20 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               </button>
               <button
                 type="button"
+                onClick={() => void handleLandscapePrint()}
+                title="چاپ مستقیم گزارش فعلی در قالب برگه منظم و افقی (A4 Landscape)"
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#E5EBF2] px-3.5 text-xs font-medium text-[#243B5A] hover:bg-[#D5E0EE] cursor-pointer whitespace-nowrap"
+              >
+                <Printer className="h-3.5 w-3.5 shrink-0" />
+                <span>خروجی چاپ</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => handleExport('pdf')}
                 className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3.5 text-xs font-medium text-[#263448] hover:border-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer whitespace-nowrap"
               >
                 <Printer className="h-3.5 w-3.5 shrink-0" />
-                <span>چاپ / PDF</span>
+                <span>پیش‌نمایش / PDF</span>
               </button>
               <button
                 type="button"
@@ -1461,14 +1551,25 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
 
             <div className="rounded-xl border border-[#E2DDD0] bg-[#FFFFFF] p-4 space-y-2.5">
               <div className="text-xs font-semibold text-[#243B5A]">دریافت خروجی فوری</div>
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                 <button
                   type="button"
-                  onClick={() => handleExport('pdf')}
+                  onClick={() => {
+                    setSettingsModalOpen(false);
+                    void handleLandscapePrint();
+                  }}
                   className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-3 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
                 >
                   <Printer className="h-3.5 w-3.5" />
-                  <span>چاپ / PDF</span>
+                  <span>خروجی چاپ</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport('pdf')}
+                  className="inline-flex h-10 items-center justify-center gap-1.5 rounded-xl border border-[#D7D2C6] bg-[#FAF8F3] px-3 text-xs font-medium text-[#263448] hover:border-[#243B5A] cursor-pointer"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  <span>پیش‌نمایش PDF</span>
                 </button>
                 <button
                   type="button"
@@ -1533,7 +1634,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={handleTriggerVisiblePrint}
+                  onClick={() => void handleTriggerVisiblePrint()}
                   className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#243B5A] bg-[#243B5A] px-3.5 text-xs font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
                 >
                   <Printer className="h-3.5 w-3.5" />
@@ -1541,15 +1642,12 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    downloadPrintableReportHtml(
+                  onClick={async () => {
+                    const outcome = await downloadPrintableReportHtml(
                       reportPayload,
                       `report-${reportType}-${todayIsoDate()}`
                     );
-                    setExportNotice({
-                      title: 'نسخه قابل چاپ آماده شد',
-                      detail: 'فایل نسخه قابل چاپ گزارش با موفقیت روی دستگاه بارگیری شد.',
-                    });
+                    reportOutcomeToNotice('نسخه قابل چاپ', outcome);
                   }}
                   className="inline-flex h-9 items-center gap-1.5 rounded-xl border border-[#D7D2C6] bg-[#FFFFFF] px-3.5 text-xs font-medium text-[#243B5A] hover:border-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
                 >
@@ -1574,17 +1672,49 @@ export const ReportsView: React.FC<ReportsViewProps> = ({
       {/* Standard Themed Export Notification Window */}
       {exportNotice && (
         <div
-          role="status"
+          role={exportNotice.kind === 'error' ? 'alert' : 'status'}
           aria-live="polite"
-          className="fixed bottom-6 left-1/2 z-50 w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl border border-[#C6D5C4] bg-[#FFFFFF] p-4 shadow-[0_14px_34px_rgba(29,50,80,0.18)]"
+          className={`fixed bottom-6 left-1/2 z-50 w-[min(92vw,460px)] -translate-x-1/2 rounded-2xl border bg-[#FFFFFF] p-4 shadow-[0_14px_34px_rgba(29,50,80,0.18)] ${
+            exportNotice.kind === 'error' ? 'border-[#D8B4B4]' : 'border-[#C6D5C4]'
+          }`}
         >
           <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#E7ECE6] text-[#2D6A4F]">
+            <div
+              className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                exportNotice.kind === 'error'
+                  ? 'bg-[#FBF1F1] text-[#9E3B3B]'
+                  : 'bg-[#E7ECE6] text-[#2D6A4F]'
+              }`}
+            >
               <CheckCircle2 className="h-5 w-5" />
             </div>
-            <div className="min-w-0 flex-1 space-y-1">
-              <div className="text-xs font-bold text-[#1D3250]">{exportNotice.title}</div>
-              <p className="text-xs leading-5 text-[#5B6573]">{exportNotice.detail}</p>
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div
+                className={`text-xs font-bold ${
+                  exportNotice.kind === 'error' ? 'text-[#9E3B3B]' : 'text-[#1D3250]'
+                }`}
+              >
+                {exportNotice.title}
+              </div>
+              <p className="text-xs leading-5 text-[#5B6573] break-words">{exportNotice.detail}</p>
+              {exportNotice.canOpenDesktop && exportNotice.savedPath && (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => void openSavedDesktopFile(exportNotice.savedPath!)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[#243B5A] bg-[#243B5A] px-2.5 py-1 text-[11px] font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer"
+                  >
+                    <span>باز کردن فایل</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void revealSavedDesktopFile(exportNotice.savedPath!)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-[#D7D2C6] bg-[#FAF8F3] px-2.5 py-1 text-[11px] font-medium text-[#243B5A] hover:bg-[#E5EBF2] cursor-pointer"
+                  >
+                    <span>نمایش در پوشه</span>
+                  </button>
+                </div>
+              )}
             </div>
             <button
               type="button"

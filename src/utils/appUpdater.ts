@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
 import { registerSW } from 'virtual:pwa-register';
+import {
+  blobToBase64Raw,
+  detectRuntimePlatform,
+  invokeCapacitorPlugin,
+} from './platformBridge';
 
 export type AppUpdateStatus =
   | 'idle'
@@ -43,6 +48,8 @@ export interface VerifiedReleaseInstallers {
   status: ReleaseInstallersStatus;
   repoFullName: string;
   checkedApiUrl: string;
+  stableWindowsAssetUrl: string;
+  stableAndroidAssetUrl: string;
   releaseTag: string | null;
   releaseName: string | null;
   publishedAt: string | null;
@@ -50,6 +57,15 @@ export interface VerifiedReleaseInstallers {
   androidApk: VerifiedReleaseAsset | null;
   message: string;
   lastCheckedAt: string | null;
+}
+
+export interface DirectInstallerTarget {
+  url: string;
+  fileName: string;
+  isVerifiedPublished: boolean;
+  source: 'github-releases' | 'alternate-mirror' | 'stable-release-asset';
+  releaseTag: string | null;
+  sizeBytes: number;
 }
 
 export interface NetworkEndpointRecord {
@@ -78,9 +94,18 @@ export interface RetryBackoffOptions {
   onRetry?: (attempt: number, totalAttempts: number, delayMs: number) => void;
 }
 
+export type LocalBundleSource =
+  | 'electron-ota'
+  | 'electron-bundled'
+  | 'android-ota'
+  | 'android-bundled'
+  | 'web';
+
 export interface AppUpdateState {
   currentVersion: string;
   currentBuildId: string;
+  localBundleDir: string | null;
+  localBundleSource: LocalBundleSource;
   remoteVersion: string | null;
   remoteBuildId: string | null;
   remoteBuiltAt: string | null;
@@ -91,6 +116,7 @@ export interface AppUpdateState {
   fallbackSourceLabel: string | null;
   attemptedUrls: string[];
   retryStatusText: string | null;
+  updateProgressText: string | null;
   networkReport: NetworkDiagnosticSnapshot | null;
   needRefresh: boolean;
   offlineReady: boolean;
@@ -98,6 +124,7 @@ export interface AppUpdateState {
   swWarning: string | null;
   status: AppUpdateStatus;
   statusMessage: string;
+  errorMessage: string | null;
   errorCategory: UpdateErrorCategory;
   httpStatus: number | null;
   lastCheckedAt: string | null;
@@ -111,6 +138,17 @@ export const DEFAULT_GITHUB_OWNER = 'forog1980-star';
 export const DEFAULT_GITHUB_REPO = 'Daftar-Fani-Golzar-App';
 export const DEFAULT_GITHUB_REPO_FULL = `${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}`;
 
+export const DEFAULT_WINDOWS_EXE_FILENAME = 'Daftar-Fani-Golzar-Setup.exe';
+export const DEFAULT_ANDROID_APK_FILENAME = 'Daftar-Fani-Golzar.apk';
+
+/**
+ * Stable direct GitHub Releases Asset URLs (matching `.github/workflows/build-installers.yml`
+ * and `electron-builder.yml`). These URLs point directly to binary assets and NEVER open an
+ * HTML `/releases` listing page.
+ */
+export const OFFICIAL_WINDOWS_RELEASE_ASSET_URL = `https://github.com/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases/latest/download/${DEFAULT_WINDOWS_EXE_FILENAME}`;
+export const OFFICIAL_ANDROID_RELEASE_ASSET_URL = `https://github.com/${DEFAULT_GITHUB_OWNER}/${DEFAULT_GITHUB_REPO}/releases/latest/download/${DEFAULT_ANDROID_APK_FILENAME}`;
+
 export const OFFICIAL_GITHUB_APP_URL =
   'https://forog1980-star.github.io/Daftar-Fani-Golzar-App/';
 export const OFFICIAL_GITHUB_VERSION_URL =
@@ -120,8 +158,13 @@ export const OFFICIAL_GITHUB_RAW_VERSION_URL =
 export const OFFICIAL_GITHUB_API_VERSION_URL =
   'https://api.github.com/repos/forog1980-star/Daftar-Fani-Golzar-App/contents/public/version.json';
 
+export const DEFAULT_BACKOFF_MAX_RETRIES = 3;
+export const DEFAULT_BACKOFF_BASE_DELAY_MS = 500;
+export const DEFAULT_BACKOFF_MAX_DELAY_MS = 4000;
+export const NETWORK_ERROR_MESSAGE = 'Network error: check connection';
+
 export const LOCAL_APP_VERSION =
-  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.4.1';
+  typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '1.4.2';
 export const LOCAL_BUILD_ID =
   typeof __APP_BUILD_ID__ !== 'undefined' ? __APP_BUILD_ID__ : 'dev-local';
 
@@ -234,16 +277,17 @@ async function singleFetchText(
 
 /**
  * Performs an HTTPS fetch with configurable exponential backoff retries for transient failures.
- * Delays follow `min(maxDelayMs, baseDelayMs * 2^(attempt-1))` (e.g. 600ms -> 1200ms).
+ * Defaults to 3 retries after the initial attempt (4 total attempts) with increasing delays:
+ * `min(maxDelayMs, baseDelayMs * 2^(attempt-1))` (e.g. 500ms -> 1000ms -> 2000ms).
  */
 export async function fetchWithExponentialBackoff(
   targetUrl: string,
   headers?: Record<string, string>,
   options: RetryBackoffOptions = {}
 ): Promise<ResilientFetchResult> {
-  const maxRetries = Math.max(0, options.maxRetries ?? 2);
-  const baseDelayMs = Math.max(0, options.baseDelayMs ?? 600);
-  const maxDelayMs = Math.max(baseDelayMs, options.maxDelayMs ?? 4000);
+  const maxRetries = Math.max(0, options.maxRetries ?? DEFAULT_BACKOFF_MAX_RETRIES);
+  const baseDelayMs = Math.max(0, options.baseDelayMs ?? DEFAULT_BACKOFF_BASE_DELAY_MS);
+  const maxDelayMs = Math.max(baseDelayMs, options.maxDelayMs ?? DEFAULT_BACKOFF_MAX_DELAY_MS);
   const totalAttempts = maxRetries + 1;
 
   let lastResult: ResilientFetchResult = {
@@ -281,20 +325,43 @@ function loadSavedVersionUrl(): string {
   return window.localStorage.getItem(CUSTOM_VERSION_URL_KEY) || '';
 }
 
-function createInitialReleaseInstallers(sourceUrl: string): VerifiedReleaseInstallers {
+/**
+ * Builds canonical, stable direct GitHub Releases Asset URLs (`/releases/latest/download/<file>`)
+ * for the active repository.
+ */
+export function buildStableReleaseAssetUrls(sourceUrl?: string): {
+  repoFullName: string;
+  windowsExeUrl: string;
+  windowsExeName: string;
+  androidApkUrl: string;
+  androidApkName: string;
+} {
   const { owner, repo } = extractRepoFromSourceUrl(sourceUrl);
   const repoFullName = `${owner}/${repo}`;
   return {
-    status: 'idle',
     repoFullName,
-    checkedApiUrl: `https://api.github.com/repos/${repoFullName}/releases`,
+    windowsExeUrl: `https://github.com/${repoFullName}/releases/latest/download/${DEFAULT_WINDOWS_EXE_FILENAME}`,
+    windowsExeName: DEFAULT_WINDOWS_EXE_FILENAME,
+    androidApkUrl: `https://github.com/${repoFullName}/releases/latest/download/${DEFAULT_ANDROID_APK_FILENAME}`,
+    androidApkName: DEFAULT_ANDROID_APK_FILENAME,
+  };
+}
+
+function createInitialReleaseInstallers(sourceUrl: string): VerifiedReleaseInstallers {
+  const stable = buildStableReleaseAssetUrls(sourceUrl);
+  return {
+    status: 'idle',
+    repoFullName: stable.repoFullName,
+    checkedApiUrl: `https://api.github.com/repos/${stable.repoFullName}/releases`,
+    stableWindowsAssetUrl: stable.windowsExeUrl,
+    stableAndroidAssetUrl: stable.androidApkUrl,
     releaseTag: null,
     releaseName: null,
     publishedAt: null,
     windowsExe: null,
     androidApk: null,
     message:
-      'برای بررسی انتشار فایل‌های نصبی ویندوز (EXE) و اندروید (APK)، بررسی به‌روزرسانی را اجرا کنید.',
+      'لینک‌های دانلود مستقیم روی آدرس پایدار فایل‌های GitHub Releases تنظیم شده‌اند. پیش از دانلود، انتشار فایل به‌صورت خودکار بررسی می‌شود.',
     lastCheckedAt: null,
   };
 }
@@ -304,6 +371,13 @@ const initialSavedUrl = loadSavedVersionUrl();
 let currentState: AppUpdateState = {
   currentVersion: LOCAL_APP_VERSION,
   currentBuildId: LOCAL_BUILD_ID,
+  localBundleDir: null,
+  localBundleSource:
+    detectRuntimePlatform() === 'electron'
+      ? 'electron-bundled'
+      : detectRuntimePlatform() === 'android'
+        ? 'android-bundled'
+        : 'web',
   remoteVersion: null,
   remoteBuildId: null,
   remoteBuiltAt: null,
@@ -314,6 +388,7 @@ let currentState: AppUpdateState = {
   fallbackSourceLabel: null,
   attemptedUrls: [],
   retryStatusText: null,
+  updateProgressText: null,
   networkReport: null,
   needRefresh: false,
   offlineReady: false,
@@ -321,6 +396,7 @@ let currentState: AppUpdateState = {
   swWarning: null,
   status: 'idle',
   statusMessage: '',
+  errorMessage: null,
   errorCategory: null,
   httpStatus: null,
   lastCheckedAt:
@@ -329,6 +405,10 @@ let currentState: AppUpdateState = {
 };
 
 const listeners = new Set<() => void>();
+
+export function getAppUpdateState(): AppUpdateState {
+  return currentState;
+}
 
 function emit(patch: Partial<AppUpdateState>) {
   currentState = { ...currentState, ...patch };
@@ -667,9 +747,20 @@ function isValidDirectBinaryUrl(url: unknown, ext: '.exe' | '.apk', requireGitHu
   try {
     const parsed = new URL(url.trim());
     if (parsed.protocol !== 'https:') return false;
-    if (requireGitHubHost && !parsed.hostname.endsWith('github.com')) return false;
-    // Reject generic HTML pages like /releases or /releases/latest
-    if (/\/releases\/?$/i.test(parsed.pathname) || /\/releases\/latest\/?$/i.test(parsed.pathname)) {
+    const isGitHubHost = parsed.hostname === 'github.com' || parsed.hostname.endsWith('.github.com');
+    if (requireGitHubHost && !isGitHubHost) return false;
+    // Reject generic HTML pages like /releases, /releases/latest, /releases/tag/*, or /blob/*
+    if (
+      /\/releases\/?$/i.test(parsed.pathname) ||
+      /\/releases\/latest\/?$/i.test(parsed.pathname) ||
+      /\/releases\/tag\//i.test(parsed.pathname)
+    ) {
+      return false;
+    }
+    if (
+      isGitHubHost &&
+      !/\/releases\/(latest\/)?download\//i.test(parsed.pathname)
+    ) {
       return false;
     }
     return parsed.pathname.toLowerCase().endsWith(ext);
@@ -715,11 +806,13 @@ export function extractVerifiedInstallersFromReleases(
   } | null
 ): VerifiedReleaseInstallers {
   const checkedApiUrl = `https://api.github.com/repos/${repoFullName}/releases`;
+  const stableWindowsAssetUrl = `https://github.com/${repoFullName}/releases/latest/download/${DEFAULT_WINDOWS_EXE_FILENAME}`;
+  const stableAndroidAssetUrl = `https://github.com/${repoFullName}/releases/latest/download/${DEFAULT_ANDROID_APK_FILENAME}`;
   const mirrorTag = mirrorConfig?.version ? `v${mirrorConfig.version.replace(/^v/i, '')}` : 'mirror';
   const mirrorExe = mirrorConfig
     ? buildMirrorAssetIfValid(
         mirrorConfig.installers.windowsExeUrl,
-        mirrorConfig.installers.windowsExeName || 'Daftar-Fani-Golzar-Setup.exe',
+        mirrorConfig.installers.windowsExeName || DEFAULT_WINDOWS_EXE_FILENAME,
         mirrorConfig.installers.windowsExeSizeBytes,
         '.exe',
         mirrorTag,
@@ -729,7 +822,7 @@ export function extractVerifiedInstallersFromReleases(
   const mirrorApk = mirrorConfig
     ? buildMirrorAssetIfValid(
         mirrorConfig.installers.androidApkUrl,
-        mirrorConfig.installers.androidApkName || 'Daftar-Fani-Golzar.apk',
+        mirrorConfig.installers.androidApkName || DEFAULT_ANDROID_APK_FILENAME,
         mirrorConfig.installers.androidApkSizeBytes,
         '.apk',
         mirrorTag,
@@ -743,6 +836,8 @@ export function extractVerifiedInstallersFromReleases(
         status: mirrorExe && mirrorApk ? 'available' : 'partial',
         repoFullName,
         checkedApiUrl,
+        stableWindowsAssetUrl,
+        stableAndroidAssetUrl,
         releaseTag: mirrorTag,
         releaseName: mirrorTag,
         publishedAt: mirrorConfig?.builtAt ?? null,
@@ -756,6 +851,8 @@ export function extractVerifiedInstallersFromReleases(
       status: 'error',
       repoFullName,
       checkedApiUrl,
+      stableWindowsAssetUrl,
+      stableAndroidAssetUrl,
       releaseTag: null,
       releaseName: null,
       publishedAt: null,
@@ -851,6 +948,8 @@ export function extractVerifiedInstallersFromReleases(
       status: 'no-release',
       repoFullName,
       checkedApiUrl,
+      stableWindowsAssetUrl,
+      stableAndroidAssetUrl,
       releaseTag: null,
       releaseName: null,
       publishedAt: null,
@@ -882,6 +981,8 @@ export function extractVerifiedInstallersFromReleases(
       status: 'available',
       repoFullName,
       checkedApiUrl,
+      stableWindowsAssetUrl,
+      stableAndroidAssetUrl,
       releaseTag,
       releaseName,
       publishedAt,
@@ -897,6 +998,8 @@ export function extractVerifiedInstallersFromReleases(
       status: 'partial',
       repoFullName,
       checkedApiUrl,
+      stableWindowsAssetUrl,
+      stableAndroidAssetUrl,
       releaseTag,
       releaseName,
       publishedAt,
@@ -913,6 +1016,8 @@ export function extractVerifiedInstallersFromReleases(
     status: 'no-release',
     repoFullName,
     checkedApiUrl,
+    stableWindowsAssetUrl,
+    stableAndroidAssetUrl,
     releaseTag,
     releaseName,
     publishedAt,
@@ -922,6 +1027,46 @@ export function extractVerifiedInstallersFromReleases(
       'در نسخه منتشرشده Releases، فایل نصبی مستقیم EXE یا APK یافت نشد (فایل نصبی هنوز منتشر نشده است).',
     lastCheckedAt: checkedAt,
   };
+}
+
+/**
+ * Resolves the direct binary download target for Windows (EXE) or Android (APK).
+ * Always returns a direct binary GitHub Releases Asset URL (verified `browser_download_url`
+ * when published, or the canonical stable `/releases/latest/download/<filename>` Asset URL)
+ * and NEVER returns a generic `/releases` HTML page.
+ */
+export function getDirectInstallerTarget(
+  releaseInfo: VerifiedReleaseInstallers,
+  platform: 'windows' | 'android'
+): DirectInstallerTarget {
+  const verified = platform === 'windows' ? releaseInfo.windowsExe : releaseInfo.androidApk;
+  if (verified) {
+    return {
+      url: verified.downloadUrl,
+      fileName: verified.name,
+      isVerifiedPublished: true,
+      source: verified.source,
+      releaseTag: verified.releaseTag,
+      sizeBytes: verified.sizeBytes,
+    };
+  }
+  return platform === 'windows'
+    ? {
+        url: releaseInfo.stableWindowsAssetUrl,
+        fileName: DEFAULT_WINDOWS_EXE_FILENAME,
+        isVerifiedPublished: false,
+        source: 'stable-release-asset',
+        releaseTag: null,
+        sizeBytes: 0,
+      }
+    : {
+        url: releaseInfo.stableAndroidAssetUrl,
+        fileName: DEFAULT_ANDROID_APK_FILENAME,
+        isVerifiedPublished: false,
+        source: 'stable-release-asset',
+        releaseTag: null,
+        sizeBytes: 0,
+      };
 }
 
 /**
@@ -1016,8 +1161,8 @@ export async function checkVerifiedReleaseInstallers(
   retryOptions?: RetryBackoffOptions
 ): Promise<VerifiedReleaseInstallers> {
   const sourceUrl = overrideUrl !== undefined ? overrideUrl : currentState.versionSourceUrl;
-  const { owner, repo } = extractRepoFromSourceUrl(sourceUrl);
-  const repoFullName = `${owner}/${repo}`;
+  const stable = buildStableReleaseAssetUrls(sourceUrl);
+  const repoFullName = stable.repoFullName;
   const checkedApiUrl = `https://api.github.com/repos/${repoFullName}/releases`;
   const nowIso = new Date().toISOString();
 
@@ -1026,6 +1171,8 @@ export async function checkVerifiedReleaseInstallers(
       status: 'offline',
       repoFullName,
       checkedApiUrl,
+      stableWindowsAssetUrl: stable.windowsExeUrl,
+      stableAndroidAssetUrl: stable.androidApkUrl,
       releaseTag: null,
       releaseName: null,
       publishedAt: null,
@@ -1044,6 +1191,8 @@ export async function checkVerifiedReleaseInstallers(
       status: 'loading',
       repoFullName,
       checkedApiUrl,
+      stableWindowsAssetUrl: stable.windowsExeUrl,
+      stableAndroidAssetUrl: stable.androidApkUrl,
       message: 'در حال بررسی فایل‌های نصبی منتشرشده در Releases گیت‌هاب...',
     },
   });
@@ -1075,6 +1224,8 @@ export async function checkVerifiedReleaseInstallers(
       status: 'error',
       repoFullName,
       checkedApiUrl,
+      stableWindowsAssetUrl: stable.windowsExeUrl,
+      stableAndroidAssetUrl: stable.androidApkUrl,
       releaseTag: null,
       releaseName: null,
       publishedAt: null,
@@ -1101,6 +1252,8 @@ export async function checkVerifiedReleaseInstallers(
       status: 'error',
       repoFullName,
       checkedApiUrl,
+      stableWindowsAssetUrl: stable.windowsExeUrl,
+      stableAndroidAssetUrl: stable.androidApkUrl,
       releaseTag: null,
       releaseName: null,
       publishedAt: null,
@@ -1128,6 +1281,8 @@ export async function checkVerifiedReleaseInstallers(
       status: 'error',
       repoFullName,
       checkedApiUrl,
+      stableWindowsAssetUrl: stable.windowsExeUrl,
+      stableAndroidAssetUrl: stable.androidApkUrl,
       releaseTag: null,
       releaseName: null,
       publishedAt: null,
@@ -1186,23 +1341,140 @@ function buildReadableNetworkReport(
   };
 }
 
+/**
+ * Resolves the active local app version directly from the installed native app directory:
+ * - Windows Electron: reads version.json from D:\Daftar-Fani-Golzar\AppBundle\current (or bundled dist)
+ * - Android Capacitor: reads Capacitor WebView serverBasePath & DATA/app-bundle/active-meta.json
+ * - Web / Chrome PWA: uses the active build version
+ */
+export async function refreshNativeLocalVersionInfo(): Promise<{
+  version: string;
+  buildId: string;
+  localBundleDir: string | null;
+  localBundleSource: LocalBundleSource;
+}> {
+  const platform = detectRuntimePlatform();
+
+  if (platform === 'electron' && typeof window !== 'undefined' && window.desktopBridge?.getLocalVersionInfo) {
+    try {
+      const info = await window.desktopBridge.getLocalVersionInfo();
+      if (info?.ok) {
+        const version = info.version || LOCAL_APP_VERSION;
+        const buildId = info.buildId || LOCAL_BUILD_ID;
+        const localBundleSource: LocalBundleSource = info.isOtaBundle
+          ? 'electron-ota'
+          : 'electron-bundled';
+        emit({
+          currentVersion: version,
+          currentBuildId: buildId,
+          localBundleDir: info.activeDistDir || null,
+          localBundleSource,
+        });
+        return { version, buildId, localBundleDir: info.activeDistDir || null, localBundleSource };
+      }
+    } catch {
+      // Fall back to compiled constants
+    }
+  }
+
+  if (platform === 'android' && typeof window !== 'undefined' && window.Capacitor) {
+    try {
+      const basePathRes = await invokeCapacitorPlugin<{ path?: string }>(
+        'WebView',
+        'getServerBasePath',
+        {}
+      );
+      const serverBasePath = typeof basePathRes?.path === 'string' && basePathRes.path.trim()
+        ? basePathRes.path.trim()
+        : null;
+      const isOta = Boolean(serverBasePath && serverBasePath.includes('app-bundle'));
+      let version = LOCAL_APP_VERSION;
+      let buildId = LOCAL_BUILD_ID;
+
+      try {
+        const metaRes = await invokeCapacitorPlugin<{ data?: string }>('Filesystem', 'readFile', {
+          path: 'app-bundle/active-meta.json',
+          directory: 'DATA',
+          encoding: 'utf8',
+        });
+        if (metaRes?.data && isOta) {
+          const parsed = JSON.parse(metaRes.data) as { version?: string; buildId?: string };
+          if (parsed.version && compareSemver(parsed.version, LOCAL_APP_VERSION) >= 0) {
+            version = parsed.version;
+            if (parsed.buildId) buildId = parsed.buildId;
+          }
+        }
+      } catch {
+        // No OTA metadata yet; using bundled APK version
+      }
+
+      const localBundleSource: LocalBundleSource = isOta ? 'android-ota' : 'android-bundled';
+      const localBundleDir = serverBasePath || 'assets/public (حافظه داخلی اپلیکیشن اندروید)';
+      emit({
+        currentVersion: version,
+        currentBuildId: buildId,
+        localBundleDir,
+        localBundleSource,
+      });
+      return { version, buildId, localBundleDir, localBundleSource };
+    } catch {
+      // Fall back to compiled constants
+    }
+  }
+
+  return {
+    version: currentState.currentVersion || LOCAL_APP_VERSION,
+    buildId: currentState.currentBuildId || LOCAL_BUILD_ID,
+    localBundleDir: currentState.localBundleDir,
+    localBundleSource: currentState.localBundleSource,
+  };
+}
+
+/**
+ * Resolves the GitHub Pages base URL used to download OTA native bundles (`native-bundle/update-manifest.json`).
+ */
+export function resolveUpdateBundleBaseUrl(customUrl?: string): string {
+  const trimmed = (customUrl || '').trim();
+  if (trimmed) {
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+        const cleanPath = parsed.pathname.replace(/\/version\.json$/i, '/');
+        return `${parsed.origin}${cleanPath.endsWith('/') ? cleanPath : `${cleanPath}/`}`;
+      }
+      if (parsed.hostname.endsWith('.github.io')) {
+        const cleanPath = parsed.pathname.replace(/\/version\.json$/i, '/');
+        return `${parsed.origin}${cleanPath.endsWith('/') ? cleanPath : `${cleanPath}/`}`;
+      }
+    } catch {
+      // Fall through to repo extraction
+    }
+  }
+  const { owner, repo } = extractRepoFromSourceUrl(trimmed);
+  return `https://${owner}.github.io/${repo}/`;
+}
+
 export async function checkForAppUpdate(
   overrideUrl?: string,
   retryOptions?: RetryBackoffOptions
 ): Promise<AppUpdateState> {
+  const localInfo = await refreshNativeLocalVersionInfo();
   const rawSource = overrideUrl !== undefined ? overrideUrl : currentState.versionSourceUrl;
   const validation = validateVersionSourceUrl(rawSource);
 
   if (!validation.valid) {
+    const errText = validation.error || 'نشانی فایل version.json نامعتبر است.';
     emit({
       checkedUrl: validation.resolvedUrl,
       status: 'error',
       errorCategory: 'invalid-url',
+      errorMessage: errText,
       httpStatus: null,
       swWarning: null,
       retryStatusText: null,
+      updateProgressText: null,
       networkReport: null,
-      statusMessage: validation.error || 'نشانی فایل version.json نامعتبر است.',
+      statusMessage: errText,
     });
     return currentState;
   }
@@ -1215,11 +1487,12 @@ export async function checkForAppUpdate(
       checkedUrl: baseManifestUrl,
       status: 'offline',
       errorCategory: 'offline',
+      errorMessage: NETWORK_ERROR_MESSAGE,
       httpStatus: null,
       retryStatusText: null,
+      updateProgressText: null,
       networkReport: offlineReport,
-      statusMessage:
-        'دستگاه در حالت آفلاین است. برای بررسی به‌روزرسانی، ابتدا به اینترنت متصل شوید و مجدداً دکمه «بررسی به‌روزرسانی» را بزنید.',
+      statusMessage: NETWORK_ERROR_MESSAGE,
     });
     return currentState;
   }
@@ -1228,11 +1501,13 @@ export async function checkForAppUpdate(
     checkedUrl: baseManifestUrl,
     status: 'checking',
     errorCategory: null,
+    errorMessage: null,
     httpStatus: null,
     swWarning: null,
     retryStatusText: null,
+    updateProgressText: null,
     networkReport: null,
-    statusMessage: 'در حال اتصال به سرور و بررسی آخرین نسخه نرم‌افزار...',
+    statusMessage: 'در حال اتصال به گیت‌هاب و بررسی آخرین نسخه نرم‌افزار...',
   });
 
   const nowIso = new Date().toISOString();
@@ -1289,12 +1564,13 @@ export async function checkForAppUpdate(
     activeUrl = candidate;
 
     const res = await fetchWithExponentialBackoff(bustUrl.toString(), undefined, {
-      maxRetries: retryOptions?.maxRetries ?? 2,
-      baseDelayMs: retryOptions?.baseDelayMs ?? 600,
-      maxDelayMs: retryOptions?.maxDelayMs ?? 3000,
+      maxRetries: retryOptions?.maxRetries ?? DEFAULT_BACKOFF_MAX_RETRIES,
+      baseDelayMs: retryOptions?.baseDelayMs ?? DEFAULT_BACKOFF_BASE_DELAY_MS,
+      maxDelayMs: retryOptions?.maxDelayMs ?? DEFAULT_BACKOFF_MAX_DELAY_MS,
       onRetry: (nextAttempt, totalAttempts, delayMs) => {
+        retryOptions?.onRetry?.(nextAttempt, totalAttempts, delayMs);
         emit({
-          retryStatusText: `عدم پاسخ از ${label} — تلاش مجدد (${nextAttempt} از ${totalAttempts}) پس از ${Math.round(delayMs / 100) / 10} ثانیه...`,
+          retryStatusText: `عدم پاسخ از ${label} — تلاش مجدد (${nextAttempt - 1} از ${totalAttempts - 1}) پس از ${Math.round(delayMs / 100) / 10} ثانیه...`,
         });
       },
     });
@@ -1350,40 +1626,42 @@ export async function checkForAppUpdate(
     };
   }
 
-  // 3. Also query GitHub Releases (serves both direct EXE/APK downloads AND version fallback if version.json failed!)
-  const releaseInfo = await checkVerifiedReleaseInstallers(rawSource, retryOptions);
-
-  // If ALL version.json mirrors failed, fall back to published GitHub Release tag_name as version source!
-  if (!parsedData && releaseInfo.releaseTag && /\d+\.\d+/.test(releaseInfo.releaseTag)) {
-    const cleanTagVersion = releaseInfo.releaseTag.replace(/^v/i, '').trim();
-    parsedData = {
-      version: cleanTagVersion,
-      builtAt: releaseInfo.publishedAt ?? undefined,
-      notes: [],
-    };
-    activeUrl = releaseInfo.checkedApiUrl;
-    usedFallback = true;
-    fallbackSourceLabel = 'GitHub Releases API (نسخه برچسب انتشار)';
-    endpointRecords.push({
-      label: 'GitHub Releases API',
-      url: releaseInfo.checkedApiUrl,
-      outcome: 'ok',
-      httpStatus: 200,
-      attempts: 1,
-    });
-  } else if (!parsedData) {
-    endpointRecords.push({
-      label: 'GitHub Releases API',
-      url: releaseInfo.checkedApiUrl,
-      outcome: releaseInfo.status === 'error' ? 'network-error' : 'ok',
-      attempts: 1,
-    });
+  // 3. Only query GitHub Releases as a last-resort version fallback if ALL version.json mirrors failed
+  if (!parsedData) {
+    const releaseInfo = await checkVerifiedReleaseInstallers(rawSource, retryOptions);
+    if (releaseInfo.releaseTag && /\d+\.\d+/.test(releaseInfo.releaseTag)) {
+      const cleanTagVersion = releaseInfo.releaseTag.replace(/^v/i, '').trim();
+      parsedData = {
+        version: cleanTagVersion,
+        builtAt: releaseInfo.publishedAt ?? undefined,
+        notes: [],
+      };
+      activeUrl = releaseInfo.checkedApiUrl;
+      usedFallback = true;
+      fallbackSourceLabel = 'GitHub Releases API (نسخه برچسب انتشار)';
+      endpointRecords.push({
+        label: 'GitHub Releases API',
+        url: releaseInfo.checkedApiUrl,
+        outcome: 'ok',
+        httpStatus: 200,
+        attempts: 1,
+      });
+    } else {
+      endpointRecords.push({
+        label: 'GitHub Releases API',
+        url: releaseInfo.checkedApiUrl,
+        outcome: releaseInfo.status === 'error' ? 'network-error' : 'ok',
+        attempts: 1,
+      });
+    }
   }
 
   if (!parsedData) {
     const networkReport = buildReadableNetworkReport(endpointRecords, false);
 
     if (hadInvalidJson && lastFetchRes.ok) {
+      const jsonErr =
+        'پاسخ دریافت‌شده از نشانی version.json قالب معتبر JSON ندارد یا فاقد فیلد نسخه (version) است.';
       emit({
         checkedUrl: activeUrl,
         usedFallback: false,
@@ -1394,10 +1672,10 @@ export async function checkForAppUpdate(
         lastCheckedAt: nowIso,
         status: 'error',
         errorCategory: 'json',
+        errorMessage: jsonErr,
         httpStatus: lastFetchRes.status,
         swWarning,
-        statusMessage:
-          'پاسخ دریافت‌شده از نشانی version.json قالب معتبر JSON ندارد یا فاقد فیلد نسخه (version) است.',
+        statusMessage: jsonErr,
       });
       return currentState;
     }
@@ -1416,26 +1694,13 @@ export async function checkForAppUpdate(
         lastCheckedAt: nowIso,
         status: 'error',
         errorCategory: category,
+        errorMessage: NETWORK_ERROR_MESSAGE,
         httpStatus: null,
         swWarning,
-        statusMessage:
-          lastFetchRes.networkError === 'timeout'
-            ? 'پس از چند نوبت تلاش مجدد (توقف نمایی)، پاسخی از سرورهای بررسی نسخه دریافت نشد.'
-            : category === 'cors'
-              ? 'خطای شبکه یا محدودیت CORS هنگام بررسی نسخه نرم‌افزار در مرورگر.'
-              : 'اتصال شبکه‌ای به سرورهای گیت‌هاب پس از تلاش مجدد برقرار نشد.',
+        statusMessage: NETWORK_ERROR_MESSAGE,
       });
       return currentState;
     }
-
-    const statusHint =
-      lastFetchRes.status === 404
-        ? 'فایل version.json در نشانی‌های بررسی‌شده یافت نشد (HTTP 404).'
-        : lastFetchRes.status === 403
-          ? 'دسترسی به سرور بررسی نسخه مجاز نبود یا با محدودیت موقت مواجه شد (HTTP 403).'
-          : lastFetchRes.status >= 500
-            ? `سرور میزبان با خطای داخلی مواجه شد (HTTP ${lastFetchRes.status}).`
-            : `دریافت اطلاعات نسخه با پاسخ ناموفق HTTP ${lastFetchRes.status} مواجه شد.`;
 
     emit({
       checkedUrl: activeUrl,
@@ -1447,14 +1712,17 @@ export async function checkForAppUpdate(
       lastCheckedAt: nowIso,
       status: 'error',
       errorCategory: 'http',
+      errorMessage: NETWORK_ERROR_MESSAGE,
       httpStatus: lastFetchRes.status,
       swWarning,
-      statusMessage: statusHint,
+      statusMessage: NETWORK_ERROR_MESSAGE,
     });
     return currentState;
   }
 
-  const remoteVersion = (parsedData.version || LOCAL_APP_VERSION).trim();
+  const activeLocalVersion = localInfo.version || LOCAL_APP_VERSION;
+  const activeLocalBuildId = localInfo.buildId || LOCAL_BUILD_ID;
+  const remoteVersion = (parsedData.version || activeLocalVersion).trim();
   const remoteBuildId = typeof parsedData.buildId === 'string' ? parsedData.buildId.trim() : null;
   const remoteBuiltAt = typeof parsedData.builtAt === 'string' ? parsedData.builtAt.trim() : null;
   const rawNotes = Array.isArray(parsedData.notes)
@@ -1466,13 +1734,13 @@ export async function checkForAppUpdate(
     (n): n is string => typeof n === 'string' && n.trim().length > 0
   );
 
-  if (remoteVersion && compareSemver(remoteVersion, LOCAL_APP_VERSION) > 0) {
+  if (remoteVersion && compareSemver(remoteVersion, activeLocalVersion) > 0) {
     foundUpdate = true;
   } else if (
     remoteBuildId &&
     remoteBuildId !== 'dev-local' &&
-    LOCAL_BUILD_ID !== 'dev-local' &&
-    remoteBuildId !== LOCAL_BUILD_ID
+    activeLocalBuildId !== 'dev-local' &&
+    remoteBuildId !== activeLocalBuildId
   ) {
     foundUpdate = true;
   }
@@ -1495,6 +1763,7 @@ export async function checkForAppUpdate(
       lastCheckedAt: nowIso,
       status: 'update-available',
       errorCategory: null,
+      errorMessage: null,
       httpStatus: lastFetchRes.status || 200,
       swWarning,
       statusMessage: `نسخه جدید (${remoteVersion}) در مخزن منتشر شده است. برای دریافت آخرین تغییرات اقدام کنید.`,
@@ -1515,6 +1784,7 @@ export async function checkForAppUpdate(
       lastCheckedAt: nowIso,
       status: 'up-to-date',
       errorCategory: null,
+      errorMessage: null,
       httpStatus: lastFetchRes.status || 200,
       swWarning,
       statusMessage: `بررسی نسخه با موفقیت انجام شد؛ نرم‌افزار هم‌اکنون روی آخرین نسخه (${remoteVersion}) قرار دارد.`,
@@ -1535,7 +1805,8 @@ export async function applyAppUpdate(forceHardRefresh = false): Promise<void> {
     emit({
       status: 'offline',
       errorCategory: 'offline',
-      statusMessage: 'برای دریافت فایل‌های نسخه جدید از سرور باید به اینترنت متصل باشید.',
+      errorMessage: NETWORK_ERROR_MESSAGE,
+      statusMessage: NETWORK_ERROR_MESSAGE,
     });
     return;
   }
@@ -1543,6 +1814,7 @@ export async function applyAppUpdate(forceHardRefresh = false): Promise<void> {
   emit({
     status: 'updating',
     errorCategory: null,
+    errorMessage: null,
     statusMessage: 'در حال دریافت آخرین تغییرات و به‌روزرسانی محلی (بدون تغییر در اطلاعات شما)...',
   });
 
@@ -1570,12 +1842,323 @@ export async function applyAppUpdate(forceHardRefresh = false): Promise<void> {
   }
 }
 
+function isTextBundleFile(relPath: string): boolean {
+  return /\.(html?|js|mjs|css|json|svg|txt|webmanifest|xml)$/i.test(relPath);
+}
+
+async function fetchBinaryWithBackoff(
+  url: string,
+  maxRetries = DEFAULT_BACKOFF_MAX_RETRIES
+): Promise<Blob | null> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 15000) : null;
+    try {
+      const res = await fetch(url, { cache: 'no-store', signal: controller?.signal });
+      if (res.ok) {
+        return await res.blob();
+      }
+      if (res.status === 404 || res.status === 403 || res.status === 400) {
+        return null;
+      }
+    } catch {
+      // Retry transient network failure
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+    if (attempt < maxRetries) {
+      const delayMs = Math.min(
+        DEFAULT_BACKOFF_MAX_DELAY_MS,
+        DEFAULT_BACKOFF_BASE_DELAY_MS * Math.pow(2, attempt)
+      );
+      await sleep(delayMs);
+    }
+  }
+  return null;
+}
+
+/**
+ * Downloads the latest relative web bundle directly into Android's local app directory
+ * (`DATA/app-bundle/v_<buildId>`) and switches Capacitor's built-in WebView serverBasePath
+ * to boot the updated bundle immediately on `https://localhost` (100% preserving IndexedDB).
+ */
+export async function applyAndroidNativeBundleUpdate(
+  baseUrl: string
+): Promise<{ ok: boolean; version?: string; filesCount?: number; error?: string }> {
+  const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+  const candidateBases = [`${normalizedBase}native-bundle/`, normalizedBase];
+
+  let manifest: { version?: string; buildId?: string; builtAt?: string; files?: string[] } | null = null;
+  let activeBase = '';
+
+  for (const candidateBase of candidateBases) {
+    const mRes = await fetchWithExponentialBackoff(
+      `${candidateBase}update-manifest.json?t=${Date.now()}`
+    );
+    if (mRes.ok) {
+      try {
+        const parsed = JSON.parse(mRes.bodyText) as {
+          version?: string;
+          buildId?: string;
+          builtAt?: string;
+          files?: string[];
+        };
+        if (parsed && Array.isArray(parsed.files) && parsed.files.includes('index.html')) {
+          manifest = parsed;
+          activeBase = candidateBase;
+          break;
+        }
+      } catch {
+        // Try next candidate
+      }
+    }
+  }
+
+  if (!manifest || !activeBase || !manifest.files) {
+    return { ok: false, error: NETWORK_ERROR_MESSAGE };
+  }
+
+  const safeFiles = manifest.files.filter(
+    (f) =>
+      typeof f === 'string' &&
+      f.length > 0 &&
+      !f.includes('..') &&
+      !f.startsWith('/') &&
+      !f.includes('\\')
+  );
+  if (!safeFiles.includes('index.html') || safeFiles.length > 250) {
+    return { ok: false, error: 'فهرست فایل‌های به‌روزرسانی اندروید نامعتبر است.' };
+  }
+
+  const safeTag = String(manifest.buildId || manifest.version || Date.now()).replace(
+    /[^a-zA-Z0-9._-]/g,
+    '_'
+  );
+  const bundleDirRel = `app-bundle/v_${safeTag}`;
+
+  for (let idx = 0; idx < safeFiles.length; idx++) {
+    const rel = safeFiles[idx];
+    emit({
+      status: 'updating',
+      updateProgressText: `در حال دریافت و ذخیره فایل ${idx + 1} از ${safeFiles.length} در دایرکتوری محلی برنامه...`,
+    });
+
+    const fileUrl = `${activeBase}${rel.split('/').map(encodeURIComponent).join('/')}?t=${Date.now()}`;
+    if (isTextBundleFile(rel)) {
+      const textRes = await fetchWithExponentialBackoff(fileUrl);
+      if (!textRes.ok) {
+        return { ok: false, error: NETWORK_ERROR_MESSAGE };
+      }
+      let content = textRes.bodyText;
+      if (rel === 'index.html') {
+        if (!/<html/i.test(content) && !/<!doctype/i.test(content)) {
+          return { ok: false, error: 'فایل index.html دریافت‌شده معتبر نیست.' };
+        }
+        content = content.replace(/(["'(])\/Daftar-Fani-Golzar-App\//gi, '$1./');
+      }
+      const written = await invokeCapacitorPlugin('Filesystem', 'writeFile', {
+        path: `${bundleDirRel}/${rel}`,
+        data: content,
+        directory: 'DATA',
+        encoding: 'utf8',
+        recursive: true,
+      });
+      if (written === null) {
+        return { ok: false, error: 'دسترسی نوشتن در دایرکتوری محلی اپلیکیشن اندروید فعال نیست.' };
+      }
+    } else {
+      const blob = await fetchBinaryWithBackoff(fileUrl);
+      if (!blob) {
+        return { ok: false, error: NETWORK_ERROR_MESSAGE };
+      }
+      const b64 = await blobToBase64Raw(blob);
+      const written = await invokeCapacitorPlugin('Filesystem', 'writeFile', {
+        path: `${bundleDirRel}/${rel}`,
+        data: b64,
+        directory: 'DATA',
+        recursive: true,
+      });
+      if (written === null) {
+        return { ok: false, error: 'دسترسی نوشتن در دایرکتوری محلی اپلیکیشن اندروید فعال نیست.' };
+      }
+    }
+  }
+
+  // Persist active metadata for local version inspection
+  await invokeCapacitorPlugin('Filesystem', 'writeFile', {
+    path: 'app-bundle/active-meta.json',
+    data: JSON.stringify(
+      {
+        version: manifest.version || LOCAL_APP_VERSION,
+        buildId: manifest.buildId || safeTag,
+        builtAt: manifest.builtAt || new Date().toISOString(),
+        bundleDir: bundleDirRel,
+      },
+      null,
+      2
+    ),
+    directory: 'DATA',
+    encoding: 'utf8',
+    recursive: true,
+  });
+
+  const uriRes = await invokeCapacitorPlugin<{ uri?: string }>('Filesystem', 'getUri', {
+    path: bundleDirRel,
+    directory: 'DATA',
+  });
+  const nativePath = uriRes?.uri ? decodeURIComponent(uriRes.uri.replace(/^file:\/\//i, '')) : '';
+  if (!nativePath) {
+    return { ok: false, error: 'مسیر دایرکتوری محلی بسته جدید اندروید قابل خواندن نبود.' };
+  }
+
+  emit({
+    status: 'updating',
+    updateProgressText: 'در حال فعال‌سازی نسخه جدید روی حافظه داخلی اپلیکیشن...',
+  });
+
+  const switched = await invokeCapacitorPlugin('WebView', 'setServerBasePath', {
+    path: nativePath,
+  });
+  if (switched === null) {
+    return { ok: false, error: 'پل WebView اندروید برای تغییر مسیر نسخه محلی در دسترس نیست.' };
+  }
+  await invokeCapacitorPlugin('WebView', 'persistServerBasePath', {});
+
+  return {
+    ok: true,
+    version: manifest.version || LOCAL_APP_VERSION,
+    filesCount: safeFiles.length,
+  };
+}
+
+/**
+ * Unified single-click updater across ALL runtimes:
+ * - Online & Offline Chrome PWA -> clears shell cache & reloads immediately
+ * - Windows Electron Desktop -> downloads OTA bundle into D:\Daftar-Fani-Golzar\AppBundle\current & reloads
+ * - Android Capacitor APK -> downloads OTA bundle into DATA/app-bundle & switches WebView serverBasePath
+ */
+export async function applyUnifiedAppUpdate(overrideUrl?: string): Promise<AppUpdateState> {
+  const checked = await checkForAppUpdate(overrideUrl);
+  if (checked.status === 'offline' || checked.status === 'error') {
+    return checked;
+  }
+
+  const hasUpdate = checked.status === 'update-available' || checked.needRefresh;
+  if (!hasUpdate) {
+    return checked;
+  }
+
+  const platform = detectRuntimePlatform();
+  const bundleBaseUrl = resolveUpdateBundleBaseUrl(
+    overrideUrl !== undefined ? overrideUrl : currentState.versionSourceUrl
+  );
+
+  if (platform === 'web') {
+    await applyAppUpdate(true);
+    return currentState;
+  }
+
+  emit({
+    status: 'updating',
+    errorCategory: null,
+    errorMessage: null,
+    updateProgressText:
+      platform === 'electron'
+        ? 'در حال دریافت فایل‌های نسخه جدید به دایرکتوری محلی ویندوز...'
+        : 'در حال دریافت فایل‌های نسخه جدید به دایرکتوری محلی اپلیکیشن اندروید...',
+    statusMessage: `نسخه جدید (${checked.remoteVersion || ''}) یافت شد؛ در حال دریافت و اعمال خودکار به‌روزرسانی...`,
+  });
+
+  if (platform === 'electron') {
+    if (typeof window !== 'undefined' && typeof window.desktopBridge?.applyBundleUpdate === 'function') {
+      const res = await window.desktopBridge.applyBundleUpdate({ baseUrl: bundleBaseUrl });
+      if (res.ok) {
+        emit({
+          status: 'updating',
+          currentVersion: res.version || checked.remoteVersion || currentState.currentVersion,
+          currentBuildId: res.buildId || checked.remoteBuildId || currentState.currentBuildId,
+          localBundleDir: res.activeDistDir || currentState.localBundleDir,
+          localBundleSource: 'electron-ota',
+          updateProgressText: null,
+          statusMessage: `نسخه ${res.version || checked.remoteVersion || ''} در دایرکتوری محلی ویندوز ذخیره شد؛ در حال بارگذاری مجدد...`,
+        });
+        return currentState;
+      }
+
+      const networkReport = buildReadableNetworkReport(
+        [
+          {
+            label: 'بسته OTA گیت‌هاب (native-bundle)',
+            url: `${bundleBaseUrl}native-bundle/update-manifest.json`,
+            outcome: 'network-error',
+            attempts: DEFAULT_BACKOFF_MAX_RETRIES + 1,
+          },
+        ],
+        false
+      );
+      emit({
+        status: 'error',
+        errorCategory: 'network',
+        errorMessage: res.error || NETWORK_ERROR_MESSAGE,
+        updateProgressText: null,
+        networkReport,
+        statusMessage: res.error || NETWORK_ERROR_MESSAGE,
+      });
+      return currentState;
+    }
+
+    emit({
+      status: 'error',
+      errorCategory: 'network',
+      errorMessage: 'نسخه فعلی نصاب ویندوز قدیمی است و پل به‌روزرسانی مستقیم دایرکتوری را ندارد. لطفاً یک‌بار آخرین نسخه نصاب ویندوز را نصب کنید.',
+      updateProgressText: null,
+      statusMessage: 'نسخه فعلی نصاب ویندوز قدیمی است و پل به‌روزرسانی مستقیم دایرکتوری را ندارد.',
+    });
+    return currentState;
+  }
+
+  // Android Capacitor runtime
+  const androidRes = await applyAndroidNativeBundleUpdate(bundleBaseUrl);
+  if (androidRes.ok) {
+    emit({
+      status: 'updating',
+      currentVersion: androidRes.version || checked.remoteVersion || currentState.currentVersion,
+      localBundleSource: 'android-ota',
+      updateProgressText: null,
+      statusMessage: `نسخه ${androidRes.version || checked.remoteVersion || ''} در دایرکتوری داخلی اپلیکیشن ذخیره شد؛ در حال بارگذاری مجدد...`,
+    });
+    return currentState;
+  }
+
+  const androidReport = buildReadableNetworkReport(
+    [
+      {
+        label: 'بسته OTA گیت‌هاب (native-bundle)',
+        url: `${bundleBaseUrl}native-bundle/update-manifest.json`,
+        outcome: 'network-error',
+        attempts: DEFAULT_BACKOFF_MAX_RETRIES + 1,
+      },
+    ],
+    false
+  );
+  emit({
+    status: 'error',
+    errorCategory: 'network',
+    errorMessage: androidRes.error || NETWORK_ERROR_MESSAGE,
+    updateProgressText: null,
+    networkReport: androidReport,
+    statusMessage: androidRes.error || NETWORK_ERROR_MESSAGE,
+  });
+  return currentState;
+}
+
 export function useAppUpdater() {
   const [state, setState] = useState<AppUpdateState>(currentState);
 
   useEffect(() => {
     const onChange = () => setState(currentState);
     listeners.add(onChange);
+    void refreshNativeLocalVersionInfo();
     if (typeof window !== 'undefined' && window.location.search.includes('updated=')) {
       const cleanUrl = new URL(window.location.href);
       cleanUrl.searchParams.delete('updated');
@@ -1591,6 +2174,8 @@ export function useAppUpdater() {
     checkForUpdate: checkForAppUpdate,
     checkReleaseInstallers: checkVerifiedReleaseInstallers,
     applyUpdate: applyAppUpdate,
+    runUnifiedUpdate: applyUnifiedAppUpdate,
+    refreshLocalVersion: refreshNativeLocalVersionInfo,
     setCustomSourceUrl: setCustomVersionSourceUrl,
   };
 }

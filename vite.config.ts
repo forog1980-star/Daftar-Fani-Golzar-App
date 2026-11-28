@@ -12,9 +12,10 @@ export default defineConfig(() => {
     : process.env.GITHUB_PAGES === 'true'
       ? '/Daftar-Fani-Golzar-App/'
       : '/';
-  const appVersion = '1.4.1';
+  const appVersion = '1.4.2';
   const buildTimestamp = new Date().toISOString();
   const buildId = `${appVersion}-${buildTimestamp.replace(/[-:TZ.]/g, '').slice(0, 14)}`;
+  let resolvedOutDir = path.resolve(import.meta.dirname, 'dist');
 
   return {
     base,
@@ -75,7 +76,7 @@ export default defineConfig(() => {
           clientsClaim: true,
           cleanupOutdatedCaches: true,
           globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-          globIgnores: ['**/version.json', 'assets/aistudio/**'],
+          globIgnores: ['**/version.json', '**/update-manifest.json', 'native-bundle/**', 'assets/aistudio/**'],
           maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         },
         devOptions: {
@@ -83,13 +84,16 @@ export default defineConfig(() => {
           type: 'module',
         },
       }),
-      // Emit fresh version.json in dist/ so installed offline PWAs can check GitHub Pages for newer builds
+      // Emit fresh version.json + update-manifest.json so Chrome PWA, Windows Desktop, and Android APK can all self-update cleanly
       {
         name: 'emit-version-manifest',
         apply: 'build',
+        configResolved(config) {
+          resolvedOutDir = path.resolve(config.root, config.build.outDir);
+        },
         closeBundle(error?: Error): void {
           if (error) return;
-          const distDir = path.resolve(import.meta.dirname, 'dist');
+          const distDir = resolvedOutDir;
           if (fs.existsSync(distDir)) {
             let notes: string[] = [];
             try {
@@ -101,10 +105,51 @@ export default defineConfig(() => {
             } catch {
               notes = [];
             }
+
+            const versionPayload = { version: appVersion, buildId, builtAt: buildTimestamp, notes };
             fs.writeFileSync(
               path.resolve(distDir, 'version.json'),
+              JSON.stringify(versionPayload, null, 2),
+              'utf-8'
+            );
+
+            // Collect all relative files in outDir for atomic Native OTA updates (Windows Electron & Android Capacitor)
+            const collectedFiles: string[] = [];
+            const walk = (dir: string, prefix = '') => {
+              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+                const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+                if (
+                  rel === 'update-manifest.json' ||
+                  rel === 'native-bundle' ||
+                  rel.startsWith('native-bundle/') ||
+                  rel.startsWith('assets/aistudio/') ||
+                  /^sw\.js$/i.test(rel) ||
+                  /^registerSW\.js$/i.test(rel) ||
+                  /^workbox-.*\.js$/i.test(rel)
+                ) {
+                  continue;
+                }
+                const full = path.join(dir, entry.name);
+                if (entry.isDirectory()) {
+                  walk(full, rel);
+                } else if (entry.isFile()) {
+                  collectedFiles.push(rel);
+                }
+              }
+            };
+            walk(distDir);
+            collectedFiles.sort();
+
+            fs.writeFileSync(
+              path.resolve(distDir, 'update-manifest.json'),
               JSON.stringify(
-                { version: appVersion, buildId, builtAt: buildTimestamp, notes },
+                {
+                  version: appVersion,
+                  buildId,
+                  builtAt: buildTimestamp,
+                  base,
+                  files: collectedFiles,
+                },
                 null,
                 2
               ),

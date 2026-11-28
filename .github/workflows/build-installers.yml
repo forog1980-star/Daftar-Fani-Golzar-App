@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: 'برچسب نسخه انتشار (مثال: v1.4.1)'
+        description: 'برچسب نسخه انتشار (مثال: v1.4.2)'
         required: true
-        default: 'v1.4.1'
+        default: 'v1.4.2'
       publish_release:
         description: 'انتشار خروجی‌ها در صفحه GitHub Releases'
         type: boolean
@@ -111,7 +111,7 @@ jobs:
 
       - name: Install Capacitor Android tooling & native export/share plugins
         run: |
-          npm install --no-save @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor/filesystem@7 @capacitor/share@7 @capacitor/splash-screen@7
+          npm install --no-save @capacitor/core@7 @capacitor/cli@7 @capacitor/android@7 @capacitor/filesystem@7 @capacitor/share@7 @capacitor/browser@7 @capacitor/splash-screen@7
 
       - name: Initialize Capacitor Android project and sync assets
         run: |

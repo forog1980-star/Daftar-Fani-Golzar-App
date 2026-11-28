@@ -69,4 +69,23 @@ if (fs.existsSync(androidManifestPath)) {
   fs.writeFileSync(androidManifestPath, manifest, 'utf8');
 }
 
-console.log('Android adaptive icons, Persian strings, splash screen, hardware acceleration, and RTL manifest configured successfully.');
+// 5. Sync Android versionName & versionCode with public/version.json
+const gradlePath = path.join(projectRoot, 'android', 'app', 'build.gradle');
+const pubVersionPath = path.join(projectRoot, 'public', 'version.json');
+if (fs.existsSync(gradlePath) && fs.existsSync(pubVersionPath)) {
+  try {
+    const versionJson = JSON.parse(fs.readFileSync(pubVersionPath, 'utf8'));
+    const versionName = String(versionJson.version || '1.4.2').trim();
+    const parts = versionName.split('.').map((p) => parseInt(p, 10) || 0);
+    const versionCode = (parts[0] || 1) * 10000 + (parts[1] || 0) * 100 + (parts[2] || 0);
+    let gradle = fs.readFileSync(gradlePath, 'utf8');
+    gradle = gradle
+      .replace(/versionCode\s+\d+/, `versionCode ${versionCode}`)
+      .replace(/versionName\s+"[^"]+"/, `versionName "${versionName}"`);
+    fs.writeFileSync(gradlePath, gradle, 'utf8');
+  } catch {
+    // Non-fatal if gradle format differs
+  }
+}
+
+console.log('Android adaptive icons, Persian strings, splash screen, version metadata, hardware acceleration, and RTL manifest configured successfully.');

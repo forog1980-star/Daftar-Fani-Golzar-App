@@ -190,28 +190,111 @@ function resolveBundledPath(...segments) {
   return path.resolve(__dirname, '..', ...segments);
 }
 
-function registerStaticDistProtocol() {
-  const distDir = resolveBundledPath('dist');
+function compareSemverSimple(a, b) {
+  const pa = String(a || '0')
+    .replace(/^v/i, '')
+    .split('-')[0]
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
+  const pb = String(b || '0')
+    .replace(/^v/i, '')
+    .split('-')[0]
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length, 3);
+  for (let i = 0; i < len; i++) {
+    const da = pa[i] ?? 0;
+    const db = pb[i] ?? 0;
+    if (da > db) return 1;
+    if (da < db) return -1;
+  }
+  return 0;
+}
 
+function readVersionJsonFromDir(dirPath) {
+  try {
+    const versionFile = path.join(dirPath, 'version.json');
+    if (!fs.existsSync(versionFile)) return null;
+    const parsed = JSON.parse(fs.readFileSync(versionFile, 'utf-8'));
+    if (parsed && typeof parsed.version === 'string' && parsed.version.trim()) {
+      return {
+        version: parsed.version.trim(),
+        buildId: typeof parsed.buildId === 'string' ? parsed.buildId.trim() : null,
+        builtAt: typeof parsed.builtAt === 'string' ? parsed.builtAt.trim() : null,
+      };
+    }
+  } catch {
+    // Ignore malformed version.json
+  }
+  return null;
+}
+
+function getOtaBundleRoot() {
+  return path.join(activeDataRoot, 'AppBundle');
+}
+
+function resolveActiveDistDir() {
+  const bundledDir = resolveBundledPath('dist');
+  const otaCurrentDir = path.join(getOtaBundleRoot(), 'current');
+  try {
+    const otaIndex = path.join(otaCurrentDir, 'index.html');
+    if (fs.existsSync(otaIndex)) {
+      const otaMeta = readVersionJsonFromDir(otaCurrentDir);
+      const bundledMeta = readVersionJsonFromDir(bundledDir);
+      if (otaMeta) {
+        const cmp = compareSemverSimple(otaMeta.version, bundledMeta?.version || '0.0.0');
+        if (cmp >= 0) {
+          return {
+            dir: otaCurrentDir,
+            isOtaBundle: true,
+            meta: otaMeta,
+            bundledVersion: bundledMeta?.version || null,
+          };
+        }
+      }
+    }
+  } catch {
+    // Fall back safely to bundled dist/
+  }
+  const bundledMeta = readVersionJsonFromDir(bundledDir);
+  return {
+    dir: bundledDir,
+    isOtaBundle: false,
+    meta: bundledMeta,
+    bundledVersion: bundledMeta?.version || null,
+  };
+}
+
+function registerStaticDistProtocol() {
   protocol.handle(CUSTOM_SCHEME, (request) => {
+    const active = resolveActiveDistDir();
+    const distDir = path.resolve(active.dir);
     const reqUrl = new URL(request.url);
     let relPath = decodeURIComponent(reqUrl.pathname || '/');
+    relPath = relPath.replace(/^\/Daftar-Fani-Golzar-App\//i, '/');
     if (relPath === '/' || !relPath) {
       relPath = '/index.html';
     }
-    const candidate = path.normalize(path.join(distDir, relPath));
-    // Prevent directory traversal outside dist/
+    const candidate = path.resolve(path.join(distDir, relPath));
+    // Prevent directory traversal outside active distDir
+    const isInside =
+      candidate === distDir || candidate.startsWith(distDir + path.sep);
     const finalPath =
-      candidate.startsWith(distDir) && fs.existsSync(candidate) && fs.statSync(candidate).isFile()
+      isInside && fs.existsSync(candidate) && fs.statSync(candidate).isFile()
         ? candidate
         : path.join(distDir, 'index.html');
 
     const data = fs.readFileSync(finalPath);
+    const lowerName = path.basename(finalPath).toLowerCase();
+    const headers = {
+      'content-type': getMimeType(finalPath),
+    };
+    if (lowerName === 'index.html' || lowerName === 'version.json' || lowerName === 'update-manifest.json') {
+      headers['cache-control'] = 'no-store';
+    }
     return new Response(data, {
       status: 200,
-      headers: {
-        'content-type': getMimeType(finalPath),
-      },
+      headers,
     });
   });
 }
@@ -291,14 +374,105 @@ function registerIpcHandlers() {
         payload?.filename,
         payload?.mimeType
       );
-      fs.mkdirSync(targetDir, { recursive: true });
-
       const buffer = Buffer.from(String(payload?.base64Data || ''), 'base64');
+      if (buffer.length === 0) {
+        return { ok: false, error: 'فایل تولیدشده خالی است و قابل ذخیره نیست.' };
+      }
+
+      let finalPath = targetPath;
+      if (payload?.interactive && mainWindow && !mainWindow.isDestroyed()) {
+        fs.mkdirSync(targetDir, { recursive: true });
+        const ext = path.extname(targetPath).replace(/^\./, '').toLowerCase();
+        const filters = [];
+        if (ext === 'docx') filters.push({ name: 'Word Document (*.docx)', extensions: ['docx'] });
+        else if (ext === 'xlsx') filters.push({ name: 'Excel Workbook (*.xlsx)', extensions: ['xlsx'] });
+        else if (ext === 'json') filters.push({ name: 'JSON Data (*.json)', extensions: ['json'] });
+        else if (ext === 'zip') filters.push({ name: 'ZIP Backup (*.zip)', extensions: ['zip'] });
+        else if (ext === 'html' || ext === 'htm') filters.push({ name: 'Printable HTML (*.html)', extensions: ['html', 'htm'] });
+        else if (ext === 'pdf') filters.push({ name: 'PDF Document (*.pdf)', extensions: ['pdf'] });
+        else if (ext) filters.push({ name: `File (*.${ext})`, extensions: [ext] });
+        filters.push({ name: 'All Files (*.*)', extensions: ['*'] });
+
+        const picked = await dialog.showSaveDialog(mainWindow, {
+          title: 'ذخیره فایل خروجی — دفتر فنی اداره گلزار شهدا',
+          defaultPath: targetPath,
+          buttonLabel: 'ذخیره فایل',
+          filters,
+        });
+
+        if (picked.canceled || !picked.filePath) {
+          return { ok: false, cancelled: true };
+        }
+        finalPath = picked.filePath;
+        fs.mkdirSync(path.dirname(finalPath), { recursive: true });
+        fs.writeFileSync(finalPath, buffer);
+
+        // Also archive a copy in D:\Daftar-Fani-Golzar\Exports or Backups when user chose another folder
+        if (
+          payload?.category !== 'attachments' &&
+          path.resolve(finalPath).toLowerCase() !== path.resolve(targetPath).toLowerCase()
+        ) {
+          try {
+            fs.writeFileSync(targetPath, buffer);
+          } catch {
+            // Archive copy is best-effort; primary user-chosen file already succeeded
+          }
+        }
+
+        appendLogLine(activeDataRoot, 'info', `Saved interactive ${subName} file: ${finalPath} (${buffer.length} bytes)`);
+        try {
+          shell.showItemInFolder(finalPath);
+        } catch {
+          // Non-fatal
+        }
+        return { ok: true, savedPath: finalPath };
+      }
+
+      fs.mkdirSync(targetDir, { recursive: true });
       fs.writeFileSync(targetPath, buffer);
       appendLogLine(activeDataRoot, 'info', `Saved ${subName} file: ${targetPath} (${buffer.length} bytes)`);
       return { ok: true, savedPath: targetPath };
     } catch (err) {
       appendLogLine(activeDataRoot, 'error', `Save file failed: ${err.message}`);
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('desktop:open-file', async (_event, filePath) => {
+    try {
+      const target = String(filePath || '').trim();
+      if (!target || !fs.existsSync(target)) {
+        return { ok: false, error: 'فایل موردنظر در مسیر مشخص‌شده یافت نشد.' };
+      }
+      const errMsg = await shell.openPath(target);
+      return errMsg ? { ok: false, error: errMsg } : { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('desktop:show-in-folder', async (_event, filePath) => {
+    try {
+      const target = String(filePath || '').trim();
+      if (!target || !fs.existsSync(target)) {
+        return { ok: false, error: 'مسیر فایل در سیستم یافت نشد.' };
+      }
+      shell.showItemInFolder(target);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+
+  ipcMain.handle('desktop:open-external', async (_event, rawUrl) => {
+    try {
+      const parsed = new URL(String(rawUrl || '').trim());
+      if (parsed.protocol !== 'https:') {
+        return { ok: false, error: 'فقط نشانی‌های امن HTTPS مجاز به باز شدن هستند.' };
+      }
+      await shell.openExternal(parsed.toString());
+      return { ok: true };
+    } catch (err) {
       return { ok: false, error: err.message };
     }
   });
@@ -425,7 +599,7 @@ function registerIpcHandlers() {
     if (
       parsed.protocol !== 'https:' ||
       parsed.hostname !== 'github.com' ||
-      !parsed.pathname.toLowerCase().includes('/releases/download/') ||
+      !/\/releases\/(latest\/)?download\//i.test(parsed.pathname) ||
       !parsed.pathname.toLowerCase().endsWith('.exe')
     ) {
       return { ok: false, error: 'دانلود خودکار صرفاً از نشانی رسمی GitHub Releases مجاز است.' };
@@ -531,6 +705,225 @@ function registerIpcHandlers() {
       };
     } finally {
       clearTimeout(timer);
+    }
+  });
+
+  // Read active local app version directly from the app's own directory (OTA AppBundle or bundled dist)
+  ipcMain.handle('desktop:get-local-version-info', async () => {
+    const active = resolveActiveDistDir();
+    return {
+      ok: true,
+      version: active.meta?.version || null,
+      buildId: active.meta?.buildId || null,
+      builtAt: active.meta?.builtAt || null,
+      activeDistDir: active.dir,
+      isOtaBundle: active.isOtaBundle,
+      bundledVersion: active.bundledVersion,
+    };
+  });
+
+  // Atomic OTA bundle update directly from GitHub Pages into D:\Daftar-Fani-Golzar\AppBundle\current
+  ipcMain.handle('desktop:apply-bundle-update', async (_event, payload) => {
+    const rawBase = String(
+      payload?.baseUrl || 'https://forog1980-star.github.io/Daftar-Fani-Golzar-App/'
+    ).trim();
+
+    let baseParsed;
+    try {
+      baseParsed = new URL(rawBase.endsWith('/') ? rawBase : `${rawBase}/`);
+    } catch {
+      return { ok: false, error: 'نشانی منبع به‌روزرسانی معتبر نیست.' };
+    }
+    const isHttps = baseParsed.protocol === 'https:';
+    const isLocalHttp =
+      baseParsed.protocol === 'http:' &&
+      (baseParsed.hostname === 'localhost' || baseParsed.hostname === '127.0.0.1');
+    if (!isHttps && !isLocalHttp) {
+      return { ok: false, error: 'منبع به‌روزرسانی باید با پروتکل امن HTTPS باشد.' };
+    }
+
+    const fetchWithRetry = async (targetUrl, asText) => {
+      const delays = [500, 1000, 2000];
+      let lastErr = 'خطای اتصال به سرور';
+      for (let attempt = 0; attempt <= delays.length; attempt++) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 15000);
+        try {
+          const res = await net.fetch(targetUrl, {
+            method: 'GET',
+            cache: 'no-store',
+            redirect: 'follow',
+            headers: { 'User-Agent': 'Daftar-Fani-Golzar-Desktop' },
+            signal: controller.signal,
+          });
+          if (res.ok) {
+            return {
+              ok: true,
+              status: res.status,
+              data: asText ? await res.text() : Buffer.from(await res.arrayBuffer()),
+            };
+          }
+          lastErr = `HTTP ${res.status}`;
+          if (res.status === 404 || res.status === 403 || res.status === 400) {
+            return { ok: false, status: res.status, error: lastErr };
+          }
+        } catch (err) {
+          lastErr = err && err.name === 'AbortError' ? 'TIMEOUT' : err?.message || 'NETWORK_ERROR';
+        } finally {
+          clearTimeout(timer);
+        }
+        if (attempt < delays.length) {
+          await new Promise((r) => setTimeout(r, delays[attempt]));
+        }
+      }
+      return { ok: false, status: 0, error: lastErr };
+    };
+
+    const candidateBases = [
+      new URL('native-bundle/', baseParsed).toString(),
+      baseParsed.toString(),
+    ];
+
+    let manifest = null;
+    let activeBundleBase = null;
+    let lastManifestErr = '';
+
+    for (const candidateBase of candidateBases) {
+      const manifestUrl = `${candidateBase}update-manifest.json?t=${Date.now()}`;
+      const mRes = await fetchWithRetry(manifestUrl, true);
+      if (mRes.ok) {
+        try {
+          const parsed = JSON.parse(mRes.data);
+          if (parsed && Array.isArray(parsed.files) && parsed.files.length > 0) {
+            manifest = parsed;
+            activeBundleBase = candidateBase;
+            break;
+          }
+        } catch {
+          lastManifestErr = 'قالب فایل update-manifest.json معتبر نبود.';
+        }
+      } else {
+        lastManifestErr = mRes.error || 'خطا در دریافت update-manifest.json';
+      }
+    }
+
+    if (!manifest || !activeBundleBase) {
+      appendLogLine(activeDataRoot, 'warn', `OTA manifest fetch failed: ${lastManifestErr}`);
+      return {
+        ok: false,
+        error: 'Network error: check connection',
+        detail: lastManifestErr,
+      };
+    }
+
+    const files = manifest.files.filter(
+      (f) =>
+        typeof f === 'string' &&
+        f.length > 0 &&
+        !f.includes('..') &&
+        !f.startsWith('/') &&
+        !f.includes('\\') &&
+        !/[\x00-\x1f]/.test(f)
+    );
+    if (!files.includes('index.html') || files.length > 250) {
+      return { ok: false, error: 'فهرست فایل‌های بسته به‌روزرسانی ناقص یا نامعتبر است.' };
+    }
+
+    const bundleRoot = getOtaBundleRoot();
+    const stagingDir = path.join(bundleRoot, 'staging');
+    const currentDir = path.join(bundleRoot, 'current');
+    const previousDir = path.join(bundleRoot, 'previous');
+
+    try {
+      fs.rmSync(stagingDir, { recursive: true, force: true });
+      fs.mkdirSync(stagingDir, { recursive: true });
+
+      const resolvedStaging = path.resolve(stagingDir);
+      for (const rel of files) {
+        const dest = path.resolve(path.join(resolvedStaging, rel));
+        if (!dest.startsWith(resolvedStaging + path.sep)) {
+          throw new Error(`Invalid bundle path: ${rel}`);
+        }
+        const fileUrl = `${activeBundleBase}${rel.split('/').map(encodeURIComponent).join('/')}?t=${Date.now()}`;
+        const fRes = await fetchWithRetry(fileUrl, false);
+        if (!fRes.ok) {
+          throw new Error(`Failed downloading ${rel}: ${fRes.error}`);
+        }
+        let fileBuf = fRes.data;
+        if (rel === 'index.html') {
+          let htmlText = fileBuf.toString('utf-8');
+          if (!/<html/i.test(htmlText) && !/<!doctype/i.test(htmlText)) {
+            throw new Error('Downloaded index.html is invalid');
+          }
+          // Normalize root GitHub Pages paths to relative paths if falling back to root manifest
+          htmlText = htmlText.replace(/(["'(])\/Daftar-Fani-Golzar-App\//gi, '$1./');
+          fileBuf = Buffer.from(htmlText, 'utf-8');
+        }
+        fs.mkdirSync(path.dirname(dest), { recursive: true });
+        fs.writeFileSync(dest, fileBuf);
+      }
+
+      // Ensure version.json exists inside staging
+      const stagedVersionPath = path.join(resolvedStaging, 'version.json');
+      if (!fs.existsSync(stagedVersionPath)) {
+        fs.writeFileSync(
+          stagedVersionPath,
+          JSON.stringify(
+            {
+              version: String(manifest.version || '1.4.2'),
+              buildId: String(manifest.buildId || ''),
+              builtAt: String(manifest.builtAt || new Date().toISOString()),
+            },
+            null,
+            2
+          ),
+          'utf-8'
+        );
+      }
+
+      // Atomic swap: current -> previous, staging -> current
+      if (fs.existsSync(previousDir)) {
+        fs.rmSync(previousDir, { recursive: true, force: true });
+      }
+      if (fs.existsSync(currentDir)) {
+        fs.renameSync(currentDir, previousDir);
+      }
+      fs.renameSync(stagingDir, currentDir);
+
+      appendLogLine(
+        activeDataRoot,
+        'info',
+        `Applied OTA bundle update v${manifest.version} (${files.length} files) to ${currentDir}`
+      );
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        setTimeout(() => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.reloadIgnoringCache();
+          }
+        }, 350);
+      }
+
+      return {
+        ok: true,
+        version: String(manifest.version || ''),
+        buildId: String(manifest.buildId || ''),
+        filesCount: files.length,
+        activeDistDir: currentDir,
+      };
+    } catch (err) {
+      try {
+        fs.rmSync(stagingDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup failure
+      }
+      const msg = err && err.message ? String(err.message) : 'خطای دریافت فایل‌های به‌روزرسانی';
+      appendLogLine(activeDataRoot, 'error', `OTA bundle update failed: ${msg}`);
+      return {
+        ok: false,
+        error: 'Network error: check connection',
+        detail: msg,
+      };
     }
   });
 }

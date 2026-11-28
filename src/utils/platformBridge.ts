@@ -23,6 +23,7 @@ export interface DesktopStorageInfo {
 
 export interface DesktopSaveFileResult {
   ok: boolean;
+  cancelled?: boolean;
   savedPath?: string;
   error?: string;
 }
@@ -57,6 +58,7 @@ export interface DesktopBridgeAPI {
     category: 'exports' | 'backups' | 'attachments';
     base64Data: string;
     mimeType?: string;
+    interactive?: boolean;
   }) => Promise<DesktopSaveFileResult>;
   relocateStorage: (payload: {
     backupBase64: string;
@@ -76,31 +78,43 @@ export interface DesktopBridgeAPI {
     contentLength?: number;
     error?: string;
   }>;
+  openFile?: (filePath: string) => Promise<{ ok: boolean; error?: string }>;
+  showInFolder?: (filePath: string) => Promise<{ ok: boolean; error?: string }>;
+  openExternal?: (url: string) => Promise<{ ok: boolean; error?: string }>;
+  getLocalVersionInfo?: () => Promise<{
+    ok: boolean;
+    version: string | null;
+    buildId: string | null;
+    builtAt: string | null;
+    activeDistDir: string;
+    isOtaBundle: boolean;
+    bundledVersion: string | null;
+  }>;
+  applyBundleUpdate?: (payload: { baseUrl?: string }) => Promise<{
+    ok: boolean;
+    version?: string;
+    buildId?: string;
+    filesCount?: number;
+    activeDistDir?: string;
+    error?: string;
+    detail?: string;
+  }>;
 }
 
 interface CapacitorPluginLike {
-  writeFile?: (opts: {
-    path: string;
-    data: string;
-    directory?: string;
-    recursive?: boolean;
-  }) => Promise<{ uri: string }>;
-  getUri?: (opts: { path: string; directory?: string }) => Promise<{ uri: string }>;
-  share?: (opts: {
-    title?: string;
-    text?: string;
-    url?: string;
-    dialogTitle?: string;
-  }) => Promise<unknown>;
+  [method: string]: ((opts: Record<string, unknown>) => Promise<unknown>) | undefined;
 }
 
 interface CapacitorGlobal {
   isNativePlatform?: () => boolean;
   getPlatform?: () => string;
-  Plugins?: {
-    Filesystem?: CapacitorPluginLike;
-    Share?: CapacitorPluginLike;
-  };
+  Plugins?: Record<string, CapacitorPluginLike | undefined>;
+  registerPlugin?: (pluginName: string) => CapacitorPluginLike;
+  nativePromise?: (
+    pluginName: string,
+    methodName: string,
+    options?: Record<string, unknown>
+  ) => Promise<unknown>;
 }
 
 declare global {
@@ -147,7 +161,16 @@ export function isNativeInstalledRuntime(): boolean {
   return p === 'electron' || p === 'android';
 }
 
-export function blobToBase64Raw(blob: Blob): Promise<string> {
+export async function blobToBase64Raw(blob: Blob): Promise<string> {
+  if (typeof FileReader === 'undefined') {
+    const buf = new Uint8Array(await blob.arrayBuffer());
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < buf.length; i += chunkSize) {
+      binary += String.fromCharCode(...buf.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+  }
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -173,8 +196,98 @@ function triggerBrowserDownload(blob: Blob, filename: string): void {
   }, 400);
 }
 
+export async function invokeCapacitorPlugin<T = Record<string, unknown>>(
+  pluginName: 'Filesystem' | 'Share' | 'Browser' | 'WebView',
+  methodName: string,
+  options: Record<string, unknown> = {}
+): Promise<T | null> {
+  if (typeof window === 'undefined' || !window.Capacitor) return null;
+  const cap = window.Capacitor;
+
+  // 1. Direct plugin proxy on Capacitor.Plugins (when pre-registered)
+  const directPlugin = cap.Plugins?.[pluginName];
+  if (directPlugin && typeof directPlugin[methodName] === 'function') {
+    return (await directPlugin[methodName]!(options)) as T;
+  }
+
+  // 2. Capacitor 5/6/7 runtime nativePromise bridge (works even without importing JS plugin wrapper)
+  if (typeof cap.nativePromise === 'function') {
+    return (await cap.nativePromise(pluginName, methodName, options)) as T;
+  }
+
+  // 3. Lazy registerPlugin fallback
+  if (typeof cap.registerPlugin === 'function') {
+    const proxy = cap.registerPlugin(pluginName);
+    if (proxy && typeof proxy[methodName] === 'function') {
+      return (await proxy[methodName]!(options)) as T;
+    }
+  }
+
+  return null;
+}
+
+export function dataUrlToBlob(dataUrl: string, fallbackMime = 'application/octet-stream'): Blob {
+  const parts = dataUrl.split(',');
+  const header = parts[0] || '';
+  const body = parts[1] || '';
+  const mimeMatch = header.match(/data:([^;]+);base64/i);
+  const mime = mimeMatch ? mimeMatch[1] : fallbackMime;
+  const binary = atob(body);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new Blob([bytes], { type: mime });
+}
+
+export async function openExternalDownloadUrl(url: string, fileName?: string): Promise<void> {
+  const platform = detectRuntimePlatform();
+
+  if (platform === 'electron' && window.desktopBridge?.openExternal) {
+    await window.desktopBridge.openExternal(url);
+    return;
+  }
+
+  if (platform === 'android') {
+    try {
+      const opened = await invokeCapacitorPlugin('Browser', 'open', { url });
+      if (opened !== null) return;
+    } catch {
+      // Fall through to system location navigation so Android handles APK/external URL
+    }
+    window.location.assign(url);
+    return;
+  }
+
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  if (fileName) anchor.download = fileName;
+  anchor.rel = 'noopener noreferrer';
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+}
+
+export async function openSavedDesktopFile(savedPath: string): Promise<boolean> {
+  if (detectRuntimePlatform() === 'electron' && window.desktopBridge?.openFile) {
+    const res = await window.desktopBridge.openFile(savedPath);
+    return Boolean(res?.ok);
+  }
+  return false;
+}
+
+export async function revealSavedDesktopFile(savedPath: string): Promise<boolean> {
+  if (detectRuntimePlatform() === 'electron' && window.desktopBridge?.showInFolder) {
+    const res = await window.desktopBridge.showInFolder(savedPath);
+    return Boolean(res?.ok);
+  }
+  return false;
+}
+
 export interface SaveFileOutcome {
   ok: boolean;
+  cancelled?: boolean;
+  error?: string;
   method: 'electron-disk' | 'android-native' | 'browser-download';
   savedPath?: string;
   filename: string;
@@ -182,15 +295,18 @@ export interface SaveFileOutcome {
 
 /**
  * Unified cross-platform file saver:
- * - Windows Electron: saves directly into D:\Daftar-Fani-Golzar\{Exports|Backups|Attachments}\
- * - Android Capacitor: writes via native Filesystem plugin and opens Android Share Sheet
- * - Web / Chrome: standard browser download
+ * - Windows Electron: opens native Save As dialog (defaulting to D:\Daftar-Fani-Golzar\Exports\),
+ *   writes archive copy, and reveals the saved file in Windows Explorer.
+ * - Android Capacitor: writes via native Capacitor Filesystem bridge (Documents + Cache) and
+ *   opens the native Android Share / Open-With sheet so files are genuinely delivered on phones.
+ * - Web / Chrome: standard browser download.
  */
 export async function saveBinaryFile(
   blob: Blob,
   filename: string,
   category: 'exports' | 'backups' | 'attachments' = 'exports',
-  mimeType?: string
+  mimeType?: string,
+  options?: { interactive?: boolean }
 ): Promise<SaveFileOutcome> {
   const platform = detectRuntimePlatform();
 
@@ -202,7 +318,16 @@ export async function saveBinaryFile(
         category,
         base64Data,
         mimeType: mimeType || blob.type || 'application/octet-stream',
+        interactive: options?.interactive ?? true,
       });
+      if (res.cancelled) {
+        return {
+          ok: false,
+          cancelled: true,
+          method: 'electron-disk',
+          filename,
+        };
+      }
       if (res.ok) {
         return {
           ok: true,
@@ -211,45 +336,102 @@ export async function saveBinaryFile(
           filename,
         };
       }
-    } catch {
-      // Fall back to standard download if IPC fails unexpectedly
+      return {
+        ok: false,
+        method: 'electron-disk',
+        filename,
+        error: res.error || 'ذخیره فایل روی سیستم ویندوز با خطا مواجه شد.',
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        method: 'electron-disk',
+        filename,
+        error: err instanceof Error ? err.message : 'خطای ارتباط با سیستم فایل ویندوز',
+      };
     }
   }
 
-  if (platform === 'android' && window.Capacitor?.Plugins?.Filesystem) {
+  if (platform === 'android' && window.Capacitor) {
     try {
       const base64Data = await blobToBase64Raw(blob);
-      const fsPlugin = window.Capacitor.Plugins.Filesystem;
-      const sharePlugin = window.Capacitor.Plugins.Share;
       const safeName = filename.replace(/[/\\:*?"<>|]/g, '_');
-      const targetPath = `DaftarFani/${category}/${safeName}`;
 
-      if (fsPlugin.writeFile) {
-        const writeRes = await fsPlugin.writeFile({
-          path: targetPath,
+      // 1. Write a persistent user-accessible copy to Documents/DaftarFaniGolzar/
+      let docsSavedPath: string | undefined;
+      try {
+        const docsRes = await invokeCapacitorPlugin<{ uri?: string }>('Filesystem', 'writeFile', {
+          path: `DaftarFaniGolzar/${safeName}`,
+          data: base64Data,
+          directory: 'DOCUMENTS',
+          recursive: true,
+        });
+        if (docsRes?.uri) {
+          docsSavedPath = `Documents/DaftarFaniGolzar/${safeName}`;
+        }
+      } catch {
+        // On some Android versions Documents may require cache+share; proceed with Cache + Share below
+      }
+
+      // 2. Write a FileProvider-shareable copy to CACHE and trigger Android Share / Open-With sheet
+      let shareUri: string | undefined;
+      try {
+        const cachePath = `DaftarFaniShare/${safeName}`;
+        const cacheRes = await invokeCapacitorPlugin<{ uri?: string }>('Filesystem', 'writeFile', {
+          path: cachePath,
           data: base64Data,
           directory: 'CACHE',
           recursive: true,
         });
+        shareUri = cacheRes?.uri;
+        if (!shareUri) {
+          const uriRes = await invokeCapacitorPlugin<{ uri?: string }>('Filesystem', 'getUri', {
+            path: cachePath,
+            directory: 'CACHE',
+          });
+          shareUri = uriRes?.uri;
+        }
+      } catch {
+        // Ignore if cache write failed while Documents write succeeded
+      }
 
-        if (sharePlugin?.share && writeRes?.uri) {
-          await sharePlugin.share({
+      if (shareUri) {
+        try {
+          await invokeCapacitorPlugin('Share', 'share', {
             title: filename,
             text: `فایل خروجی دفتر فنی اداره گلزار شهدا: ${filename}`,
-            url: writeRes.uri,
-            dialogTitle: 'ذخیره یا اشتراک‌گذاری فایل',
+            files: [shareUri],
+            url: shareUri,
+            dialogTitle: 'ذخیره، باز کردن یا اشتراک‌گذاری فایل',
           });
+        } catch {
+          // User may have closed share sheet after file was already written
         }
+      }
 
+      if (docsSavedPath || shareUri) {
         return {
           ok: true,
           method: 'android-native',
-          savedPath: writeRes?.uri || targetPath,
+          savedPath: docsSavedPath || `حافظه برنامه (${safeName})`,
           filename,
         };
       }
-    } catch {
-      // Fall through to WebView download fallback
+
+      return {
+        ok: false,
+        method: 'android-native',
+        filename,
+        error:
+          'پلاگین بومی ذخیره‌سازی فایل در این نسخه اندروید فعال نشد. لطفاً نسخه جدید APK را نصب کنید.',
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        method: 'android-native',
+        filename,
+        error: err instanceof Error ? err.message : 'خطا در ذخیره فایل روی گوشی اندروید',
+      };
     }
   }
 

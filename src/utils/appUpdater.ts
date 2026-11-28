@@ -101,6 +101,12 @@ export type LocalBundleSource =
   | 'android-bundled'
   | 'web';
 
+export interface UpdateCompletedNotice {
+  version: string;
+  buildId?: string;
+  updatedAt: string;
+}
+
 export interface AppUpdateState {
   currentVersion: string;
   currentBuildId: string;
@@ -128,11 +134,14 @@ export interface AppUpdateState {
   errorCategory: UpdateErrorCategory;
   httpStatus: number | null;
   lastCheckedAt: string | null;
+  updateCompletedNotice: UpdateCompletedNotice | null;
   releaseInstallers: VerifiedReleaseInstallers;
 }
 
 const LAST_CHECK_KEY = 'daftar-fani-last-update-check';
 const CUSTOM_VERSION_URL_KEY = 'daftar-fani-github-version-url';
+const UPDATE_COMPLETED_NOTICE_KEY = 'daftar-fani-update-completed-notice-v1';
+const LAST_SEEN_VERSION_KEY = 'daftar-fani-last-seen-version-v1';
 
 export const DEFAULT_GITHUB_OWNER = 'forog1980-star';
 export const DEFAULT_GITHUB_REPO = 'Daftar-Fani-Golzar-App';
@@ -366,7 +375,102 @@ function createInitialReleaseInstallers(sourceUrl: string): VerifiedReleaseInsta
   };
 }
 
+function safeReadStorage(key: string): string | null {
+  if (typeof window === 'undefined' || !window.localStorage) return null;
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function safeWriteStorage(key: string, value: string): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Ignore storage quota / private mode failures
+  }
+}
+
+function safeRemoveStorage(key: string): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    window.localStorage.removeItem(key);
+  } catch {
+    // Ignore storage failures
+  }
+}
+
+export function recordCompletedUpdateNotice(
+  version: string,
+  buildId?: string
+): UpdateCompletedNotice {
+  const notice: UpdateCompletedNotice = {
+    version: version || LOCAL_APP_VERSION,
+    buildId: buildId || LOCAL_BUILD_ID,
+    updatedAt: new Date().toISOString(),
+  };
+  safeWriteStorage(UPDATE_COMPLETED_NOTICE_KEY, JSON.stringify(notice));
+  safeWriteStorage(LAST_SEEN_VERSION_KEY, notice.version);
+  return notice;
+}
+
+function loadInitialUpdateCompletedNotice(): UpdateCompletedNotice | null {
+  if (typeof window === 'undefined') return null;
+
+  const hasUpdatedParam =
+    typeof window.location?.search === 'string' &&
+    window.location.search.includes('updated=');
+
+  const rawSaved = safeReadStorage(UPDATE_COMPLETED_NOTICE_KEY);
+  if (rawSaved) {
+    try {
+      const parsed = JSON.parse(rawSaved) as Partial<UpdateCompletedNotice>;
+      if (parsed && typeof parsed.version === 'string' && typeof parsed.updatedAt === 'string') {
+        const ageMs = Date.now() - Date.parse(parsed.updatedAt);
+        // Keep notice visible until user dismisses (expire automatically after 7 days)
+        if (!Number.isFinite(ageMs) || ageMs < 7 * 24 * 60 * 60 * 1000) {
+          const resolvedVersion =
+            compareSemver(LOCAL_APP_VERSION, parsed.version) > 0
+              ? LOCAL_APP_VERSION
+              : parsed.version;
+          safeWriteStorage(LAST_SEEN_VERSION_KEY, resolvedVersion);
+          return {
+            version: resolvedVersion,
+            buildId: parsed.buildId || LOCAL_BUILD_ID,
+            updatedAt: parsed.updatedAt,
+          };
+        }
+        safeRemoveStorage(UPDATE_COMPLETED_NOTICE_KEY);
+      }
+    } catch {
+      safeRemoveStorage(UPDATE_COMPLETED_NOTICE_KEY);
+    }
+  }
+
+  if (hasUpdatedParam) {
+    return recordCompletedUpdateNotice(LOCAL_APP_VERSION, LOCAL_BUILD_ID);
+  }
+
+  const lastSeen = safeReadStorage(LAST_SEEN_VERSION_KEY);
+  if (lastSeen && lastSeen !== LOCAL_APP_VERSION) {
+    return recordCompletedUpdateNotice(LOCAL_APP_VERSION, LOCAL_BUILD_ID);
+  }
+
+  if (!lastSeen) {
+    safeWriteStorage(LAST_SEEN_VERSION_KEY, LOCAL_APP_VERSION);
+  }
+  return null;
+}
+
+export function dismissUpdateCompletedNotice(): void {
+  safeRemoveStorage(UPDATE_COMPLETED_NOTICE_KEY);
+  emit({ updateCompletedNotice: null });
+}
+
 const initialSavedUrl = loadSavedVersionUrl();
+const initialUpdateCompletedNotice = loadInitialUpdateCompletedNotice();
 
 let currentState: AppUpdateState = {
   currentVersion: LOCAL_APP_VERSION,
@@ -399,8 +503,8 @@ let currentState: AppUpdateState = {
   errorMessage: null,
   errorCategory: null,
   httpStatus: null,
-  lastCheckedAt:
-    typeof window !== 'undefined' ? window.localStorage.getItem(LAST_CHECK_KEY) : null,
+  lastCheckedAt: safeReadStorage(LAST_CHECK_KEY),
+  updateCompletedNotice: initialUpdateCompletedNotice,
   releaseInstallers: createInitialReleaseInstallers(initialSavedUrl),
 };
 
@@ -1819,6 +1923,12 @@ export async function applyAppUpdate(forceHardRefresh = false): Promise<void> {
   });
 
   try {
+    const notice = recordCompletedUpdateNotice(
+      currentState.remoteVersion || LOCAL_APP_VERSION,
+      currentState.remoteBuildId || LOCAL_BUILD_ID
+    );
+    emit({ updateCompletedNotice: notice });
+
     if (!forceHardRefresh && triggerSwReload && swRegistration?.waiting) {
       await triggerSwReload(true);
       return;
@@ -2032,20 +2142,29 @@ export async function applyAndroidNativeBundleUpdate(
 }
 
 /**
- * Unified single-click updater across ALL runtimes:
- * - Online & Offline Chrome PWA -> clears shell cache & reloads immediately
- * - Windows Electron Desktop -> downloads OTA bundle into D:\Daftar-Fani-Golzar\AppBundle\current & reloads
- * - Android Capacitor APK -> downloads OTA bundle into DATA/app-bundle & switches WebView serverBasePath
+ * Direct, zero-confirmation native updater:
+ * Immediately downloads `update-manifest.json` from GitHub Pages (with exponential backoff)
+ * and atomically replaces the local app bundle on installed Windows (Electron) and Android (Capacitor)
+ * apps without extra dialogs or intermediate version-gate stops.
+ * On Web/Chrome PWA, clears shell caches and reloads the latest build immediately.
+ * IMPORTANT: Never touches IndexedDB (`daftar-fani-golzar-db`) or user records.
  */
-export async function applyUnifiedAppUpdate(overrideUrl?: string): Promise<AppUpdateState> {
-  const checked = await checkForAppUpdate(overrideUrl);
-  if (checked.status === 'offline' || checked.status === 'error') {
-    return checked;
+export async function syncNativeUpdateManifestNow(overrideUrl?: string): Promise<AppUpdateState> {
+  if (overrideUrl !== undefined) {
+    setCustomVersionSourceUrl(overrideUrl);
   }
 
-  const hasUpdate = checked.status === 'update-available' || checked.needRefresh;
-  if (!hasUpdate) {
-    return checked;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    const offlineReport = buildReadableNetworkReport([], false);
+    emit({
+      status: 'offline',
+      errorCategory: 'offline',
+      errorMessage: NETWORK_ERROR_MESSAGE,
+      updateProgressText: null,
+      networkReport: offlineReport,
+      statusMessage: NETWORK_ERROR_MESSAGE,
+    });
+    return currentState;
   }
 
   const platform = detectRuntimePlatform();
@@ -2062,25 +2181,34 @@ export async function applyUnifiedAppUpdate(overrideUrl?: string): Promise<AppUp
     status: 'updating',
     errorCategory: null,
     errorMessage: null,
+    retryStatusText: null,
+    checkedUrl: `${bundleBaseUrl}native-bundle/update-manifest.json`,
     updateProgressText:
       platform === 'electron'
-        ? 'در حال دریافت فایل‌های نسخه جدید به دایرکتوری محلی ویندوز...'
-        : 'در حال دریافت فایل‌های نسخه جدید به دایرکتوری محلی اپلیکیشن اندروید...',
-    statusMessage: `نسخه جدید (${checked.remoteVersion || ''}) یافت شد؛ در حال دریافت و اعمال خودکار به‌روزرسانی...`,
+        ? 'در حال دریافت مستقیم update-manifest.json و جایگزینی فایل‌های محلی ویندوز...'
+        : 'در حال دریافت مستقیم update-manifest.json و جایگزینی فایل‌های محلی اندروید...',
+    statusMessage: 'در حال دریافت بسته جدید و به‌روزرسانی خودکار نرم‌افزار بدون نیاز به تأیید اضافی...',
   });
 
   if (platform === 'electron') {
     if (typeof window !== 'undefined' && typeof window.desktopBridge?.applyBundleUpdate === 'function') {
       const res = await window.desktopBridge.applyBundleUpdate({ baseUrl: bundleBaseUrl });
       if (res.ok) {
+        const nextVersion = res.version || currentState.currentVersion;
+        const nextBuildId = res.buildId || currentState.currentBuildId;
+        const notice = recordCompletedUpdateNotice(nextVersion, nextBuildId);
         emit({
           status: 'updating',
-          currentVersion: res.version || checked.remoteVersion || currentState.currentVersion,
-          currentBuildId: res.buildId || checked.remoteBuildId || currentState.currentBuildId,
+          currentVersion: nextVersion,
+          currentBuildId: nextBuildId,
+          remoteVersion: nextVersion,
           localBundleDir: res.activeDistDir || currentState.localBundleDir,
           localBundleSource: 'electron-ota',
+          needRefresh: false,
+          lastCheckedAt: notice.updatedAt,
+          updateCompletedNotice: notice,
           updateProgressText: null,
-          statusMessage: `نسخه ${res.version || checked.remoteVersion || ''} در دایرکتوری محلی ویندوز ذخیره شد؛ در حال بارگذاری مجدد...`,
+          statusMessage: `فایل‌های نسخه ${nextVersion} مستقیماً در دایرکتوری محلی ویندوز جایگزین شد؛ در حال بارگذاری مجدد...`,
         });
         return currentState;
       }
@@ -2088,7 +2216,7 @@ export async function applyUnifiedAppUpdate(overrideUrl?: string): Promise<AppUp
       const networkReport = buildReadableNetworkReport(
         [
           {
-            label: 'بسته OTA گیت‌هاب (native-bundle)',
+            label: 'فایل مانیفست به‌روزرسانی (update-manifest.json)',
             url: `${bundleBaseUrl}native-bundle/update-manifest.json`,
             outcome: 'network-error',
             attempts: DEFAULT_BACKOFF_MAX_RETRIES + 1,
@@ -2110,9 +2238,10 @@ export async function applyUnifiedAppUpdate(overrideUrl?: string): Promise<AppUp
     emit({
       status: 'error',
       errorCategory: 'network',
-      errorMessage: 'نسخه فعلی نصاب ویندوز قدیمی است و پل به‌روزرسانی مستقیم دایرکتوری را ندارد. لطفاً یک‌بار آخرین نسخه نصاب ویندوز را نصب کنید.',
+      errorMessage:
+        'نسخه فعلی نصاب ویندوز قدیمی است و پل جایگزینی مستقیم دایرکتوری را ندارد. لطفاً یک‌بار آخرین نسخه نصاب ویندوز را نصب کنید.',
       updateProgressText: null,
-      statusMessage: 'نسخه فعلی نصاب ویندوز قدیمی است و پل به‌روزرسانی مستقیم دایرکتوری را ندارد.',
+      statusMessage: 'نسخه فعلی نصاب ویندوز قدیمی است و پل جایگزینی مستقیم دایرکتوری را ندارد.',
     });
     return currentState;
   }
@@ -2120,12 +2249,18 @@ export async function applyUnifiedAppUpdate(overrideUrl?: string): Promise<AppUp
   // Android Capacitor runtime
   const androidRes = await applyAndroidNativeBundleUpdate(bundleBaseUrl);
   if (androidRes.ok) {
+    const nextVersion = androidRes.version || currentState.currentVersion;
+    const notice = recordCompletedUpdateNotice(nextVersion, currentState.currentBuildId);
     emit({
       status: 'updating',
-      currentVersion: androidRes.version || checked.remoteVersion || currentState.currentVersion,
+      currentVersion: nextVersion,
+      remoteVersion: nextVersion,
       localBundleSource: 'android-ota',
+      needRefresh: false,
+      lastCheckedAt: notice.updatedAt,
+      updateCompletedNotice: notice,
       updateProgressText: null,
-      statusMessage: `نسخه ${androidRes.version || checked.remoteVersion || ''} در دایرکتوری داخلی اپلیکیشن ذخیره شد؛ در حال بارگذاری مجدد...`,
+      statusMessage: `فایل‌های نسخه ${nextVersion} مستقیماً در دایرکتوری داخلی اندروید جایگزین شد؛ در حال بارگذاری مجدد...`,
     });
     return currentState;
   }
@@ -2133,7 +2268,7 @@ export async function applyUnifiedAppUpdate(overrideUrl?: string): Promise<AppUp
   const androidReport = buildReadableNetworkReport(
     [
       {
-        label: 'بسته OTA گیت‌هاب (native-bundle)',
+        label: 'فایل مانیفست به‌روزرسانی (update-manifest.json)',
         url: `${bundleBaseUrl}native-bundle/update-manifest.json`,
         outcome: 'network-error',
         attempts: DEFAULT_BACKOFF_MAX_RETRIES + 1,
@@ -2149,6 +2284,32 @@ export async function applyUnifiedAppUpdate(overrideUrl?: string): Promise<AppUp
     networkReport: androidReport,
     statusMessage: androidRes.error || NETWORK_ERROR_MESSAGE,
   });
+  return currentState;
+}
+
+/**
+ * Unified single-click updater across ALL runtimes:
+ * - Installed Windows Electron & Android Capacitor APK -> immediately runs `syncNativeUpdateManifestNow`
+ *   to download `update-manifest.json` and replace local files with zero extra confirmation
+ * - Online & Offline Chrome PWA -> checks `version.json` and refreshes shell cache when newer
+ */
+export async function applyUnifiedAppUpdate(overrideUrl?: string): Promise<AppUpdateState> {
+  const platform = detectRuntimePlatform();
+  if (platform === 'electron' || platform === 'android') {
+    return syncNativeUpdateManifestNow(overrideUrl);
+  }
+
+  const checked = await checkForAppUpdate(overrideUrl);
+  if (checked.status === 'offline' || checked.status === 'error') {
+    return checked;
+  }
+
+  const hasUpdate = checked.status === 'update-available' || checked.needRefresh;
+  if (!hasUpdate) {
+    return checked;
+  }
+
+  await applyAppUpdate(true);
   return currentState;
 }
 
@@ -2174,8 +2335,10 @@ export function useAppUpdater() {
     checkForUpdate: checkForAppUpdate,
     checkReleaseInstallers: checkVerifiedReleaseInstallers,
     applyUpdate: applyAppUpdate,
+    syncManifestNow: syncNativeUpdateManifestNow,
     runUnifiedUpdate: applyUnifiedAppUpdate,
     refreshLocalVersion: refreshNativeLocalVersionInfo,
+    dismissUpdateNotice: dismissUpdateCompletedNotice,
     setCustomSourceUrl: setCustomVersionSourceUrl,
   };
 }

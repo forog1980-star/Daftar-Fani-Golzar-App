@@ -93,7 +93,11 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
 
     setRunningUpdate(true);
     try {
-      await updater.runUnifiedUpdate(cleaned);
+      if (isNativeRuntime) {
+        await updater.syncManifestNow(cleaned);
+      } else {
+        await updater.runUnifiedUpdate(cleaned);
+      }
     } finally {
       setRunningUpdate(false);
     }
@@ -112,11 +116,14 @@ export const AppUpdatePanel: React.FC<AppUpdatePanelProps> = ({ compact = false 
             />
           </div>
           <div className="min-w-0 space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-baseline gap-2">
               <h3 className="text-sm font-bold text-[#243B5A]">
                 نسخه نرم‌افزار و به‌روزرسانی خودکار
               </h3>
-              <span className="inline-flex items-center rounded-md border border-[#243B5A]/20 bg-[#E5EBF2] px-2 py-0.5 text-[11px] font-bold tabular-nums text-[#243B5A]">
+              <span aria-hidden="true" className="text-xs text-[#C8C2B6]">
+                ·
+              </span>
+              <span className="text-xs font-semibold tabular-nums text-[#243B5A]">
                 نسخه {toPersianDigits(updater.currentVersion)}
               </span>
             </div>

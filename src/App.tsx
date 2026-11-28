@@ -19,7 +19,7 @@ import { ReportDisplayMode, ReportType, ReportsView } from './components/reports
 import { SupportTab, SupportView } from './components/support/SupportView';
 import { ExitAuthOverlay } from './components/support/ExitAuthOverlay';
 import { HelpSectionId } from './components/help/helpContent';
-import { formatJalaliDateTime } from './utils/format';
+import { formatJalaliDateTime, toPersianDigits } from './utils/format';
 import {
   createInitialHistoryStack,
   getParentLabel,
@@ -206,36 +206,6 @@ export default function App() {
     <div className="min-h-screen bg-[#FAF8F3] text-[#263448]">
       <OfflineBanner />
 
-      {updater.needRefresh && !dismissUpdateBanner && (
-        <div className="border-b border-[#D5C39E] bg-[#E5EBF2] px-4 py-2 text-xs text-[#243B5A]">
-          <div className="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <CloudDownload className="h-4 w-4 shrink-0" />
-              <span className="font-medium">
-                نسخه جدید نرم‌افزار در دسترس است (اطلاعات محلی شما بدون تغییر حفظ می‌شود).
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => updater.applyUpdate(false)}
-                className="rounded-lg border border-[#243B5A] bg-[#243B5A] px-3 py-1 text-[11px] font-medium text-[#FAF8F3] hover:bg-[#354F73] cursor-pointer whitespace-nowrap"
-              >
-                اعمال به‌روزرسانی
-              </button>
-              <button
-                type="button"
-                onClick={() => setDismissUpdateBanner(true)}
-                className="inline-flex h-6 w-6 items-center justify-center rounded-md text-[#5B6573] hover:text-[#243B5A] cursor-pointer"
-                aria-label="بستن پیام به‌روزرسانی"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <AppHeader
         route={current.route}
         pageTitle={headerMeta.title}
@@ -263,6 +233,88 @@ export default function App() {
         />
 
         <main className="min-w-0 flex-1 pb-10">
+          {/* Palette-Matched Post-Update Confirmation Banner — positioned slightly below the top header bar */}
+          {updater.updateCompletedNotice && (
+            <div className="mx-auto max-w-[1280px] px-4 pt-4 sm:px-6">
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--app-radius)] border border-[#D5C39E] bg-[#E5EBF2] px-4 py-3 text-xs text-[#243B5A]"
+              >
+                <div className="flex items-start gap-3 min-w-0">
+                  <span className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[#243B5A] text-[#FAF8F3]">
+                    <CheckCircle2 className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="text-sm font-bold text-[#243B5A]">
+                      نرم‌افزار شما با موفقیت به‌روزرسانی شد
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[#354F73]">
+                      <span className="font-semibold tabular-nums">
+                        نسخه {toPersianDigits(updater.updateCompletedNotice.version)}
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span className="tabular-nums">
+                        تاریخ و ساعت به‌روزرسانی:{' '}
+                        {formatJalaliDateTime(updater.updateCompletedNotice.updatedAt)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => updater.dismissUpdateNotice()}
+                  className="inline-flex min-h-[36px] shrink-0 items-center gap-1.5 rounded-lg border border-[#243B5A]/30 bg-[#FFFFFF] px-3 py-1.5 text-xs font-medium text-[#243B5A] transition-colors hover:bg-[#243B5A] hover:text-[#FAF8F3] whitespace-nowrap cursor-pointer"
+                  aria-label="بستن پیام انجام به‌روزرسانی"
+                >
+                  <span>متوجه شدم</span>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Palette-Matched Update Available Notice — positioned slightly below the top header bar */}
+          {updater.needRefresh && !dismissUpdateBanner && (
+            <div className="mx-auto max-w-[1280px] px-4 pt-4 sm:px-6">
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--app-radius)] border border-[#D5C39E] bg-[#F2EEE6] px-4 py-3 text-xs text-[#243B5A]"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <CloudDownload className="h-4 w-4 shrink-0 text-[#243B5A]" />
+                  <span className="font-medium">
+                    نسخه جدید نرم‌افزار
+                    {updater.remoteVersion
+                      ? ` (${toPersianDigits(updater.remoteVersion)})`
+                      : ''}{' '}
+                    آماده اعمال است — تمامی اطلاعات محلی شما بدون تغییر حفظ می‌شود.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    disabled={updater.status === 'updating'}
+                    onClick={() => void updater.runUnifiedUpdate()}
+                    className="inline-flex min-h-[36px] items-center rounded-lg border border-[#243B5A] bg-[#243B5A] px-3.5 py-1.5 text-xs font-medium text-[#FAF8F3] transition-colors hover:bg-[#354F73] disabled:opacity-60 whitespace-nowrap cursor-pointer"
+                  >
+                    {updater.status === 'updating' ? 'در حال به‌روزرسانی...' : 'اعمال به‌روزرسانی'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDismissUpdateBanner(true)}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#5B6573] hover:bg-[#FFFFFF] hover:text-[#243B5A] cursor-pointer"
+                    aria-label="بستن پیام به‌روزرسانی"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {(current.route === 'dashboard' || current.route === 'home') && (
             <DashboardView
               store={store}
